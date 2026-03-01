@@ -106,7 +106,7 @@ review_cards
   ├── repertoire_id            INTEGER NOT NULL → repertoires.id        ON DELETE CASCADE
   ├── leaf_move_id             INTEGER NOT NULL → repertoire_moves.id   ON DELETE CASCADE
   ├── ease_factor              REAL NOT NULL DEFAULT 2.5
-  ├── interval_days            INTEGER NOT NULL DEFAULT 1
+  ├── interval_days            INTEGER NOT NULL DEFAULT 0
   ├── repetitions              INTEGER NOT NULL DEFAULT 0
   ├── next_review_date         TEXT NOT NULL  (ISO 8601)
   └── last_quality             INTEGER
@@ -137,7 +137,7 @@ CREATE UNIQUE INDEX idx_moves_unique_root
     WHERE parent_move_id IS NULL;
 ```
 
-`saveMove` handles constraint violations by returning the existing move rather than failing.
+`saveMove` handles constraint violations with upsert/ignore semantics — if a move with the same parent and SAN already exists, the call silently succeeds without modifying the existing row.
 
 ## Future: Remote Implementation
 

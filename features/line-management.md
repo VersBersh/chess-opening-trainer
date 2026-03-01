@@ -156,7 +156,7 @@ A review card is created automatically when a new **leaf node** is added to the 
 
 ### Extending an Existing Line
 
-When the user extends an existing line (adds moves beyond the current leaf), the old leaf is no longer a leaf — its card is **removed** and a new card is created for the new leaf with **default SR values** (ease factor 2.5, interval 1, repetitions 0).
+When the user extends an existing line (adds moves beyond the current leaf), the old leaf is no longer a leaf — its card is **removed** and a new card is created for the new leaf with **default SR values** (ease factor 2.5, interval 0, repetitions 0).
 
 No SR state is inherited from the old card. The new line contains moves the user has never been tested on, so it should be treated as fresh. If the user genuinely knows the line, SR will ramp the interval up quickly after a couple of easy reviews.
 

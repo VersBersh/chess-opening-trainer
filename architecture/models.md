@@ -43,7 +43,7 @@ ReviewCard
   ├── repertoire_id             # denormalized from RepertoireMove for query performance (see note below)
   ├── leaf_move_id              # identifies the line (leaf node in the move tree)
   ├── ease_factor               # SM-2 ease factor (default 2.5, minimum 1.3)
-  ├── interval_days             # days until next review (default 1)
+  ├── interval_days             # days until next review (default 0)
   ├── repetitions               # consecutive successful reviews (default 0)
   ├── next_review_date
   └── last_quality              # 0-5, from most recent review

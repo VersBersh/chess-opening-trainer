@@ -91,7 +91,7 @@ From a selected node, the user can perform several actions via a context menu or
 
 - Available only when the selected node is a leaf (has no children).
 - Deletes the leaf node and its associated review card.
-- Follows the deletion rules in [line-management.md](line-management.md) — the parent node simply remains in the tree; no cascading delete or automatic card creation for the now-shorter line.
+- Follows the deletion rules in [line-management.md](line-management.md), including orphan handling when the deletion leaves a parent node childless.
 - Requires confirmation before deletion.
 
 ### Edit Label
