@@ -9,12 +9,12 @@ Wrap `chessground` and `dartchess` into a reusable chessboard widget that the re
 
 ## Acceptance Criteria
 
-- [ ] Render board with configurable orientation (white/black at bottom)
-- [ ] Accept user moves via tap/drag and expose an `onMove` callback
-- [ ] Validate move legality via `dartchess`
-- [ ] Programmatic move execution (for opponent auto-play and intro moves) with animation
-- [ ] Highlight squares (last move, arrows for correction hints)
-- [ ] FEN-based position setting and reset to initial position
+- [x] Render board with configurable orientation (white/black at bottom)
+- [x] Accept user moves via tap/drag and expose an `onMove` callback
+- [x] Validate move legality via `dartchess`
+- [x] Programmatic move execution (for opponent auto-play and intro moves) with animation
+- [x] Highlight squares (last move, arrows for correction hints)
+- [x] FEN-based position setting and reset to initial position
 
 ## Context
 
@@ -31,3 +31,7 @@ Wrap `chessground` and `dartchess` into a reusable chessboard widget that the re
 ## Notes
 
 The `chessground` package is from the lichess-org GitHub. Consult its API and examples for integration patterns. The widget should be a thin wrapper — avoid reimplementing chess logic that `dartchess` already provides.
+
+---
+status: done
+completed: 2026-03-01

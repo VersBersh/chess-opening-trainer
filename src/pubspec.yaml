@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   chessground: ^8.0.1
   dartchess: ^0.12.1
+  fast_immutable_collections: ^11.0.0
   drift: ^2.32.0
   sqlite3_flutter_libs: ^0.6.0+eol
   path_provider: ^2.1.5
