@@ -4,7 +4,7 @@ import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../main.dart';
+import '../providers.dart';
 import '../models/repertoire.dart';
 import '../repositories/review_repository.dart';
 import '../services/chess_utils.dart';

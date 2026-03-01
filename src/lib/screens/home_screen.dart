@@ -1,81 +1,170 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers.dart';
 import '../repositories/local/database.dart';
-import '../repositories/local/local_repertoire_repository.dart';
-import '../repositories/local/local_review_repository.dart';
 import 'drill_screen.dart';
 import 'repertoire_browser_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+// ---------------------------------------------------------------------------
+// Home screen state
+// ---------------------------------------------------------------------------
+
+class RepertoireSummary {
+  final Repertoire repertoire;
+  final int dueCount;
+  const RepertoireSummary({required this.repertoire, required this.dueCount});
+}
+
+class HomeState {
+  final List<RepertoireSummary> repertoires;
+  final int totalDueCount;
+  const HomeState({this.repertoires = const [], this.totalDueCount = 0});
+}
+
+// ---------------------------------------------------------------------------
+// HomeController provider
+// ---------------------------------------------------------------------------
+
+final homeControllerProvider =
+    AsyncNotifierProvider.autoDispose<HomeController, HomeState>(
+        HomeController.new);
+
+// ---------------------------------------------------------------------------
+// HomeController
+// ---------------------------------------------------------------------------
+
+class HomeController extends AutoDisposeAsyncNotifier<HomeState> {
+  @override
+  Future<HomeState> build() async {
+    return _load();
+  }
+
+  Future<HomeState> _load() async {
+    final repertoireRepo = ref.read(repertoireRepositoryProvider);
+    final reviewRepo = ref.read(reviewRepositoryProvider);
+
+    final repertoires = await repertoireRepo.getAllRepertoires();
+    final summaries = <RepertoireSummary>[];
+    var totalDue = 0;
+
+    for (final repertoire in repertoires) {
+      final dueCards =
+          await reviewRepo.getDueCardsForRepertoire(repertoire.id);
+      summaries.add(RepertoireSummary(
+        repertoire: repertoire,
+        dueCount: dueCards.length,
+      ));
+      totalDue += dueCards.length;
+    }
+
+    return HomeState(repertoires: summaries, totalDueCount: totalDue);
+  }
+
+  Future<void> refresh() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(_load);
+  }
+
+  /// Returns the ID of the first repertoire, auto-creating "My Repertoire"
+  /// if none exist. All repository access stays in the controller.
+  Future<int> openRepertoire() async {
+    final repertoireRepo = ref.read(repertoireRepositoryProvider);
+    var repertoires = await repertoireRepo.getAllRepertoires();
+
+    if (repertoires.isEmpty) {
+      await repertoireRepo.saveRepertoire(
+        RepertoiresCompanion.insert(name: 'My Repertoire'),
+      );
+      repertoires = await repertoireRepo.getAllRepertoires();
+      // Update state so the repertoire list is current
+      state = AsyncData(await _load());
+    }
+
+    return repertoires.first.id;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HomeScreen widget
+// ---------------------------------------------------------------------------
+
+class HomeScreen extends ConsumerStatefulWidget {
   final AppDatabase db;
 
   const HomeScreen({super.key, required this.db});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  int _dueCount = 0;
-  int? _repertoireId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadDueCount();
-  }
-
-  Future<void> _loadDueCount() async {
-    final reviewRepo = LocalReviewRepository(widget.db);
-    final repertoireRepo = LocalRepertoireRepository(widget.db);
-
-    final dueCards = await reviewRepo.getDueCards();
-    final repertoires = await repertoireRepo.getAllRepertoires();
-
-    if (mounted) {
-      setState(() {
-        _dueCount = dueCards.length;
-        if (repertoires.isNotEmpty) {
-          _repertoireId = repertoires.first.id;
-        }
-      });
-    }
-  }
-
-  Future<void> _onRepertoireTap() async {
-    final repo = LocalRepertoireRepository(widget.db);
-    var repertoires = await repo.getAllRepertoires();
-    if (repertoires.isEmpty) {
-      await repo.saveRepertoire(
-        RepertoiresCompanion.insert(name: 'My Repertoire'),
-      );
-      repertoires = await repo.getAllRepertoires();
-    }
-    if (mounted) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => RepertoireBrowserScreen(
-          db: widget.db,
-          repertoireId: repertoires.first.id,
-        ),
-      ));
-    }
-  }
-
-  void _startDrill() {
-    final repertoireId = _repertoireId;
-    if (repertoireId == null) return;
-
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  void _startDrill(int repertoireId) {
     Navigator.of(context)
         .push(
           MaterialPageRoute(
             builder: (_) => DrillScreen(repertoireId: repertoireId),
           ),
         )
-        .then((_) => _loadDueCount()); // Refresh due count on return
+        .then((_) => ref.read(homeControllerProvider.notifier).refresh());
+  }
+
+  Future<void> _onRepertoireTap() async {
+    final id =
+        await ref.read(homeControllerProvider.notifier).openRepertoire();
+    if (mounted) {
+      Navigator.of(context)
+          .push(MaterialPageRoute(
+            builder: (_) => RepertoireBrowserScreen(
+              db: widget.db,
+              repertoireId: id,
+            ),
+          ))
+          .then((_) => ref.read(homeControllerProvider.notifier).refresh());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final asyncState = ref.watch(homeControllerProvider);
+
+    return asyncState.when(
+      loading: () => Scaffold(
+        appBar: AppBar(
+          title: const Text('Chess Trainer'),
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stack) => Scaffold(
+        appBar: AppBar(
+          title: const Text('Chess Trainer'),
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Error: $error'),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => ref.invalidate(homeControllerProvider),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      data: (homeState) => _buildData(context, homeState),
+    );
+  }
+
+  Widget _buildData(BuildContext context, HomeState homeState) {
+    // Use the first repertoire's ID for the drill button, if available.
+    final repertoireId = homeState.repertoires.isNotEmpty
+        ? homeState.repertoires.first.repertoire.id
+        : null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chess Trainer'),
@@ -92,12 +181,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              '$_dueCount cards due',
+              '${homeState.totalDueCount} cards due',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 48),
             FilledButton.icon(
-              onPressed: _dueCount > 0 ? _startDrill : null,
+              onPressed: homeState.totalDueCount > 0 && repertoireId != null
+                  ? () => _startDrill(repertoireId)
+                  : null,
               icon: const Icon(Icons.play_arrow),
               label: const Text('Start Drill'),
             ),

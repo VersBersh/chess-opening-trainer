@@ -2,25 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'providers.dart';
 import 'repositories/local/database.dart';
 import 'repositories/local/local_repertoire_repository.dart';
 import 'repositories/local/local_review_repository.dart';
-import 'repositories/repertoire_repository.dart';
-import 'repositories/review_repository.dart';
 import 'screens/home_screen.dart';
 import 'services/dev_seed.dart';
-
-// ---------------------------------------------------------------------------
-// Repository providers
-// ---------------------------------------------------------------------------
-
-final repertoireRepositoryProvider = Provider<RepertoireRepository>((ref) {
-  throw UnimplementedError('Must be overridden in ProviderScope');
-});
-
-final reviewRepositoryProvider = Provider<ReviewRepository>((ref) {
-  throw UnimplementedError('Must be overridden in ProviderScope');
-});
 
 // ---------------------------------------------------------------------------
 // App entry point
@@ -42,15 +29,15 @@ Future<void> main() async {
         repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
         reviewRepositoryProvider.overrideWithValue(reviewRepo),
       ],
-      child: ChessTrainerApp(db: db),
+      child: ChessTrainerApp(home: HomeScreen(db: db)),
     ),
   );
 }
 
 class ChessTrainerApp extends StatelessWidget {
-  final AppDatabase db;
+  final Widget home;
 
-  const ChessTrainerApp({super.key, required this.db});
+  const ChessTrainerApp({super.key, required this.home});
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +47,8 @@ class ChessTrainerApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
-      home: HomeScreen(db: db),
+      home: home,
     );
   }
 }
+
