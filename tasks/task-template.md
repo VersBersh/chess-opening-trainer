@@ -1,6 +1,18 @@
+---
+id: {TASK-ID}
+title: {Title}
+epic: {EPIC-ID} # omit this line if standalone
+depends: [{DEPENDENCY-IDS}] # or []
+specs:
+  - features/drill-mode.md
+  - architecture/models.md
+files:
+  - src/lib/path/to/relevant_file.dart
+  - src/lib/path/to/another_file.dart
+---
 # {TASK-ID}: {Title}
 
-**Epic:** {EPIC-ID}
+**Epic:** {EPIC-ID or "none"}
 **Depends on:** {list of task IDs, or "none"}
 
 ## Description
@@ -11,18 +23,6 @@ What needs to be done, in plain terms.
 
 - [ ] Criterion 1
 - [ ] Criterion 2
-
-## Context
-
-Files and specs the implementing agent should read before planning:
-
-**Specs:**
-- `architecture/models.md`
-- `features/drill-mode.md`
-
-**Source files:**
-- `src/lib/path/to/relevant_file.dart` — why it's relevant
-- `src/lib/path/to/another_file.dart` — why it's relevant
 
 ## Notes
 

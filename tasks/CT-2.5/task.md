@@ -1,3 +1,18 @@
+---
+id: CT-2.5
+title: Line Extension
+epic: CT-2
+depends: ['CT-2.2']
+specs:
+  - features/line-management.md
+  - architecture/models.md
+  - architecture/spaced-repetition.md
+files:
+  - src/lib/screens/repertoire_browser_screen.dart
+  - src/lib/repositories/repertoire_repository.dart
+  - src/lib/repositories/review_repository.dart
+  - src/lib/models/review_card.dart
+---
 # CT-2.5: Line Extension
 
 **Epic:** CT-2
@@ -13,19 +28,6 @@ Allow users to extend existing lines from edit mode. Navigate to a leaf, play ad
 - [ ] On confirm: delete old card, insert new moves, create new card with default SR values
 - [ ] Undo snackbar (~8 seconds): revert extension, restore old card with original SR state
 - [ ] Snackbar expiry → extension is final
-
-## Context
-
-**Specs:**
-- `features/line-management.md` — line extension flow, undo behavior, card lifecycle
-- `architecture/models.md` — ReviewCard default values
-- `architecture/spaced-repetition.md` — default SR values for new cards
-
-**Source files (tentative):**
-- `src/lib/screens/repertoire_browser_screen.dart` — edit mode UI (from CT-2.2)
-- `src/lib/repositories/repertoire_repository.dart` — insertMove method
-- `src/lib/repositories/review_repository.dart` — card deletion and creation
-- `src/lib/models/review_card.dart` — ReviewCard model
 
 ## Notes
 

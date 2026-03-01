@@ -1,3 +1,18 @@
+---
+id: CT-4
+title: Focus Mode
+depends: ['CT-1.3', 'CT-2.1']
+specs:
+  - features/focus-mode.md
+  - features/drill-mode.md
+  - architecture/models.md
+files:
+  - src/lib/screens/drill_screen.dart
+  - src/lib/services/drill_engine.dart
+  - src/lib/screens/repertoire_browser_screen.dart
+  - src/lib/repositories/repertoire_repository.dart
+  - src/lib/repositories/review_repository.dart
+---
 # CT-4: Focus Mode
 
 **Epic:** none
@@ -18,20 +33,6 @@ Implement filtered drill sessions scoped to a repertoire subtree. Enter from the
 - [ ] Update `last_extra_practice_date` on extra practice completion
 - [ ] Header shows focus scope (e.g., "Focus: Sicilian — Najdorf")
 - [ ] Scoped card counts (due / total)
-
-## Context
-
-**Specs:**
-- `features/focus-mode.md` — full focus mode behavior, phase transitions, extra practice rules
-- `features/drill-mode.md` — base drill behavior that focus mode extends
-- `architecture/models.md` — ReviewCard fields (next_review_date, last_extra_practice_date)
-
-**Source files (tentative):**
-- `src/lib/screens/drill_screen.dart` — base drill screen to extend or parameterize for focus mode
-- `src/lib/services/drill_engine.dart` — drill engine, may need focus mode awareness
-- `src/lib/screens/repertoire_browser_screen.dart` — entry point for focus mode
-- `src/lib/repositories/repertoire_repository.dart` — getCardsForSubtree method
-- `src/lib/repositories/review_repository.dart` — card queries and updates
 
 ## Notes
 

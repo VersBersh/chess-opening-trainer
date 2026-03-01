@@ -1,3 +1,20 @@
+---
+id: CT-1.2
+title: Drill Engine Service
+epic: CT-1
+depends: ['CT-0']
+specs:
+  - features/drill-mode.md
+  - architecture/models.md
+  - architecture/spaced-repetition.md
+files:
+  - src/lib/services/drill_engine.dart
+  - src/lib/services/sm2_scheduler.dart
+  - src/lib/models/review_card.dart
+  - src/lib/models/repertoire.dart
+  - src/lib/repositories/repertoire_repository.dart
+  - src/lib/repositories/review_repository.dart
+---
 # CT-1.2: Drill Engine Service
 
 **Epic:** CT-1
@@ -17,21 +34,6 @@ Implement the business logic for a drill session. This is a pure service (no UI)
 - [ ] On card completion, compute SM-2 quality and return updated `ReviewCardsCompanion`
 - [ ] Skip/defer: advance queue without scoring
 - [ ] Expose session progress (current index, total count, isComplete)
-
-## Context
-
-**Specs:**
-- `features/drill-mode.md` — drill session flow, intro move algorithm, mistake vs sibling-line-correction logic, scoring rules
-- `architecture/models.md` — DrillSession, DrillCardState, ReviewCard models
-- `architecture/spaced-repetition.md` — SM-2 quality mapping from mistake counts
-
-**Source files (tentative):**
-- `src/lib/services/drill_engine.dart` — to be created
-- `src/lib/services/sm2_scheduler.dart` — SM-2 scheduler (dependency)
-- `src/lib/models/review_card.dart` — ReviewCard, DrillSession, DrillCardState models
-- `src/lib/models/repertoire.dart` — RepertoireMove model
-- `src/lib/repositories/repertoire_repository.dart` — getLineForLeaf method
-- `src/lib/repositories/review_repository.dart` — card persistence interface
 
 ## Notes
 

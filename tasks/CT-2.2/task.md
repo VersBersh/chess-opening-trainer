@@ -1,3 +1,19 @@
+---
+id: CT-2.2
+title: Line Entry (Edit Mode)
+epic: CT-2
+depends: ['CT-2.1', 'CT-1.1']
+specs:
+  - features/line-management.md
+  - architecture/models.md
+  - architecture/repository.md
+files:
+  - src/lib/screens/repertoire_browser_screen.dart
+  - src/lib/widgets/chessboard_widget.dart
+  - src/lib/repositories/repertoire_repository.dart
+  - src/lib/repositories/review_repository.dart
+  - src/lib/models/repertoire.dart
+---
 # CT-2.2: Line Entry (Edit Mode)
 
 **Epic:** CT-2
@@ -17,20 +33,6 @@ Implement board-based line building, toggled from the repertoire browser. Users 
 - [ ] "Confirm line" button: save buffered moves, create card for new leaf
 - [ ] Line parity validation on confirm (warn if orientation doesn't match leaf depth)
 - [ ] Discard buffer on exit without confirm
-
-## Context
-
-**Specs:**
-- `features/line-management.md` — line entry flow, buffer behavior, parity validation, confirm logic
-- `architecture/models.md` — RepertoireMove model, ReviewCard creation
-- `architecture/repository.md` — insertMove, createCardForLeaf patterns
-
-**Source files (tentative):**
-- `src/lib/screens/repertoire_browser_screen.dart` — host screen for edit mode toggle
-- `src/lib/widgets/chessboard_widget.dart` — board for move input (CT-1.1)
-- `src/lib/repositories/repertoire_repository.dart` — insertMove method
-- `src/lib/repositories/review_repository.dart` — card creation
-- `src/lib/models/repertoire.dart` — RepertoireMove model
 
 ## Notes
 

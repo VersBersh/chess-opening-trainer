@@ -1,3 +1,16 @@
+---
+id: CT-2.3
+title: Position Labeling
+epic: CT-2
+depends: ['CT-2.1']
+specs:
+  - features/line-management.md
+  - taxonomy.md
+files:
+  - src/lib/screens/repertoire_browser_screen.dart
+  - src/lib/repositories/repertoire_repository.dart
+  - src/lib/models/repertoire.dart
+---
 # CT-2.3: Position Labeling
 
 **Epic:** CT-2
@@ -13,17 +26,6 @@ Add the ability to attach, edit, and remove labels on any move node in the reper
 - [ ] Aggregate display name preview while entering/browsing
 - [ ] Label impact warning when node has labeled descendants
 - [ ] Transposition conflict warning (same FEN, different labels)
-
-## Context
-
-**Specs:**
-- `features/line-management.md` — labeling rules, display name derivation, conflict warnings
-- `taxonomy.md` — definitions of Label, Display Name, Variation
-
-**Source files (tentative):**
-- `src/lib/screens/repertoire_browser_screen.dart` — UI for label input
-- `src/lib/repositories/repertoire_repository.dart` — updateLabel method
-- `src/lib/models/repertoire.dart` — RepertoireMove.label field
 
 ## Notes
 

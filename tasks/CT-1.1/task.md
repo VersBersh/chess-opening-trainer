@@ -1,3 +1,17 @@
+---
+id: CT-1.1
+title: Chessboard Widget Wrapper
+epic: CT-1
+depends: ['CT-0']
+specs:
+  - features/drill-mode.md
+  - features/line-management.md
+  - architecture/state-management.md
+files:
+  - src/lib/widgets/chessboard_widget.dart
+  - src/lib/screens/home_screen.dart
+  - src/pubspec.yaml
+---
 # CT-1.1: Chessboard Widget Wrapper
 
 **Epic:** CT-1
@@ -15,18 +29,6 @@ Wrap `chessground` and `dartchess` into a reusable chessboard widget that the re
 - [x] Programmatic move execution (for opponent auto-play and intro moves) with animation
 - [x] Highlight squares (last move, arrows for correction hints)
 - [x] FEN-based position setting and reset to initial position
-
-## Context
-
-**Specs:**
-- `features/drill-mode.md` — how the board is used during drills (intro moves, correction arrows)
-- `features/line-management.md` — how the board is used for move entry
-- `architecture/state-management.md` — state management approach for widgets
-
-**Source files (tentative):**
-- `src/lib/widgets/chessboard_widget.dart` — to be created
-- `src/lib/screens/home_screen.dart` — existing screen, for reference on widget patterns
-- `src/pubspec.yaml` — chessground and dartchess dependency versions
 
 ## Notes
 

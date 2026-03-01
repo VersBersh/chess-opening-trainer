@@ -1,3 +1,17 @@
+---
+id: CT-2.6
+title: Add undo/take-back support to ChessboardController
+epic: CT-2
+depends: ['CT-1.1']
+specs:
+  - features/line-management.md
+  - architecture/state-management.md
+files:
+  - src/lib/widgets/
+  - src/lib/models/repertoire.dart
+  - src/lib/models/review_card.dart
+  - src/pubspec.yaml
+---
 # CT-2.6: Add undo/take-back support to ChessboardController
 
 **Epic:** CT-2
@@ -14,20 +28,6 @@ The ChessboardController currently supports `setPosition()` and `playMove()` but
 - [ ] Undo restores the correct FEN, side to move, last-move highlight, and legal moves
 - [ ] Calling undo when there is no history is a safe no-op (or returns a result indicating nothing to undo)
 - [ ] Line entry mode can use take-back to explore variations
-
-## Context
-
-Files and specs the implementing agent should read before planning:
-
-**Specs:**
-- `features/line-management.md` — How the board is used for move entry: free play of both sides, flip board toggle, take-back
-- `architecture/state-management.md` — Riverpod state management approach
-
-**Source files (tentative, carried from CT-1.1):**
-- `src/lib/widgets/` — Location of chessboard widget created in CT-1.1
-- `src/lib/models/repertoire.dart` — Contains `RepertoireTreeCache` for repertoire move tree in memory
-- `src/lib/models/review_card.dart` — Contains `DrillSession` and `DrillCardState` transient models
-- `src/pubspec.yaml` — Declares `chessground` and `dartchess` dependencies
 
 ## Notes
 

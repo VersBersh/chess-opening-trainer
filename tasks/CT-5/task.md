@@ -1,3 +1,15 @@
+---
+id: CT-5
+title: Session Summary
+depends: ['CT-1.3']
+specs:
+  - features/drill-mode.md
+  - architecture/spaced-repetition.md
+files:
+  - src/lib/screens/drill_screen.dart
+  - src/lib/models/review_card.dart
+  - src/lib/services/sm2_scheduler.dart
+---
 # CT-5: Session Summary
 
 **Epic:** none
@@ -13,17 +25,6 @@ Build a post-drill results screen shown after completing a drill session. Displa
 - [ ] Mistake breakdown (perfect / hesitation / struggled / failed)
 - [ ] Session duration
 - [ ] Next due date preview
-
-## Context
-
-**Specs:**
-- `features/drill-mode.md` — drill session data available for summary
-- `architecture/spaced-repetition.md` — quality categories (perfect/hesitation/struggled/failed)
-
-**Source files (tentative):**
-- `src/lib/screens/drill_screen.dart` — navigates to summary on session end
-- `src/lib/models/review_card.dart` — DrillSession, DrillCardState models (session data source)
-- `src/lib/services/sm2_scheduler.dart` — quality rating definitions
 
 ## Notes
 

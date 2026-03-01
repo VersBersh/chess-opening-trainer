@@ -1,3 +1,16 @@
+---
+id: CT-6
+title: Theming & Polish
+depends: []
+specs:
+  - architecture/state-management.md
+files:
+  - src/lib/main.dart
+  - src/lib/widgets/chessboard_widget.dart
+  - src/lib/screens/home_screen.dart
+  - src/lib/screens/drill_screen.dart
+  - src/lib/screens/repertoire_browser_screen.dart
+---
 # CT-6: Theming & Polish
 
 **Epic:** none
@@ -13,18 +26,6 @@ Visual refinement and responsive layout polish. Add board theme options (colors,
 - [ ] Responsive layout: phone portrait vs desktop/tablet landscape
 - [ ] Consistent Material 3 styling across all screens
 - [ ] Loading states and error handling for all async operations
-
-## Context
-
-**Specs:**
-- `architecture/state-management.md` — state management patterns for loading/error states
-
-**Source files (tentative):**
-- `src/lib/main.dart` — theme configuration
-- `src/lib/widgets/chessboard_widget.dart` — board theme integration
-- `src/lib/screens/home_screen.dart` — responsive layout
-- `src/lib/screens/drill_screen.dart` — responsive layout
-- `src/lib/screens/repertoire_browser_screen.dart` — responsive layout
 
 ## Notes
 

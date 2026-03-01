@@ -1,3 +1,19 @@
+---
+id: CT-2.1
+title: Repertoire Browser Screen
+epic: CT-2
+depends: ['CT-1.1']
+specs:
+  - features/repertoire-browser.md
+  - features/line-management.md
+  - architecture/models.md
+files:
+  - src/lib/screens/repertoire_browser_screen.dart
+  - src/lib/widgets/move_tree_widget.dart
+  - src/lib/widgets/chessboard_widget.dart
+  - src/lib/repositories/repertoire_repository.dart
+  - src/lib/models/repertoire.dart
+---
 # CT-2.1: Repertoire Browser Screen
 
 **Epic:** CT-2
@@ -16,20 +32,6 @@ Build a read-only tree view of the repertoire. Users can browse the move tree, e
 - [ ] Board preview showing the position at the selected node (via CT-1.1 widget)
 - [ ] Entry point for focus mode (CT-4) on labeled nodes
 - [ ] Entry point for edit mode (CT-2.2)
-
-## Context
-
-**Specs:**
-- `features/repertoire-browser.md` — tree view layout, navigation, board preview behavior
-- `features/line-management.md` — display name derivation from labels
-- `architecture/models.md` — RepertoireMove, RepertoireTreeCache models
-
-**Source files (tentative):**
-- `src/lib/screens/repertoire_browser_screen.dart` — to be created
-- `src/lib/widgets/move_tree_widget.dart` — to be created (tree view widget)
-- `src/lib/widgets/chessboard_widget.dart` — board preview (CT-1.1)
-- `src/lib/repositories/repertoire_repository.dart` — tree query methods (getChildren, getMovesForRepertoire)
-- `src/lib/models/repertoire.dart` — RepertoireMove model
 
 ## Notes
 

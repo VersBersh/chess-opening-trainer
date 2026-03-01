@@ -1,3 +1,16 @@
+---
+id: CT-3
+title: PGN Import
+depends: ['CT-0']
+specs:
+  - features/pgn-import.md
+files:
+  - src/lib/services/pgn_importer.dart
+  - src/lib/screens/import_screen.dart
+  - src/lib/repositories/repertoire_repository.dart
+  - src/lib/repositories/review_repository.dart
+  - src/lib/models/repertoire.dart
+---
 # CT-3: PGN Import
 
 **Epic:** none
@@ -14,18 +27,6 @@ Bulk-load opening lines from PGN files into the repertoire. Parse PGN with varia
 - [ ] Skip duplicate paths that already exist in the repertoire
 - [ ] Create cards for new leaf nodes
 - [ ] Import summary: lines added, duplicates skipped
-
-## Context
-
-**Specs:**
-- `features/pgn-import.md` — import flow, duplicate handling, summary display
-
-**Source files (tentative):**
-- `src/lib/services/pgn_importer.dart` — to be created
-- `src/lib/screens/import_screen.dart` — to be created
-- `src/lib/repositories/repertoire_repository.dart` — insertMove, tree query methods
-- `src/lib/repositories/review_repository.dart` — card creation for new leaves
-- `src/lib/models/repertoire.dart` — RepertoireMove model
 
 ## Notes
 

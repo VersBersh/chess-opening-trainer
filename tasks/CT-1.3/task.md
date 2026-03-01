@@ -1,3 +1,18 @@
+---
+id: CT-1.3
+title: Drill Screen UI
+epic: CT-1
+depends: ['CT-1.1', 'CT-1.2']
+specs:
+  - features/drill-mode.md
+  - architecture/state-management.md
+files:
+  - src/lib/screens/drill_screen.dart
+  - src/lib/widgets/chessboard_widget.dart
+  - src/lib/services/drill_engine.dart
+  - src/lib/models/review_card.dart
+  - src/lib/screens/home_screen.dart
+---
 # CT-1.3: Drill Screen UI
 
 **Epic:** CT-1
@@ -18,19 +33,6 @@ Build the main drill screen — the primary training interface where users revie
 - [ ] Progress indicator: "Card N of M"
 - [ ] Skip button (available any time after intro)
 - [ ] Session end screen (or return to home)
-
-## Context
-
-**Specs:**
-- `features/drill-mode.md` — full drill UI behavior, visual feedback rules, timing
-- `architecture/state-management.md` — state management approach for screens
-
-**Source files (tentative):**
-- `src/lib/screens/drill_screen.dart` — to be created
-- `src/lib/widgets/chessboard_widget.dart` — board widget (CT-1.1)
-- `src/lib/services/drill_engine.dart` — drill engine (CT-1.2)
-- `src/lib/models/review_card.dart` — ReviewCard model
-- `src/lib/screens/home_screen.dart` — reference for screen patterns
 
 ## Notes
 
