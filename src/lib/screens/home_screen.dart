@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../repositories/local/database.dart';
+import '../repositories/local/local_repertoire_repository.dart';
 import '../repositories/local/local_review_repository.dart';
+import 'repertoire_browser_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AppDatabase db;
@@ -26,6 +28,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final dueCards = await repo.getDueCards();
     if (mounted) {
       setState(() => _dueCount = dueCards.length);
+    }
+  }
+
+  Future<void> _onRepertoireTap() async {
+    final repo = LocalRepertoireRepository(widget.db);
+    var repertoires = await repo.getAllRepertoires();
+    if (repertoires.isEmpty) {
+      await repo.saveRepertoire(
+        RepertoiresCompanion.insert(name: 'My Repertoire'),
+      );
+      repertoires = await repo.getAllRepertoires();
+    }
+    if (mounted) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => RepertoireBrowserScreen(
+          db: widget.db,
+          repertoireId: repertoires.first.id,
+        ),
+      ));
     }
   }
 
@@ -58,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
             OutlinedButton.icon(
-              onPressed: () {},
+              onPressed: _onRepertoireTap,
               icon: const Icon(Icons.library_books),
               label: const Text('Repertoire'),
             ),

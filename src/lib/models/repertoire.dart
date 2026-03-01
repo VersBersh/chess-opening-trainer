@@ -76,6 +76,26 @@ class RepertoireTreeCache {
     return childrenByParentId[moveId] ?? [];
   }
 
+  /// Walks the root-to-node path and concatenates all labels with " — "
+  /// separator. Returns an empty string if no labels exist along the path.
+  String getAggregateDisplayName(int moveId) {
+    final line = getLine(moveId);
+    final labels = line.where((m) => m.label != null).map((m) => m.label!);
+    return labels.join(' \u2014 ');
+  }
+
+  /// Returns move notation string like "1. e4" or "1...c5".
+  ///
+  /// [plyCount] is the 1-based position in the line (i.e. depth + 1 from
+  /// root). When not provided, falls back to computing via [getLine].
+  String getMoveNotation(int moveId, {int? plyCount}) {
+    final index = plyCount ?? getLine(moveId).length; // 1-based ply count
+    final moveNumber = (index + 1) ~/ 2;
+    final isBlack = index.isEven;
+    if (isBlack) return '$moveNumber...${movesById[moveId]!.san}';
+    return '$moveNumber. ${movesById[moveId]!.san}';
+  }
+
   /// Returns the move and all its descendants.
   List<RepertoireMove> getSubtree(int moveId) {
     final result = <RepertoireMove>[];
