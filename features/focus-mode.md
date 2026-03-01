@@ -8,7 +8,6 @@ Uses **ReviewCard**, **DrillSession**, and **DrillCardState** from [architecture
 
 Focus mode introduces no new models. It is a filtered view over the existing drill infrastructure:
 - **DrillSession.is_extra_practice** — set to `true` during Phase 2 (extra practice). When true, SM-2 records are not updated on card completion.
-- **ReviewCard.last_extra_practice_date** — updated whenever a card is drilled in extra practice. Used for v2 cram detection.
 
 ## Entering Focus Mode
 
@@ -61,7 +60,7 @@ There's a subtler problem: even though extra practice doesn't update SR, it stil
 - **Option B — Skip SR update:** treat the due review the same as extra practice (SR-exempt) if it was recently crammed, so the card comes back at its original interval for a "clean" test.
 - **Option C — Flag to user:** show a warning ("You recently practiced this card — this review may not reflect true recall") and let the user decide whether to count it.
 
-The right approach needs real-world testing. For v1, extra practice is simply SR-exempt with no cram detection. The `last_extra_practice_date` field should still be stored from the start so v2 can use it without a data migration.
+The right approach needs real-world testing. For v1, extra practice is simply SR-exempt with no cram detection. The storage mechanism for cram detection will be designed alongside the chosen v2 approach — adding a nullable column or a separate table is a trivial migration.
 
 ## Session Flow
 

@@ -94,6 +94,13 @@ lib/
 - Drill screen UI
 - Home screen with due card counts
 
+**Dev workflow note:** Phase 2 builds the drill loop before Phase 3 builds line management, so there is no UI for creating cards yet. Development and testing at each level:
+- **Unit and widget tests** use the mock repositories and fixtures defined in the testing strategy (`test/fixtures/`). These do not depend on line management.
+- **Manual app testing** uses a dev seed function that inserts sample repertoire data (moves and review cards) directly via the repository layer on app startup in debug mode. The seed data should cover: a simple 5-move line, a branching tree with 3-4 leaves, and at least one due card.
+- **Integration tests** insert data directly via the repository, bypassing line management UI.
+
+The dev seed function is temporary scaffolding — removed or gated behind a debug flag once Phase 3 provides real data entry.
+
 ### Phase 3 — Repertoire Management
 - Repertoire browser with tree view
 - Manual move entry (play moves on board to build a line)

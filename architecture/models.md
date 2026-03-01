@@ -26,7 +26,6 @@ RepertoireMove
   ├── fen                  # position after this move is played
   ├── san                  # standard algebraic notation (e.g. "e4", "Nf3")
   ├── label                # optional short label (e.g. "Sicilian", "Najdorf", "English Attack")
-  ├── comment              # optional annotation
   └── sort_order           # ordering among siblings
 ```
 
@@ -41,15 +40,16 @@ One record per reviewable line (leaf node in the repertoire tree). Holds the per
 ```
 ReviewCard
   ├── id
-  ├── repertoire_id
+  ├── repertoire_id             # denormalized from RepertoireMove for query performance (see note below)
   ├── leaf_move_id              # identifies the line (leaf node in the move tree)
   ├── ease_factor               # SM-2 ease factor (default 2.5, minimum 1.3)
   ├── interval_days             # days until next review (default 1)
   ├── repetitions               # consecutive successful reviews (default 0)
   ├── next_review_date
-  ├── last_quality              # 0-5, from most recent review
-  └── last_extra_practice_date  # for v2 cram detection (see ../features/focus-mode.md)
+  └── last_quality              # 0-5, from most recent review
 ```
+
+**Denormalization note:** `repertoire_id` is derivable via `leaf_move_id → RepertoireMove.repertoire_id` but is stored directly on ReviewCard to avoid a join when querying cards by repertoire (e.g., `getDueCardsForRepertoire` on the home screen). The application must keep this in sync — in practice this is trivial because cards are only created alongside their leaf move and never re-parented.
 
 **Color is not stored.** It is derived from the leaf move's depth in the repertoire tree: odd ply = white, even ply = black. This determines:
 - Which moves are the user's (to be tested) vs the opponent's (to be auto-played) during drill mode

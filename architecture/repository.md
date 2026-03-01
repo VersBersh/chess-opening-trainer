@@ -43,11 +43,6 @@ abstract class RepertoireRepository {
   /// Returns count of leaves (moves with no children) under a node.
   Future<int> countLeavesInSubtree(int moveId);
 
-  /// Returns moves with no children and no associated ReviewCard.
-  Future<List<RepertoireMove>> getOrphanedLeaves(int repertoireId);
-
-  /// Deletes orphaned leaves iteratively until stable.
-  Future<void> pruneOrphans(int repertoireId);
 }
 ```
 
@@ -104,7 +99,6 @@ repertoire_moves
   ├── fen             TEXT NOT NULL
   ├── san             TEXT NOT NULL
   ├── label           TEXT
-  ├── comment         TEXT
   └── sort_order      INTEGER NOT NULL
 
 review_cards
@@ -115,8 +109,7 @@ review_cards
   ├── interval_days            INTEGER NOT NULL DEFAULT 1
   ├── repetitions              INTEGER NOT NULL DEFAULT 0
   ├── next_review_date         TEXT NOT NULL  (ISO 8601)
-  ├── last_quality             INTEGER
-  └── last_extra_practice_date TEXT  (ISO 8601, nullable)
+  └── last_quality             INTEGER
 ```
 
 Color is not stored. It is derived from the leaf move's depth in the tree: odd depth = white, even depth = black.

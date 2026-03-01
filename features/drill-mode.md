@@ -94,7 +94,7 @@ The total number of mistakes during the card determines the SM-2 quality rating:
 | Mistakes | Quality | Meaning |
 |----------|---------|---------|
 | 0 | 5 | Perfect recall |
-| 1 | 3 | Recalled with difficulty |
+| 1 | 4 | Recalled with hesitation |
 | 2 | 2 | Barely recalled |
 | 3+ | 1 | Failed to recall |
 

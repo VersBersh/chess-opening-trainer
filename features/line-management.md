@@ -108,11 +108,15 @@ When adding or extending a line, the screen shows the **current aggregate displa
 
 ### Label Impact Warning
 
+> **Deferred to post-v0.** This warning is advisory and non-blocking. It requires subtree traversal and before/after display name computation. Deferring reduces v0 scope without affecting core functionality. Labels still work fully without this warning.
+
 When adding or changing a label on a node that has **descendants with labels**, the system warns the user that the aggregate display names of those descendant lines will change.
 
 For example, if "Najdorf" is already labeled on a descendant node and the user adds "Open Sicilian" on an intermediate node between "Sicilian" and "Najdorf", the display name would change from "Sicilian — Najdorf" to "Sicilian — Open Sicilian — Najdorf". The warning shows the affected display names before and after. This is advisory — the user can proceed.
 
 ### Transposition Label Conflict Warning
+
+> **Deferred to post-v0.** This warning is advisory and non-blocking. It requires FEN-based lookups across the move tree. Deferring reduces v0 scope without affecting core functionality. Users can still label positions freely.
 
 When labeling a node, the system queries for other nodes with the **same FEN** but **different labels**.
 If any are found, an advisory warning is shown (e.g., "This position is also reached via a different path with label 'Kan'").

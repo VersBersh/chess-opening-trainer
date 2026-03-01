@@ -13,35 +13,19 @@ State management defines how data flows from the repository layer to the UI and 
 
 ## State Management Approach
 
-### Recommendation: Evaluate Riverpod and Bloc Against Drill Mode
+### Decision: Riverpod
 
-The two dominant Flutter state management approaches are Riverpod and Bloc. Either can work for this app. The choice should be made by prototyping the drill mode flow (the most complex state in the app) with both approaches and comparing the results.
+The state management layer uses **Riverpod** (`flutter_riverpod`). This is a firm decision, not a placeholder.
 
-### Riverpod
+**Rationale:**
 
-- Lightweight and composable. Providers are declared globally but scoped automatically.
-- Built-in dependency injection — no separate DI library needed.
-- `AsyncNotifier` and `StreamProvider` integrate well with Drift's reactive queries.
-- Less boilerplate than Bloc for simple state.
-- Newer ecosystem; fewer established patterns for complex state machines.
+- **Less boilerplate.** No separate event classes or event-to-state mapping. Faster iteration for a solo developer.
+- **Built-in dependency injection.** Riverpod's provider system replaces the need for `get_it` or `RepositoryProvider`. One fewer dependency.
+- **Good Drift integration.** `StreamProvider` wraps Drift `watch` queries directly, which suits the home screen's reactive due counts and the repertoire list.
+- **`AsyncNotifier` for state machines.** The drill flow's states (Loading, CardStart, UserTurn, MistakeFeedback, CardComplete, SessionComplete) map cleanly to a sealed class exposed by an `AsyncNotifier`. State transitions are method calls.
+- **Sufficient for the app's complexity.** The drill state machine has ~6 states with well-defined transitions. Bloc's explicit event log and structure would be valuable for a larger team but add unnecessary ceremony here.
 
-### Bloc
-
-- Explicit event/state separation. Every state transition is triggered by a named event.
-- Well-suited for complex state machines — drill mode (with its intro, user-turn, mistake, completion phases) maps naturally to Bloc's event-driven model.
-- More boilerplate but more structure. The event log is useful for debugging.
-- Mature ecosystem with established patterns.
-- DI typically handled via a separate library (e.g., `get_it`) or `RepositoryProvider`.
-
-### What to Prototype
-
-Implement the drill card flow (start card, auto-play intro, user move, correct/wrong feedback, card completion) in both approaches. Evaluate:
-
-- How naturally the drill state machine maps to each approach.
-- Boilerplate required for a typical screen.
-- Testability of the state logic.
-- How Drift streams integrate with the state layer.
-- Team familiarity and preference.
+Bloc was considered and is a sound choice for Flutter apps in general. It was not chosen here because the additional boilerplate (event classes, event-to-state mappers) does not provide proportional value for a solo-developer project at this complexity level.
 
 ## Dependency Injection
 
@@ -49,12 +33,11 @@ Implement the drill card flow (start card, auto-play intro, user move, correct/w
 
 Repositories are instantiated once at app startup and provided to the widget tree. The DI mechanism depends on the chosen state management approach:
 
-- **Riverpod:** Repositories are exposed as `Provider<RepertoireRepository>` and `Provider<ReviewRepository>`. State notifiers access them via `ref.read`.
-- **Bloc:** Repositories are provided via `RepositoryProvider` at the top of the widget tree, or registered in a `get_it` service locator.
+Repositories are exposed as `Provider<RepertoireRepository>` and `Provider<ReviewRepository>`. State notifiers access them via `ref.read`. No separate DI library is needed.
 
 ### Service / Controller Provision
 
-Business logic lives in controllers (Riverpod notifiers or Bloc classes). These are scoped to their relevant screens or features:
+Business logic lives in Riverpod notifiers (typically `AsyncNotifier` or `Notifier` subclasses). These are scoped to their relevant screens or features:
 
 - **Screen-scoped:** A controller for the home screen, one for the repertoire browser, one for line entry.
 - **Session-scoped:** The drill session controller exists only while a drill is active. It is created on drill entry and disposed on exit.
@@ -154,7 +137,7 @@ Controller transforms → Stream<List<RepertoireSummary>>
     │   computes due counts, sorts, etc.)
     │
     ▼
-Widget consumes → StreamBuilder / AsyncValue / BlocBuilder
+Widget consumes → AsyncValue (via Consumer / ConsumerWidget)
 ```
 
 This keeps the UI decoupled from the database schema and allows the controller to apply business logic (filtering, sorting, aggregation) before the data reaches the widget.
@@ -196,7 +179,7 @@ CardComplete
 CardStart (next card) or SessionComplete
 ```
 
-This state machine maps well to both Riverpod (a `StateNotifier` with an enum/sealed-class state) and Bloc (events trigger transitions between states). The prototype should verify that the chosen approach represents these transitions cleanly.
+This state machine maps to a Riverpod `AsyncNotifier` with a sealed-class state. Each state variant holds the data relevant to that phase. State transitions are methods on the notifier (e.g., `processUserMove()`, `skipCard()`).
 
 ### Tree Cache Ownership
 
@@ -252,7 +235,7 @@ For v1, option (a) from the proposal — accept session loss — is the document
 
 > These are open questions that must be resolved before or during implementation.
 
-1. **Riverpod vs. Bloc.** The single most impactful decision. Must be resolved by prototyping the drill mode flow with both approaches. Factors: state machine clarity, boilerplate, Drift stream integration, testability, team familiarity. Neither is wrong — the prototype will reveal which fits better.
+1. ~~**Riverpod vs. Bloc.**~~ **Resolved: Riverpod.** See "Decision: Riverpod" above.
 
 2. **Granularity of state holders.** One controller per screen (coarse) vs. one per logical concern (fine). For drill mode: a single `DrillController` holding board state, card state, and session state, or separate controllers for each? Finer granularity is more testable but requires more wiring. Recommendation: start with one controller per screen and split only if testing reveals the need.
 

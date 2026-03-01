@@ -36,6 +36,22 @@ These are the bulk of the test suite. Pure Dart, no Flutter dependencies, fast.
 - Edge case: very high ease factor after many perfect reviews
 - Edge case: card that has been failing repeatedly (ease at floor)
 
+**SM-2 Reference Validation (table-driven)**
+
+Table-driven tests that run a sequence of reviews through the SM-2 scheduler and compare the full output state against reference values computed from the original algorithm. Each test case is a sequence of (quality) inputs applied to a fresh card (ease 2.5, interval 1, repetitions 0). After each review, the test asserts on ease_factor, interval_days, and repetitions.
+
+These reference values must be verified against the original SM-2 algorithm before being committed to the test suite.
+
+Test sequences:
+
+- **Sequence A — Perfect recall (all quality 5):** 10 consecutive reviews. Validates steady ease growth and multiplicative interval increases after rep 2.
+- **Sequence B — Mixed performance:** [5, 4, 5, 2, 5, 5, 5, 4, 5, 5]. Validates pass/fail boundary transitions (quality 2 resets interval and repetitions).
+- **Sequence C — Repeated failure then recovery:** [1, 1, 1, 5, 5, 5, 5, 5]. Validates ease floor (1.3) and recovery with quality 5 from a low ease factor.
+- **Sequence D — Boundary quality (quality 3):** [5, 5, 3, 3, 5, 5]. Validates that quality 3 passes (interval increases) but ease drops.
+- **Sequence E — Single mistake patterns:** [4, 5, 4, 5, 4, 5]. Validates quality 4 leaves ease unchanged and quality 5 increases it.
+
+Use `closeTo(expected, 0.01)` for ease factor assertions. Interval assertions should be exact integers.
+
 **Drill Engine**
 - Intro move calculation: stops at first branch point for user's color
 - Intro move calculation: stops at cap (3 user moves) even without branch
@@ -46,7 +62,7 @@ These are the bulk of the test suite. Pure Dart, no Flutter dependencies, fast.
 - Wrong move (sibling line correction): no mistake increment, flagged as correction
 - Card completion: mistake count maps to correct SM-2 quality
 - Card completion with 0, 1, 2, 3+ mistakes
-- Extra practice mode: SM-2 not updated, last_extra_practice_date is set
+- Extra practice mode: SM-2 not updated
 - Line with single branch — no intro ambiguity
 - Line that is entirely auto-played (very short)
 
@@ -58,21 +74,22 @@ These are the bulk of the test suite. Pure Dart, no Flutter dependencies, fast.
 - Extending a line: new card has default SR state (ease 2.5, interval 0, repetitions 0), not inherited from old card
 - Labeling: aggregate display name computed by concatenating labels along root-to-leaf path
 - Labeling: renaming a label updates all descendant aggregate display names
-- Label impact warning: adding a label between existing labels warns about affected display names
-- Label impact warning: warning is advisory — user can proceed
-- Transposition label conflict: labeling a node warns if other nodes with the same FEN have different labels
-- Transposition label conflict: warning is advisory — user can proceed despite conflict
+- ~~Label impact warning: adding a label between existing labels warns about affected display names~~ *(deferred to post-v0)*
+- ~~Label impact warning: warning is advisory — user can proceed~~ *(deferred to post-v0)*
+- ~~Transposition label conflict: labeling a node warns if other nodes with the same FEN have different labels~~ *(deferred to post-v0)*
+- ~~Transposition label conflict: warning is advisory — user can proceed despite conflict~~ *(deferred to post-v0)*
 - Deleting a leaf removes its card
 - Deleting a leaf does not cascade to parent
 - Deleting a leaf does not auto-create a card for the now-childless parent
 - Subtree deletion: deleting a branch removes all descendant moves and their cards
 - Subtree deletion: confirmation reports the correct affected line and card count
 
-**Orphan Detection and Pruning**
-- `getOrphanedLeaves` finds moves with no children and no card
-- `getOrphanedLeaves` does not flag moves that have children or a card
-- `pruneOrphans` iteratively removes orphans until the tree is stable
-- `pruneOrphans` on a tree with no orphans makes no changes
+**Orphan Handling at Deletion Site**
+- Deleting a leaf where parent has other children: parent is unaffected
+- Deleting a leaf where parent has no other children: parent is flagged as childless
+- "Keep shorter line" choice: card is created for the now-childless parent
+- "Remove move" choice: childless parent is deleted and its own parent is checked (recursive)
+- "Remove move" applied recursively up the tree stops at a node that still has children
 
 **Line Parity Validation**
 - Line depth parity matches board orientation (odd depth = white, even depth = black)
@@ -114,9 +131,8 @@ These run against a real in-memory SQLite database (Drift supports this for test
 - Cascade deletion: deleting a move cascades to all descendant moves
 - Subtree deletion: deleting a branch removes all descendants and their associated cards
 - Duplicate move prevention (same parent + same SAN)
-- Orphan detection: `getOrphanedLeaves` returns moves with no children and no card
-- Orphan pruning: `pruneOrphans` iteratively removes orphans until stable (no more orphans)
-- Orphan pruning: does not remove moves that still have children or an associated card
+- Deletion-site orphan check: after deleting a leaf, `isLeafMove(parentId)` correctly identifies a newly childless parent
+- Deletion-site orphan check: parent with remaining children is not flagged
 
 **ReviewRepository**
 - Get due cards filters by next_review_date correctly
@@ -158,9 +174,9 @@ These test Flutter widgets in isolation with mocked dependencies. Focus on inter
 - Confirm creates card with selected color
 - Branch from existing line navigates to branch point first
 - Label input shows aggregate display name preview
-- Label impact warning is displayed when adding a label affects descendant display names
-- Transposition label conflict warning is displayed when another node with the same FEN has a different label
-- Label warnings are advisory — user can dismiss and proceed
+- ~~Label impact warning is displayed when adding a label affects descendant display names~~ *(deferred to post-v0)*
+- ~~Transposition label conflict warning is displayed when another node with the same FEN has a different label~~ *(deferred to post-v0)*
+- ~~Label warnings are advisory — user can dismiss and proceed~~ *(deferred to post-v0)*
 - Take-back removes the last buffered move and reverts the board
 - Take-back works repeatedly to undo multiple moves
 - Take-back is disabled at the starting position

@@ -43,7 +43,7 @@ The parser handles the minimum viable subset of PGN:
 
 The following PGN features are parsed but discarded in v1:
 
-- **Comments** (`{...}` and `;...`): Discarded. The `RepertoireMove.comment` field exists but is unused in the current UI. Storing comments is a future enhancement.
+- **Comments** (`{...}` and `;...`): Discarded. Storing comments is a future enhancement; the field will be added to `RepertoireMove` when that feature is built.
 - **NAGs** (`$1`, `$2`, etc.): Discarded.
 - **Clock data, eval annotations:** Discarded.
 
@@ -137,13 +137,13 @@ In v1, there is no preview step before import commits. The user sees the import 
 
 > These are open questions that must be resolved before or during implementation.
 
-1. **What PGN features to support beyond v1.** Comments could be stored in `RepertoireMove.comment` (the field exists but is unused). NAGs could map to a future annotation system. This is a meaningful scope lever for future phases.
+1. **What PGN features to support beyond v1.** Comments could be stored in a future `comment` field on `RepertoireMove` (added via migration when needed). NAGs could map to a future annotation system. This is a meaningful scope lever for future phases.
 
 2. **Preview before import.** Should the user see what lines will be created before committing? Important for large PGN files to prevent surprises. Adds significant UI work. Deferred in v1 but may be needed before v1 ships if user testing reveals import anxiety.
 
 3. **Multi-game selection.** The current spec imports all games. A game picker would let users select which games to import from a large PGN database. The question is whether this is needed for the typical use case (importing a handful of games) or only for power users with large databases.
 
-4. **Comment handling.** Discard vs. store in `RepertoireMove.comment`. Storing is low-effort at the parse level but raises UI questions: where do comments appear? Are they editable? This interacts with the repertoire browser spec.
+4. **Comment handling.** Comments are discarded in v0. When a comment feature is built, add a nullable `comment` column to `RepertoireMove` via migration. Storing is low-effort at the parse level but raises UI questions: where do comments appear? Are they editable? This interacts with the repertoire browser spec.
 
 5. **`dartchess` RAV support.** The parser implementation depends on what `dartchess` provides. If the library does not handle RAV natively, the custom parser effort is nontrivial. This must be spiked early.
 

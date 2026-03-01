@@ -83,5 +83,5 @@ ReviewCard updateCard(ReviewCard card, int quality) {
 
 - **Drill mode** calls the SM-2 update after each card is completed, mapping mistake count to quality.
 - **Focus mode Phase 1** (due cards) updates SM-2 normally.
-- **Focus mode Phase 2** (extra practice) does **not** update SM-2. It does update `last_extra_practice_date` for future cram detection.
+- **Focus mode Phase 2** (extra practice) does **not** update SM-2.
 - **Line management** creates new ReviewCards with default values when a new leaf node is added to the repertoire.
