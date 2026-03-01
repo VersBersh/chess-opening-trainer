@@ -1,0 +1,27 @@
+# Flutter/Dart
+src/.dart_tool/
+src/.flutter-plugins
+src/.flutter-plugins-dependencies
+src/build/
+src/.pub-cache/
+src/.pub/
+
+# Android
+src/android/app/debug
+src/android/app/profile
+src/android/app/release
+
+# IDE
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log

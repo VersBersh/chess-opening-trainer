@@ -1,0 +1,98 @@
+import 'package:drift/drift.dart';
+
+import '../review_repository.dart';
+import 'database.dart';
+
+class LocalReviewRepository implements ReviewRepository {
+  final AppDatabase _db;
+
+  LocalReviewRepository(this._db);
+
+  @override
+  Future<List<ReviewCard>> getDueCards({DateTime? asOf}) {
+    final cutoff = asOf ?? DateTime.now();
+    return (_db.select(_db.reviewCards)
+          ..where((c) => c.nextReviewDate.isSmallerOrEqualValue(cutoff)))
+        .get();
+  }
+
+  @override
+  Future<List<ReviewCard>> getDueCardsForRepertoire(int repertoireId,
+      {DateTime? asOf}) {
+    final cutoff = asOf ?? DateTime.now();
+    return (_db.select(_db.reviewCards)
+          ..where((c) =>
+              c.repertoireId.equals(repertoireId) &
+              c.nextReviewDate.isSmallerOrEqualValue(cutoff)))
+        .get();
+  }
+
+  @override
+  Future<ReviewCard?> getCardForLeaf(int leafMoveId) {
+    return (_db.select(_db.reviewCards)
+          ..where((c) => c.leafMoveId.equals(leafMoveId)))
+        .getSingleOrNull();
+  }
+
+  @override
+  Future<void> saveReview(ReviewCardsCompanion card) async {
+    if (card.id.present) {
+      await (_db.update(_db.reviewCards)
+            ..where((c) => c.id.equals(card.id.value)))
+          .write(card);
+    } else {
+      await _db.into(_db.reviewCards).insert(card);
+    }
+  }
+
+  @override
+  Future<void> deleteCard(int id) async {
+    await (_db.delete(_db.reviewCards)..where((c) => c.id.equals(id))).go();
+  }
+
+  @override
+  Future<List<ReviewCard>> getCardsForSubtree(int moveId,
+      {bool dueOnly = false, DateTime? asOf}) async {
+    final cutoff = asOf ?? DateTime.now();
+    final dueFilter = dueOnly
+        ? "AND rc.next_review_date <= '${cutoff.toIso8601String()}'"
+        : '';
+
+    final results = await _db.customSelect(
+      '''
+      WITH RECURSIVE subtree(id) AS (
+        SELECT id FROM repertoire_moves WHERE id = ?
+        UNION ALL
+        SELECT m.id FROM repertoire_moves m JOIN subtree ON m.parent_move_id = subtree.id
+      )
+      SELECT rc.* FROM review_cards rc
+      JOIN subtree s ON rc.leaf_move_id = s.id
+      $dueFilter
+      ''',
+      variables: [Variable.withInt(moveId)],
+      readsFrom: {_db.repertoireMoves, _db.reviewCards},
+    ).get();
+
+    return results.map((row) {
+      return ReviewCard(
+        id: row.read<int>('id'),
+        repertoireId: row.read<int>('repertoire_id'),
+        leafMoveId: row.read<int>('leaf_move_id'),
+        easeFactor: row.read<double>('ease_factor'),
+        intervalDays: row.read<int>('interval_days'),
+        repetitions: row.read<int>('repetitions'),
+        nextReviewDate: row.read<DateTime>('next_review_date'),
+        lastQuality: row.readNullable<int>('last_quality'),
+        lastExtraPracticeDate:
+            row.readNullable<DateTime>('last_extra_practice_date'),
+      );
+    }).toList();
+  }
+
+  @override
+  Future<List<ReviewCard>> getAllCardsForRepertoire(int repertoireId) {
+    return (_db.select(_db.reviewCards)
+          ..where((c) => c.repertoireId.equals(repertoireId)))
+        .get();
+  }
+}
