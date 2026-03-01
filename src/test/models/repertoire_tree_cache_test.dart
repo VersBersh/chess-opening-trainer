@@ -139,6 +139,86 @@ void main() {
     });
   });
 
+  group('previewAggregateDisplayName', () {
+    test('preview adding a label to an unlabeled node with no other labels', () {
+      // 1. e4 e5 2. Nf3 -- no labels anywhere
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      // Preview adding a label to Nf3 (id=3)
+      expect(cache.previewAggregateDisplayName(3, 'Main Line'), 'Main Line');
+    });
+
+    test('preview adding a label when ancestor has a label', () {
+      // 1. e4 (label: "Sicilian") c5 2. Nf3
+      final line = buildLine(
+        ['e4', 'c5', 'Nf3'],
+        labels: {0: 'Sicilian'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Preview adding label "Najdorf" to Nf3 (id=3)
+      expect(
+        cache.previewAggregateDisplayName(3, 'Najdorf'),
+        'Sicilian \u2014 Najdorf',
+      );
+    });
+
+    test('preview changing an existing label', () {
+      // 1. e4 (label: "Sicilian") c5 2. Nf3 (label: "Open Sicilian")
+      final line = buildLine(
+        ['e4', 'c5', 'Nf3'],
+        labels: {0: 'Sicilian', 2: 'Open Sicilian'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Preview changing Nf3's label from "Open Sicilian" to "Closed Sicilian"
+      expect(
+        cache.previewAggregateDisplayName(3, 'Closed Sicilian'),
+        'Sicilian \u2014 Closed Sicilian',
+      );
+    });
+
+    test('preview removing a label (null)', () {
+      // 1. e4 (label: "Sicilian") c5 2. Nf3 (label: "Open Sicilian")
+      final line = buildLine(
+        ['e4', 'c5', 'Nf3'],
+        labels: {0: 'Sicilian', 2: 'Open Sicilian'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Preview removing Nf3's label
+      expect(cache.previewAggregateDisplayName(3, null), 'Sicilian');
+    });
+
+    test('preview on a deep node with multiple ancestor labels', () {
+      // 1. e4 (label: "A") c5 (label: "B") 2. Nf3 d6 3. d4
+      final line = buildLine(
+        ['e4', 'c5', 'Nf3', 'd6', 'd4'],
+        labels: {0: 'A', 1: 'B'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Preview adding label "C" to d4 (id=5)
+      expect(
+        cache.previewAggregateDisplayName(5, 'C'),
+        'A \u2014 B \u2014 C',
+      );
+    });
+
+    test('preview with empty string treated as no label', () {
+      // 1. e4 (label: "Sicilian") c5 2. Nf3 (label: "Open Sicilian")
+      final line = buildLine(
+        ['e4', 'c5', 'Nf3'],
+        labels: {0: 'Sicilian', 2: 'Open Sicilian'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Preview with empty string -- equivalent to removing the label
+      expect(cache.previewAggregateDisplayName(3, ''), 'Sicilian');
+    });
+  });
+
   group('getMoveNotation', () {
     test('first move (ply 1) returns "1. e4" format', () {
       final line = buildLine(['e4', 'e5', 'Nf3']);

@@ -84,6 +84,22 @@ class RepertoireTreeCache {
     return labels.join(' \u2014 ');
   }
 
+  /// Computes what the aggregate display name would be if [moveId]'s label
+  /// were changed to [newLabel]. If [newLabel] is null or empty, the move's
+  /// label contribution is excluded.
+  String previewAggregateDisplayName(int moveId, String? newLabel) {
+    final line = getLine(moveId);
+    final labels = <String>[];
+    for (final m in line) {
+      if (m.id == moveId) {
+        if (newLabel != null && newLabel.isNotEmpty) labels.add(newLabel);
+      } else if (m.label != null) {
+        labels.add(m.label!);
+      }
+    }
+    return labels.join(' \u2014 ');
+  }
+
   /// Returns move notation string like "1. e4" or "1...c5".
   ///
   /// [plyCount] is the 1-based position in the line (i.e. depth + 1 from

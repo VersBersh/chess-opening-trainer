@@ -748,4 +748,342 @@ void main() {
       expect(editButton.onPressed, isNotNull);
     });
   });
+
+  group('Label editing', () {
+    testWidgets('label button disabled when no node selected', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // No node selected -- Label button should be disabled
+      final labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNull);
+    });
+
+    testWidgets('label button enabled when a node is selected', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // Label button should be enabled
+      final labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNotNull);
+    });
+
+    testWidgets('open label dialog and save a label', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // Tap Label button
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Dialog should be open with "Add label" title
+      expect(find.text('Add label'), findsOneWidget);
+
+      // Enter label text
+      await tester.enterText(find.byType(TextField), 'King Pawn');
+      await tester.pumpAndSettle();
+
+      // Tap Save
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // The label should appear in the tree (bold label text next to move)
+      expect(find.textContaining('King Pawn'), findsWidgets);
+
+      // The aggregate display name header should show "King Pawn"
+      expect(find.text('King Pawn'), findsWidgets);
+    });
+
+    testWidgets('open label dialog and clear a label', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        labelsOnSan: {'e4': 'King Pawn'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4 (which has label "King Pawn")
+      await tester.tap(find.textContaining('1. e4'));
+      await tester.pump();
+
+      // Tap Label button
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Dialog should be open with "Edit label" title
+      expect(find.text('Edit label'), findsOneWidget);
+
+      // Remove button should be present since the node has a label
+      expect(find.text('Remove'), findsOneWidget);
+
+      // Tap Remove to clear the label
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+
+      // Verify the label is removed from the database
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, isNull);
+    });
+
+    testWidgets('open label dialog and cancel', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // Tap Label button
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Enter some text
+      await tester.enterText(find.byType(TextField), 'Test Label');
+      await tester.pump();
+
+      // Tap Cancel
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Verify no label was saved
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, isNull);
+    });
+
+    testWidgets('aggregate display name preview in dialog', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'c5', 'Nf3'],
+        ],
+        labelsOnSan: {'e4': 'Sicilian'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Expand to see Nf3 and select it
+      // e4 is labeled so it's collapsed initially. Expand it.
+      await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+      // Now expand c5
+      await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+      // Select Nf3
+      await tester.tap(find.text('2. Nf3'));
+      await tester.pump();
+
+      // Tap Label button
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Type "Najdorf" in the text field
+      await tester.enterText(find.byType(TextField), 'Najdorf');
+      await tester.pumpAndSettle();
+
+      // Preview should show "Sicilian — Najdorf"
+      expect(find.text('Sicilian \u2014 Najdorf'), findsOneWidget);
+
+      // Cancel the dialog to clean up
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('label persists after reload', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4, add a label
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'King Pawn');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Verify in DB directly
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'King Pawn');
+    });
+
+    testWidgets('label works on root, interior, and leaf nodes',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Label root node (e4)
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Root Label');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Label interior node (e5) -- expand e4 first
+      await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Interior Label');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Label leaf node (Nf3) -- after labeling e4 and e5, both are
+      // collapsed by _computeInitialExpandState (stops at labeled nodes).
+      // Re-expand e4, then e5.
+      await tester.tap(find.byIcon(Icons.chevron_right).first); // expand e4
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.chevron_right).first); // expand e5
+      await tester.pump();
+      await tester.tap(find.text('2. Nf3'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Leaf Label');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Verify all three labels in DB
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      final e5Move = moves.firstWhere((m) => m.san == 'e5');
+      final nf3Move = moves.firstWhere((m) => m.san == 'Nf3');
+      expect(e4Move.label, 'Root Label');
+      expect(e5Move.label, 'Interior Label');
+      expect(nf3Move.label, 'Leaf Label');
+    });
+
+    testWidgets('edit-mode display name reflects labels on existing path',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+        labelsOnSan: {'e4': 'King Pawn', 'Nf3': 'King Knight'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select leaf node Nf3 (expand tree first)
+      await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+      await tester.tap(find.textContaining('2. Nf3'));
+      await tester.pump();
+
+      // Verify browse-mode header shows aggregate label
+      expect(find.text('King Pawn \u2014 King Knight'), findsOneWidget);
+
+      // Enter edit mode from this labeled node
+      await tester.tap(find.text('Edit'));
+      await tester.pump();
+
+      // Edit-mode header should still show the aggregate label
+      expect(find.text('King Pawn \u2014 King Knight'), findsOneWidget);
+    });
+
+    testWidgets('no-op guard: saving unchanged label preserves existing value',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        labelsOnSan: {'e4': 'Existing'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4
+      await tester.tap(find.textContaining('1. e4'));
+      await tester.pump();
+
+      // Open label dialog
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Don't change the text, just tap Save
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Verify label is unchanged
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'Existing');
+    });
+  });
 }

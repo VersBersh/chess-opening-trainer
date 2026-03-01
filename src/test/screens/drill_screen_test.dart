@@ -144,6 +144,9 @@ class FakeRepertoireRepository implements RepertoireRepository {
 
   @override
   Future<void> pruneOrphans(int repertoireId) async {}
+
+  @override
+  Future<void> updateMoveLabel(int moveId, String? label) async {}
 }
 
 class FakeReviewRepository implements ReviewRepository {

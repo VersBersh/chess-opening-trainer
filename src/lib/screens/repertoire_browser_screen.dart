@@ -416,6 +416,41 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     });
   }
 
+  // ---- Label editing -------------------------------------------------------
+
+  Future<void> _onEditLabel() async {
+    final selectedId = _state.selectedMoveId;
+    if (selectedId == null) return;
+    final cache = _state.treeCache;
+    if (cache == null) return;
+
+    final move = cache.movesById[selectedId];
+    if (move == null) return;
+
+    final result = await _showLabelDialog(
+      context,
+      currentLabel: move.label,
+      moveId: selectedId,
+      cache: cache,
+    );
+
+    // null means cancelled -- no action
+    if (result == null) return;
+
+    // Normalize: empty string means "remove label" -> save null to DB
+    final labelToSave = result.isEmpty ? null : result;
+
+    // No-op guard: skip DB write and cache rebuild if the label is unchanged.
+    final currentLabel = move.label;
+    if (labelToSave == currentLabel) return;
+
+    final repRepo = LocalRepertoireRepository(widget.db);
+    await repRepo.updateMoveLabel(selectedId, labelToSave);
+    await _loadData(); // Rebuild cache
+  }
+
+  // ---- Dialogs --------------------------------------------------------------
+
   Future<bool?> _showParityWarningDialog(
     BuildContext context,
     ParityMismatch mismatch,
@@ -467,6 +502,80 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<String?> _showLabelDialog(
+    BuildContext context, {
+    required String? currentLabel,
+    required int moveId,
+    required RepertoireTreeCache cache,
+  }) async {
+    final controller = TextEditingController(text: currentLabel ?? '');
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final previewText = cache.previewAggregateDisplayName(
+              moveId,
+              controller.text.trim(),
+            );
+
+            return AlertDialog(
+              title:
+                  Text(currentLabel != null ? 'Edit label' : 'Add label'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Label',
+                      hintText: 'e.g. Sicilian, Najdorf',
+                    ),
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    previewText.isNotEmpty
+                        ? previewText
+                        : '(no display name)',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                          fontStyle: previewText.isEmpty
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                        ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(null),
+                  child: const Text('Cancel'),
+                ),
+                if (currentLabel != null)
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(''),
+                    child: const Text('Remove'),
+                  ),
+                TextButton(
+                  onPressed: () {
+                    final trimmed = controller.text.trim();
+                    Navigator.of(context).pop(trimmed);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -668,9 +777,9 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
             label: const Text('Edit'),
           ),
 
-          // Label button (placeholder for CT-2.3)
+          // Label button
           TextButton.icon(
-            onPressed: null, // Stub -- wired in CT-2.3
+            onPressed: selectedId != null ? _onEditLabel : null,
             icon: const Icon(Icons.label, size: 18),
             label: const Text('Label'),
           ),

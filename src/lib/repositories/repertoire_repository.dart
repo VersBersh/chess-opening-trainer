@@ -12,6 +12,9 @@ abstract class RepertoireRepository {
   Future<int> saveMove(RepertoireMovesCompanion move);
   Future<void> deleteMove(int id);
 
+  /// Updates just the label field on an existing move. Pass null to remove the label.
+  Future<void> updateMoveLabel(int moveId, String? label);
+
   Future<List<RepertoireMove>> getRootMoves(int repertoireId);
   Future<List<RepertoireMove>> getLineForLeaf(int leafMoveId);
   Future<bool> isLeafMove(int moveId);

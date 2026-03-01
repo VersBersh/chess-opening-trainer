@@ -56,6 +56,13 @@ class LocalRepertoireRepository implements RepertoireRepository {
   }
 
   @override
+  Future<void> updateMoveLabel(int moveId, String? label) async {
+    await (_db.update(_db.repertoireMoves)
+          ..where((m) => m.id.equals(moveId)))
+        .write(RepertoireMovesCompanion(label: Value(label)));
+  }
+
+  @override
   Future<void> deleteMove(int id) async {
     await (_db.delete(_db.repertoireMoves)..where((m) => m.id.equals(id)))
         .go();
