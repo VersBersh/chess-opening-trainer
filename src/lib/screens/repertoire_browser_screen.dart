@@ -1,11 +1,13 @@
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 
 import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
 import '../repositories/local/local_repertoire_repository.dart';
 import '../repositories/local/local_review_repository.dart';
+import '../services/line_entry_engine.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
 import '../widgets/move_tree_widget.dart';
@@ -28,6 +30,9 @@ class RepertoireBrowserState {
     this.dueCountByMoveId = const {},
     this.isLoading = true,
     this.repertoireName = '',
+    this.isEditMode = false,
+    this.lineEntryEngine,
+    this.currentFen,
   });
 
   final RepertoireTreeCache? treeCache;
@@ -37,6 +42,9 @@ class RepertoireBrowserState {
   final Map<int, int> dueCountByMoveId;
   final bool isLoading;
   final String repertoireName;
+  final bool isEditMode;
+  final LineEntryEngine? lineEntryEngine;
+  final String? currentFen;
 
   RepertoireBrowserState copyWith({
     RepertoireTreeCache? treeCache,
@@ -46,6 +54,9 @@ class RepertoireBrowserState {
     Map<int, int>? dueCountByMoveId,
     bool? isLoading,
     String? repertoireName,
+    bool? isEditMode,
+    LineEntryEngine? Function()? lineEntryEngine,
+    String? Function()? currentFen,
   }) {
     return RepertoireBrowserState(
       treeCache: treeCache ?? this.treeCache,
@@ -56,6 +67,11 @@ class RepertoireBrowserState {
       dueCountByMoveId: dueCountByMoveId ?? this.dueCountByMoveId,
       isLoading: isLoading ?? this.isLoading,
       repertoireName: repertoireName ?? this.repertoireName,
+      isEditMode: isEditMode ?? this.isEditMode,
+      lineEntryEngine: lineEntryEngine != null
+          ? lineEntryEngine()
+          : this.lineEntryEngine,
+      currentFen: currentFen != null ? currentFen() : this.currentFen,
     );
   }
 }
@@ -86,6 +102,13 @@ class RepertoireBrowserScreen extends StatefulWidget {
 class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   var _state = const RepertoireBrowserState();
   late final ChessboardController _boardController;
+
+  /// The FEN of the position before the most recent move during edit mode.
+  /// Used to compute SAN from a NormalMove.
+  String _preMoveFen = kInitialFEN;
+
+  /// The FEN to restore when discarding edit mode.
+  String? _editModeStartFen;
 
   @override
   void initState() {
@@ -229,29 +252,267 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     }
   }
 
+  // ---- Edit mode event handlers -------------------------------------------
+
+  void _onEnterEditMode() {
+    final cache = _state.treeCache;
+    if (cache == null) return;
+
+    final selectedId = _state.selectedMoveId;
+    final selectedMove =
+        selectedId != null ? cache.movesById[selectedId] : null;
+
+    final engine = LineEntryEngine(
+      treeCache: cache,
+      repertoireId: widget.repertoireId,
+      startingMoveId: selectedId,
+    );
+
+    final startingFen = selectedMove?.fen ?? kInitialFEN;
+
+    // Set the board to the starting position.
+    if (selectedMove != null) {
+      _boardController.setPosition(selectedMove.fen);
+    } else {
+      _boardController.resetToInitial();
+    }
+
+    _preMoveFen = startingFen;
+    _editModeStartFen = startingFen;
+
+    setState(() {
+      _state = _state.copyWith(
+        isEditMode: true,
+        lineEntryEngine: () => engine,
+        currentFen: () => startingFen,
+      );
+    });
+  }
+
+  void _onEditModeMove(NormalMove move) {
+    final engine = _state.lineEntryEngine;
+    if (engine == null) return;
+
+    // _preMoveFen was captured before the move was played.
+    final preMovePosition = Chess.fromSetup(Setup.parseFen(_preMoveFen));
+    final (_, san) = preMovePosition.makeSan(move);
+    final resultingFen = _boardController.fen;
+
+    engine.acceptMove(san, resultingFen);
+    _preMoveFen = resultingFen;
+
+    setState(() {
+      _state = _state.copyWith(currentFen: () => resultingFen);
+    });
+  }
+
+  void _onTakeBack() {
+    final engine = _state.lineEntryEngine;
+    if (engine == null || !engine.canTakeBack()) return;
+
+    final result = engine.takeBack();
+    if (result != null) {
+      _boardController.setPosition(result.fen);
+      _preMoveFen = result.fen;
+      setState(() {
+        _state = _state.copyWith(currentFen: () => result.fen);
+      });
+    }
+  }
+
+  Future<void> _onConfirmLine() async {
+    final engine = _state.lineEntryEngine;
+    if (engine == null || !engine.hasNewMoves) return;
+
+    // 6a. Validate parity.
+    final parity = engine.validateParity(_state.boardOrientation);
+    if (parity is ParityMismatch) {
+      final shouldFlipAndConfirm = await _showParityWarningDialog(
+        context,
+        parity,
+      );
+      if (shouldFlipAndConfirm == true) {
+        setState(() {
+          _state = _state.copyWith(
+            boardOrientation: _state.boardOrientation == Side.white
+                ? Side.black
+                : Side.white,
+          );
+        });
+      } else {
+        return; // User cancelled
+      }
+    }
+
+    // 6b. Persist the new moves.
+    final confirmData = engine.getConfirmData();
+    final repRepo = LocalRepertoireRepository(widget.db);
+    final reviewRepo = LocalReviewRepository(widget.db);
+
+    if (confirmData.isExtension) {
+      // Path A: Extension -- use atomic extendLine.
+      final companions = <RepertoireMovesCompanion>[];
+      for (var i = 0; i < confirmData.newMoves.length; i++) {
+        final buffered = confirmData.newMoves[i];
+        companions.add(RepertoireMovesCompanion.insert(
+          repertoireId: confirmData.repertoireId,
+          fen: buffered.fen,
+          san: buffered.san,
+          sortOrder: i == 0 ? confirmData.sortOrder : 0,
+        ));
+      }
+      await repRepo.extendLine(confirmData.parentMoveId!, companions);
+    } else {
+      // Path B: Not an extension (branching from non-leaf or from root).
+      int? parentId = confirmData.parentMoveId;
+      for (var i = 0; i < confirmData.newMoves.length; i++) {
+        final buffered = confirmData.newMoves[i];
+        final companion = RepertoireMovesCompanion.insert(
+          repertoireId: confirmData.repertoireId,
+          fen: buffered.fen,
+          san: buffered.san,
+          sortOrder: i == 0 ? confirmData.sortOrder : 0,
+        );
+        final withParent = parentId != null
+            ? companion.copyWith(parentMoveId: Value(parentId))
+            : companion;
+        parentId = await repRepo.saveMove(withParent);
+      }
+      // Create card for the last inserted move (the new leaf).
+      await reviewRepo.saveReview(ReviewCardsCompanion.insert(
+        repertoireId: confirmData.repertoireId,
+        leafMoveId: parentId!,
+        nextReviewDate: DateTime.now(),
+      ));
+    }
+
+    // 6c. Rebuild tree cache and exit edit mode.
+    await _loadData();
+    if (mounted) {
+      setState(() {
+        _state = _state.copyWith(
+          isEditMode: false,
+          lineEntryEngine: () => null,
+          currentFen: () => null,
+        );
+      });
+    }
+  }
+
+  void _onDiscardEdit() {
+    // Reset board to the position before edit mode started.
+    if (_editModeStartFen != null) {
+      _boardController.setPosition(_editModeStartFen!);
+    } else {
+      _boardController.resetToInitial();
+    }
+
+    setState(() {
+      _state = _state.copyWith(
+        isEditMode: false,
+        lineEntryEngine: () => null,
+        currentFen: () => null,
+      );
+    });
+  }
+
+  Future<bool?> _showParityWarningDialog(
+    BuildContext context,
+    ParityMismatch mismatch,
+  ) {
+    final expectedSide =
+        mismatch.expectedOrientation == Side.white ? 'White' : 'Black';
+    final currentSide =
+        _state.boardOrientation == Side.white ? 'White' : 'Black';
+
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Line parity mismatch'),
+        content: Text(
+          'You are entering a line from $currentSide\'s perspective, '
+          'but the line ends on $expectedSide\'s move. '
+          'Do you want to flip the board and confirm as a $expectedSide line?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Flip and confirm'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showDiscardDialog(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard unsaved line?'),
+        content: const Text(
+          'You have unsaved moves. Do you want to discard them?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---- Build --------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_state.repertoireName),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+    return PopScope(
+      canPop: !_state.isEditMode ||
+          !(_state.lineEntryEngine?.hasNewMoves ?? false),
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final navigator = Navigator.of(context);
+        final discard = await _showDiscardDialog(context);
+        if (discard == true && mounted) {
+          _onDiscardEdit();
+          navigator.pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_state.repertoireName),
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        ),
+        body: _state.isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _buildContent(context),
       ),
-      body: _state.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _buildContent(context),
     );
   }
 
   Widget _buildContent(BuildContext context) {
     final cache = _state.treeCache!;
     final selectedId = _state.selectedMoveId;
+    final isEditing = _state.isEditMode;
 
-    // Compute aggregate display name for the selected node.
-    final displayName = selectedId != null
-        ? cache.getAggregateDisplayName(selectedId)
-        : '';
+    // Compute aggregate display name: during edit mode, use the engine's
+    // current display name; in browse mode, use the selected node.
+    final String displayName;
+    if (isEditing && _state.lineEntryEngine != null) {
+      displayName = _state.lineEntryEngine!.getCurrentDisplayName();
+    } else {
+      displayName = selectedId != null
+          ? cache.getAggregateDisplayName(selectedId)
+          : '';
+    }
 
     return Column(
       children: [
@@ -274,7 +535,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
             ),
           ),
 
-        // Chessboard preview
+        // Chessboard
         ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 300),
           child: AspectRatio(
@@ -282,43 +543,45 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
             child: ChessboardWidget(
               controller: _boardController,
               orientation: _state.boardOrientation,
-              playerSide: PlayerSide.none,
+              playerSide: isEditing ? PlayerSide.both : PlayerSide.none,
+              onMove: isEditing ? _onEditModeMove : null,
             ),
           ),
         ),
 
-        // Board controls (flip, back, forward)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                onPressed: selectedId != null &&
-                        cache.movesById[selectedId]?.parentMoveId != null
-                    ? _onNavigateBack
-                    : null,
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Back',
-              ),
-              IconButton(
-                onPressed: _onFlipBoard,
-                icon: const Icon(Icons.swap_vert),
-                tooltip: 'Flip board',
-              ),
-              IconButton(
-                onPressed: selectedId != null &&
-                        cache.getChildren(selectedId).isNotEmpty
-                    ? _onNavigateForward
-                    : null,
-                icon: const Icon(Icons.arrow_forward),
-                tooltip: 'Forward',
-              ),
-            ],
+        // Board controls (flip, back, forward) -- disabled during edit mode
+        if (!isEditing)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  onPressed: selectedId != null &&
+                          cache.movesById[selectedId]?.parentMoveId != null
+                      ? _onNavigateBack
+                      : null,
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back',
+                ),
+                IconButton(
+                  onPressed: _onFlipBoard,
+                  icon: const Icon(Icons.swap_vert),
+                  tooltip: 'Flip board',
+                ),
+                IconButton(
+                  onPressed: selectedId != null &&
+                          cache.getChildren(selectedId).isNotEmpty
+                      ? _onNavigateForward
+                      : null,
+                  icon: const Icon(Icons.arrow_forward),
+                  tooltip: 'Forward',
+                ),
+              ],
+            ),
           ),
-        ),
 
-        // Action bar (stubs for future tasks)
+        // Action bar
         _buildActionBar(context, cache),
 
         // Move tree
@@ -326,9 +589,9 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           child: MoveTreeWidget(
             treeCache: cache,
             expandedNodeIds: _state.expandedNodeIds,
-            selectedMoveId: selectedId,
+            selectedMoveId: isEditing ? null : selectedId,
             dueCountByMoveId: _state.dueCountByMoveId,
-            onNodeSelected: _onNodeSelected,
+            onNodeSelected: isEditing ? (_) {} : _onNodeSelected,
             onNodeToggleExpand: _onNodeToggleExpand,
           ),
         ),
@@ -337,6 +600,56 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   }
 
   Widget _buildActionBar(BuildContext context, RepertoireTreeCache cache) {
+    if (_state.isEditMode) {
+      return _buildEditModeActionBar(context);
+    }
+    return _buildBrowseModeActionBar(context, cache);
+  }
+
+  Widget _buildEditModeActionBar(BuildContext context) {
+    final engine = _state.lineEntryEngine;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // Flip board
+          IconButton(
+            onPressed: _onFlipBoard,
+            icon: const Icon(Icons.swap_vert),
+            tooltip: 'Flip board',
+          ),
+
+          // Take back
+          TextButton.icon(
+            onPressed:
+                engine != null && engine.canTakeBack() ? _onTakeBack : null,
+            icon: const Icon(Icons.undo, size: 18),
+            label: const Text('Take Back'),
+          ),
+
+          // Confirm line
+          TextButton.icon(
+            onPressed:
+                engine != null && engine.hasNewMoves ? _onConfirmLine : null,
+            icon: const Icon(Icons.check, size: 18),
+            label: const Text('Confirm'),
+          ),
+
+          // Discard
+          IconButton(
+            onPressed: _onDiscardEdit,
+            icon: const Icon(Icons.close),
+            tooltip: 'Discard',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBrowseModeActionBar(
+      BuildContext context, RepertoireTreeCache cache) {
     final selectedId = _state.selectedMoveId;
     final selectedMove =
         selectedId != null ? cache.movesById[selectedId] : null;
@@ -348,9 +661,9 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Edit button (placeholder for CT-2.2)
+          // Edit button
           TextButton.icon(
-            onPressed: null, // Stub -- wired in CT-2.2
+            onPressed: _onEnterEditMode,
             icon: const Icon(Icons.edit, size: 18),
             label: const Text('Edit'),
           ),
