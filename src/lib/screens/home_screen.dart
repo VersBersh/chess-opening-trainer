@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../repositories/local/database.dart';
 import '../repositories/local/local_repertoire_repository.dart';
 import '../repositories/local/local_review_repository.dart';
+import 'drill_screen.dart';
 import 'repertoire_browser_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _dueCount = 0;
+  int? _repertoireId;
 
   @override
   void initState() {
@@ -24,10 +26,19 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadDueCount() async {
-    final repo = LocalReviewRepository(widget.db);
-    final dueCards = await repo.getDueCards();
+    final reviewRepo = LocalReviewRepository(widget.db);
+    final repertoireRepo = LocalRepertoireRepository(widget.db);
+
+    final dueCards = await reviewRepo.getDueCards();
+    final repertoires = await repertoireRepo.getAllRepertoires();
+
     if (mounted) {
-      setState(() => _dueCount = dueCards.length);
+      setState(() {
+        _dueCount = dueCards.length;
+        if (repertoires.isNotEmpty) {
+          _repertoireId = repertoires.first.id;
+        }
+      });
     }
   }
 
@@ -48,6 +59,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ));
     }
+  }
+
+  void _startDrill() {
+    final repertoireId = _repertoireId;
+    if (repertoireId == null) return;
+
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => DrillScreen(repertoireId: repertoireId),
+          ),
+        )
+        .then((_) => _loadDueCount()); // Refresh due count on return
   }
 
   @override
@@ -73,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 48),
             FilledButton.icon(
-              onPressed: _dueCount > 0 ? () {} : null,
+              onPressed: _dueCount > 0 ? _startDrill : null,
               icon: const Icon(Icons.play_arrow),
               label: const Text('Start Drill'),
             ),
