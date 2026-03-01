@@ -1,0 +1,16 @@
+- **Verdict** — Needs Fixes
+- **Progress**
+  - [x] Step 1 — Implement parent-lookup delete helper (`done`)
+  - [x] Step 2 — Add `_onDeleteLeaf` flow with confirmation, orphan handling, reload, selection clear (`done`)
+  - [x] Step 3 — Add `_onDeleteBranch` flow with counts, confirmation, orphan handling, reload, selection clear (`done`)
+  - [x] Step 4 — Implement orphan loop with keep/remove actions (`partially done`)
+  - [x] Step 5 — Update browse action bar to support leaf vs branch delete (`done`)
+  - [x] Step 6 — Update action-bar test expectations for delete behavior/labels (`done`)
+  - [x] Step 7 — Add `createCards` option to `seedRepertoire` helper (`done`)
+  - [x] Step 8 — Add leaf-deletion widget tests (`done`)
+  - [x] Step 9 — Add branch-deletion widget tests (`done`)
+- **Issues**
+  1. **Critical** — Orphan dialog dismissal is treated as “Remove move,” causing unintended deletions.
+     - Location: [`repertoire_browser_screen.dart:561`](C:/code/misc/chess-trainer-1/src/lib/screens/repertoire_browser_screen.dart:561), [`repertoire_browser_screen.dart:571`](C:/code/misc/chess-trainer-1/src/lib/screens/repertoire_browser_screen.dart:571), [`repertoire_browser_screen.dart:643`](C:/code/misc/chess-trainer-1/src/lib/screens/repertoire_browser_screen.dart:643)
+     - Problem: `_showOrphanPrompt` uses default dismissible dialog behavior (`showDialog` without `barrierDismissible: false`), so it can return `null`. In `_handleOrphans`, only `keepShorterLine` is checked; all other values (including `null`) fall into the `else` branch and delete the move.
+     - Fix: Handle `null` explicitly as cancel/stop (e.g., `if (choice == null) break;`) before branching on keep/remove, and/or set `barrierDismissible: false` for the orphan dialog to force an explicit choice.

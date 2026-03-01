@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
+import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,7 @@ Future<int> seedRepertoire(
   String name = 'Test Repertoire',
   List<List<String>> lines = const [],
   Map<String, String> labelsOnSan = const {},
+  bool createCards = false,
 }) async {
   final repId = await db
       .into(db.repertoires)
@@ -75,6 +77,28 @@ Future<int> seedRepertoire(
       fenByMoveId[moveId] = fen;
       parentMoveId = moveId;
       sortOrder++;
+    }
+  }
+
+  if (createCards) {
+    // Identify leaves: moves whose IDs are not the parent of any other move.
+    final allInsertedIds = insertedMoves.values.toSet();
+    final parentOfSomeone = <int>{};
+    for (final key in insertedMoves.keys) {
+      final parts = key.split(':');
+      if (parts[0] != 'root') {
+        parentOfSomeone.add(int.parse(parts[0]));
+      }
+    }
+    final leafIds = allInsertedIds.difference(parentOfSomeone);
+    for (final leafId in leafIds) {
+      await db.into(db.reviewCards).insert(
+            ReviewCardsCompanion.insert(
+              repertoireId: repId,
+              leafMoveId: leafId,
+              nextReviewDate: DateTime.now(),
+            ),
+          );
     }
   }
 
@@ -333,11 +357,11 @@ void main() {
       );
       expect(focusButton.onPressed, isNotNull);
 
-      // Delete button should be disabled (not a leaf)
-      final deleteButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Delete'),
+      // Delete Branch button should be enabled (non-leaf node)
+      final deleteBranchButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Delete Branch'),
       );
-      expect(deleteButton.onPressed, isNull);
+      expect(deleteBranchButton.onPressed, isNotNull);
 
       // Now expand and select the leaf node (Nf3)
       await tester.tap(find.byIcon(Icons.chevron_right).first);
@@ -1084,6 +1108,343 @@ void main() {
       final moves = await repRepo.getMovesForRepertoire(repId);
       final e4Move = moves.firstWhere((m) => m.san == 'e4');
       expect(e4Move.label, 'Existing');
+    });
+  });
+
+  group('Deletion', () {
+    testWidgets('delete a leaf node -- card is removed, tree updates',
+        (tester) async {
+      // Use a line with siblings so no orphan prompt after deleting one leaf.
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+          ['e4', 'e5', 'Bc4'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Nf3 should be visible (all nodes auto-expanded, no labels).
+      expect(find.text('2. Nf3'), findsOneWidget);
+
+      // Select Nf3 (leaf).
+      await tester.tap(find.text('2. Nf3'));
+      await tester.pump();
+
+      // Tap Delete button.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // Confirmation dialog should appear.
+      expect(find.text('Delete this move and its review card?'), findsOneWidget);
+
+      // Confirm deletion.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // No orphan prompt -- e5 still has sibling child Bc4.
+      expect(find.text('Keep shorter line'), findsNothing);
+
+      // Nf3 should be gone from the tree.
+      expect(find.text('2. Nf3'), findsNothing);
+
+      // e4, e5, and Bc4 should remain.
+      expect(find.text('1. e4'), findsOneWidget);
+      expect(find.text('1...e5'), findsOneWidget);
+      expect(find.text('2. Bc4'), findsOneWidget);
+
+      // Verify the card for Nf3 is gone from the database.
+      final reviewRepo = LocalReviewRepository(db);
+      final allCards = await reviewRepo.getAllCardsForRepertoire(repId);
+      // Only the card for Bc4 should remain.
+      expect(allCards.length, 1);
+    });
+
+    testWidgets('delete a leaf -- orphan prompt appears when parent becomes childless',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (leaf).
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Tap Delete.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // Confirm deletion.
+      expect(find.text('Delete this move and its review card?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // Orphan prompt should appear for e4 (now childless).
+      expect(find.text('Keep shorter line'), findsOneWidget);
+      expect(find.text('Remove move'), findsOneWidget);
+    });
+
+    testWidgets('orphan prompt -- keep shorter line creates a new card for parent',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (leaf), delete, confirm.
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // Orphan prompt for e4. Choose "Keep shorter line."
+      expect(find.text('Keep shorter line'), findsOneWidget);
+      await tester.tap(find.text('Keep shorter line'));
+      await tester.pumpAndSettle();
+
+      // Verify e4 is shown as a leaf in the tree.
+      expect(find.text('1. e4'), findsOneWidget);
+      expect(find.text('1...e5'), findsNothing);
+
+      // Verify a new card exists for e4 in the database.
+      final reviewRepo = LocalReviewRepository(db);
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.length, 1); // Only e4 remains.
+      final e4Move = moves.first;
+      final card = await reviewRepo.getCardForLeaf(e4Move.id);
+      expect(card, isNotNull);
+    });
+
+    testWidgets('orphan prompt -- remove move deletes the parent',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (leaf), delete, confirm.
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // Orphan prompt for e4. Choose "Remove move."
+      expect(find.text('Remove move'), findsOneWidget);
+      await tester.tap(find.text('Remove move'));
+      await tester.pumpAndSettle();
+
+      // e4 should also be deleted. Tree should be empty.
+      expect(find.text('1. e4'), findsNothing);
+      expect(find.text('1...e5'), findsNothing);
+
+      // Verify the tree is empty.
+      expect(find.text('No moves yet. Add a line to get started.'),
+          findsOneWidget);
+
+      // Verify the database is empty.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves, isEmpty);
+    });
+
+    testWidgets('deletion with sibling -- no orphan prompt',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+          ['e4', 'c5'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (leaf).
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Tap Delete.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // Confirm deletion.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // No orphan prompt -- e4 still has child c5.
+      expect(find.text('Keep shorter line'), findsNothing);
+      expect(find.text('Remove move'), findsNothing);
+
+      // Tree should still show e4 and c5.
+      expect(find.text('1. e4'), findsOneWidget);
+      expect(find.text('1...c5'), findsOneWidget);
+      expect(find.text('1...e5'), findsNothing);
+    });
+
+    testWidgets('delete branch -- confirmation shows correct counts',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+          ['e4', 'e5', 'Bc4'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (non-leaf, has children Nf3 and Bc4).
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Tap "Delete Branch".
+      await tester.tap(find.widgetWithText(TextButton, 'Delete Branch'));
+      await tester.pumpAndSettle();
+
+      // Confirmation dialog should show correct counts.
+      expect(find.text('This will delete 2 lines and 2 review cards. Continue?'),
+          findsOneWidget);
+    });
+
+    testWidgets('delete branch -- all descendants removed',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+          ['e4', 'e5', 'Bc4'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (non-leaf).
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Tap "Delete Branch", confirm.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete Branch'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // e4 becomes childless -- orphan prompt appears.
+      // Choose "Keep shorter line" to keep e4.
+      expect(find.text('Keep shorter line'), findsOneWidget);
+      await tester.tap(find.text('Keep shorter line'));
+      await tester.pumpAndSettle();
+
+      // e5, Nf3, and Bc4 should all be gone.
+      expect(find.text('1...e5'), findsNothing);
+      expect(find.text('2. Nf3'), findsNothing);
+      expect(find.text('2. Bc4'), findsNothing);
+
+      // e4 should remain.
+      expect(find.text('1. e4'), findsOneWidget);
+
+      // Verify cards for descendants are gone from the database.
+      final reviewRepo = LocalReviewRepository(db);
+      final remainingCards = await reviewRepo.getAllCardsForRepertoire(repId);
+      // Only the newly created card for e4 (from "Keep shorter line").
+      expect(remainingCards.length, 1);
+    });
+
+    testWidgets('delete branch -- orphan handling on parent',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (non-leaf, has child Nf3).
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Tap "Delete Branch", confirm.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete Branch'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // e4 becomes childless. Verify orphan prompt appears.
+      expect(find.text('Keep shorter line'), findsOneWidget);
+      expect(find.text('Remove move'), findsOneWidget);
+    });
+
+    testWidgets('delete a root node (branch) -- no orphan prompt',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+          ['d4', 'd5'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4 (root, non-leaf since it has child e5).
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // Tap "Delete Branch", confirm.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete Branch'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // No orphan prompt since e4 was a root (no parent).
+      expect(find.text('Keep shorter line'), findsNothing);
+      expect(find.text('Remove move'), findsNothing);
+
+      // e4 and e5 should be gone.
+      expect(find.text('1. e4'), findsNothing);
+      expect(find.text('1...e5'), findsNothing);
+
+      // d4 and d5 should remain.
+      expect(find.text('1. d4'), findsOneWidget);
+      expect(find.text('1...d5'), findsOneWidget);
     });
   });
 }

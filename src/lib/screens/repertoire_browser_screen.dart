@@ -77,6 +77,13 @@ class RepertoireBrowserState {
 }
 
 // ---------------------------------------------------------------------------
+// Orphan handling
+// ---------------------------------------------------------------------------
+
+/// User's choice when a parent move becomes childless after deletion.
+enum OrphanChoice { keepShorterLine, removeMove }
+
+// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
@@ -579,6 +586,194 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     );
   }
 
+  // ---- Deletion handlers --------------------------------------------------
+
+  /// Deletes a move (and all descendants via CASCADE) and returns the parent ID.
+  Future<int?> _deleteMoveAndGetParent(int moveId) async {
+    final repRepo = LocalRepertoireRepository(widget.db);
+    final move = await repRepo.getMove(moveId);
+    if (move == null) return null;
+    final parentId = move.parentMoveId;
+    await repRepo.deleteMove(moveId); // CASCADE handles descendants + cards
+    return parentId;
+  }
+
+  Future<void> _onDeleteLeaf() async {
+    final selectedId = _state.selectedMoveId;
+    if (selectedId == null) return;
+
+    final confirmed = await _showDeleteConfirmationDialog();
+    if (!mounted || confirmed != true) return;
+
+    final parentId = await _deleteMoveAndGetParent(selectedId);
+    if (!mounted) return;
+
+    if (parentId != null) {
+      await _handleOrphans(parentId);
+      if (!mounted) return;
+    }
+
+    await _loadData();
+    if (!mounted) return;
+
+    setState(() {
+      _state = _state.copyWith(selectedMoveId: () => null);
+    });
+  }
+
+  Future<void> _onDeleteBranch() async {
+    final selectedId = _state.selectedMoveId;
+    if (selectedId == null) return;
+
+    final repRepo = LocalRepertoireRepository(widget.db);
+    final reviewRepo = LocalReviewRepository(widget.db);
+
+    final lineCount = await repRepo.countLeavesInSubtree(selectedId);
+    final cards = await reviewRepo.getCardsForSubtree(selectedId);
+    if (!mounted) return;
+
+    final confirmed = await _showBranchDeleteConfirmationDialog(
+      lineCount: lineCount,
+      cardCount: cards.length,
+    );
+    if (!mounted || confirmed != true) return;
+
+    final parentId = await _deleteMoveAndGetParent(selectedId);
+    if (!mounted) return;
+
+    if (parentId != null) {
+      await _handleOrphans(parentId);
+      if (!mounted) return;
+    }
+
+    await _loadData();
+    if (!mounted) return;
+
+    setState(() {
+      _state = _state.copyWith(selectedMoveId: () => null);
+    });
+  }
+
+  Future<void> _handleOrphans(int? parentMoveId) async {
+    final repRepo = LocalRepertoireRepository(widget.db);
+    int? currentId = parentMoveId;
+
+    while (currentId != null) {
+      final children = await repRepo.getChildMoves(currentId);
+      if (children.isNotEmpty) break; // not an orphan
+
+      if (!mounted) return;
+
+      final choice = await _showOrphanPrompt(currentId);
+      if (!mounted) return;
+
+      if (choice == null) {
+        break; // Dialog dismissed — abort orphan handling
+      } else if (choice == OrphanChoice.keepShorterLine) {
+        final move = await repRepo.getMove(currentId);
+        if (move == null) break;
+        final reviewRepo = LocalReviewRepository(widget.db);
+        await reviewRepo.saveReview(ReviewCardsCompanion.insert(
+          repertoireId: move.repertoireId,
+          leafMoveId: currentId,
+          nextReviewDate: DateTime.now(),
+        ));
+        break;
+      } else {
+        // Remove move -- delete and check its parent
+        final move = await repRepo.getMove(currentId);
+        final nextParent = move?.parentMoveId;
+        await repRepo.deleteMove(currentId);
+        currentId = nextParent;
+      }
+    }
+  }
+
+  Future<bool?> _showDeleteConfirmationDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete move'),
+        content: const Text(
+          'Delete this move and its review card?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showBranchDeleteConfirmationDialog({
+    required int lineCount,
+    required int cardCount,
+  }) {
+    final linesText = lineCount == 1 ? '1 line' : '$lineCount lines';
+    final cardsText = cardCount == 1 ? '1 review card' : '$cardCount review cards';
+
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete branch'),
+        content: Text(
+          'This will delete $linesText and $cardsText. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<OrphanChoice?> _showOrphanPrompt(int moveId) async {
+    final repRepo = LocalRepertoireRepository(widget.db);
+    final move = await repRepo.getMove(moveId);
+    if (move == null) return null;
+
+    if (!mounted) return null;
+
+    final cache = _state.treeCache;
+    final notation = cache != null && cache.movesById.containsKey(moveId)
+        ? cache.getMoveNotation(moveId)
+        : move.san;
+
+    return showDialog<OrphanChoice>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Orphaned move'),
+        content: Text(
+          'Move $notation has no remaining children.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(OrphanChoice.keepShorterLine),
+            child: const Text('Keep shorter line'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(OrphanChoice.removeMove),
+            child: const Text('Remove move'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---- Build --------------------------------------------------------------
 
   @override
@@ -795,15 +990,19 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
             label: const Text('Focus'),
           ),
 
-          // Delete button (placeholder for CT-2.4)
+          // Delete button
           TextButton.icon(
-            onPressed: isLeaf
+            onPressed: selectedId != null
                 ? () {
-                    // Stub -- wired in CT-2.4
+                    if (isLeaf) {
+                      _onDeleteLeaf();
+                    } else {
+                      _onDeleteBranch();
+                    }
                   }
                 : null,
             icon: const Icon(Icons.delete, size: 18),
-            label: const Text('Delete'),
+            label: Text(isLeaf ? 'Delete' : 'Delete Branch'),
           ),
         ],
       ),
