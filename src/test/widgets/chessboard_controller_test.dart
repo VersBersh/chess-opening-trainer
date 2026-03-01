@@ -140,5 +140,160 @@ void main() {
       expect(result, true);
       expect(controller.lastMove, move);
     });
+
+    group('undo', () {
+      test('undo after a single move reverts to initial position', () {
+        final e2e4 = NormalMove(from: Square.e2, to: Square.e4);
+        controller.playMove(e2e4);
+
+        final result = controller.undo();
+
+        expect(result, true);
+        expect(controller.fen, kInitialFEN);
+        expect(controller.sideToMove, Side.white);
+        expect(controller.lastMove, isNull);
+      });
+
+      test('undo after multiple moves reverts one at a time', () {
+        final e2e4 = NormalMove(from: Square.e2, to: Square.e4);
+        final d7d5 = NormalMove(from: Square.d7, to: Square.d5);
+
+        controller.playMove(e2e4);
+        final fenAfterE4 = controller.fen;
+        controller.playMove(d7d5);
+
+        // Undo d7-d5: should restore position after e2-e4
+        final result1 = controller.undo();
+        expect(result1, true);
+        expect(controller.fen, fenAfterE4);
+        expect(controller.sideToMove, Side.black);
+        expect(controller.lastMove, e2e4);
+
+        // Undo e2-e4: should restore initial position
+        final result2 = controller.undo();
+        expect(result2, true);
+        expect(controller.fen, kInitialFEN);
+        expect(controller.sideToMove, Side.white);
+        expect(controller.lastMove, isNull);
+      });
+
+      test('undo with no history is a no-op and returns false', () {
+        var notified = false;
+        controller.addListener(() => notified = true);
+
+        final result = controller.undo();
+
+        expect(result, false);
+        expect(controller.fen, kInitialFEN);
+        expect(notified, false);
+      });
+
+      test('undo after setPosition clears history', () {
+        controller.playMove(NormalMove(from: Square.e2, to: Square.e4));
+
+        const sicilianFen =
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+        controller.setPosition(sicilianFen);
+
+        final result = controller.undo();
+
+        expect(result, false);
+      });
+
+      test('undo after resetToInitial clears history', () {
+        controller.playMove(NormalMove(from: Square.e2, to: Square.e4));
+
+        controller.resetToInitial();
+
+        final result = controller.undo();
+
+        expect(result, false);
+      });
+
+      test('canUndo is false initially', () {
+        expect(controller.canUndo, false);
+      });
+
+      test('canUndo is true after playMove', () {
+        controller.playMove(NormalMove(from: Square.e2, to: Square.e4));
+
+        expect(controller.canUndo, true);
+      });
+
+      test('canUndo is false after all undos', () {
+        controller.playMove(NormalMove(from: Square.e2, to: Square.e4));
+
+        controller.undo();
+
+        expect(controller.canUndo, false);
+      });
+
+      test('canUndo is false after setPosition', () {
+        controller.playMove(NormalMove(from: Square.e2, to: Square.e4));
+
+        controller.setPosition(kInitialFEN);
+
+        expect(controller.canUndo, false);
+      });
+
+      test('undo notifies listeners', () {
+        controller.playMove(NormalMove(from: Square.e2, to: Square.e4));
+
+        var notified = false;
+        controller.addListener(() => notified = true);
+
+        controller.undo();
+
+        expect(notified, true);
+      });
+
+      test('undo does not notify when no history', () {
+        var notified = false;
+        controller.addListener(() => notified = true);
+
+        controller.undo();
+
+        expect(notified, false);
+      });
+
+      test('undo restores correct legal moves', () {
+        controller.playMove(NormalMove(from: Square.e2, to: Square.e4));
+        // After e2-e4, it's black's turn with black's legal moves
+        expect(controller.sideToMove, Side.black);
+
+        controller.undo();
+
+        // After undo, it's white's turn with white's 20 initial legal moves
+        expect(controller.sideToMove, Side.white);
+        final totalDests = controller.validMoves.values
+            .fold<int>(0, (sum, dests) => sum + dests.length);
+        expect(totalDests, 20);
+      });
+
+      test('undo after illegal move attempt does not push to history', () {
+        // e2-e5 is illegal
+        controller.playMove(NormalMove(from: Square.e2, to: Square.e5));
+
+        expect(controller.canUndo, false);
+      });
+
+      test('setPosition with invalid FEN preserves history and state', () {
+        final e2e4 = NormalMove(from: Square.e2, to: Square.e4);
+        controller.playMove(e2e4);
+        final fenAfterE4 = controller.fen;
+
+        expect(controller.canUndo, true);
+
+        expect(
+          () => controller.setPosition('not-a-fen'),
+          throwsA(isA<FenException>()),
+        );
+
+        // State should be completely unchanged after the failed setPosition
+        expect(controller.canUndo, true);
+        expect(controller.fen, fenAfterE4);
+        expect(controller.lastMove, e2e4);
+      });
+    });
   });
 }

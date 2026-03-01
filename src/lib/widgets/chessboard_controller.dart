@@ -14,6 +14,7 @@ class ChessboardController extends ChangeNotifier {
   Position _position;
   NormalMove? _lastMove;
   IMap<Square, ISet<Square>>? _validMovesCache;
+  final List<_HistoryEntry> _history = [];
 
   // ---------------------------------------------------------------------------
   // Getters
@@ -38,17 +39,23 @@ class ChessboardController extends ChangeNotifier {
   /// The last move played, or `null` if no move has been made.
   NormalMove? get lastMove => _lastMove;
 
+  /// Whether there is at least one move in the history that can be undone.
+  bool get canUndo => _history.isNotEmpty;
+
   // ---------------------------------------------------------------------------
   // Mutators
   // ---------------------------------------------------------------------------
 
   /// Replaces the current position by parsing the given [fen] string.
   ///
-  /// Resets [lastMove] to `null`. Notifies listeners.
+  /// Resets [lastMove] to `null` and clears move history ([canUndo] becomes
+  /// `false`). Notifies listeners.
   ///
-  /// Throws [FenException] if [fen] is not a valid FEN string.
+  /// Throws [FenException] or [PositionSetupException] if [fen] is invalid.
   void setPosition(String fen) {
-    _position = Chess.fromSetup(Setup.parseFen(fen));
+    final newPosition = Chess.fromSetup(Setup.parseFen(fen));
+    _history.clear();
+    _position = newPosition;
     _lastMove = null;
     _validMovesCache = null;
     notifyListeners();
@@ -60,6 +67,7 @@ class ChessboardController extends ChangeNotifier {
   /// without modifying state if the move is illegal.
   bool playMove(NormalMove move) {
     if (!_position.isLegal(move)) return false;
+    _history.add(_HistoryEntry(position: _position, lastMove: _lastMove));
     _position = _position.play(move);
     _lastMove = move;
     _validMovesCache = null;
@@ -68,11 +76,28 @@ class ChessboardController extends ChangeNotifier {
   }
 
   /// Convenience method to reset the position to the standard initial position.
+  ///
+  /// Clears move history ([canUndo] becomes `false`).
   void resetToInitial() {
+    _history.clear();
     _position = Chess.initial;
     _lastMove = null;
     _validMovesCache = null;
     notifyListeners();
+  }
+
+  /// Reverts to the position before the most recent [playMove] call.
+  ///
+  /// Returns `true` if a move was undone. Returns `false` (no-op) if there
+  /// is no history to undo.
+  bool undo() {
+    if (_history.isEmpty) return false;
+    final entry = _history.removeLast();
+    _position = entry.position;
+    _lastMove = entry.lastMove;
+    _validMovesCache = null;
+    notifyListeners();
+    return true;
   }
 
   /// Returns `true` when [move] is a pawn reaching the back rank without a
@@ -84,4 +109,10 @@ class ChessboardController extends ChangeNotifier {
     return (move.to.rank == Rank.first && _position.turn == Side.black) ||
         (move.to.rank == Rank.eighth && _position.turn == Side.white);
   }
+}
+
+class _HistoryEntry {
+  final Position position;
+  final NormalMove? lastMove;
+  const _HistoryEntry({required this.position, this.lastMove});
 }
