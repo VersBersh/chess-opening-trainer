@@ -4,6 +4,7 @@ import '../models/repertoire.dart';
 import '../models/review_card.dart';
 import '../repositories/local/database.dart';
 import 'sm2_scheduler.dart';
+export 'sm2_scheduler.dart' show QualityBucket;
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -51,6 +52,8 @@ class CardResult {
     required this.quality,
     required this.updatedCard,
   });
+
+  QualityBucket get bucket => Sm2Scheduler.bucketFromQuality(quality);
 }
 
 // ---------------------------------------------------------------------------

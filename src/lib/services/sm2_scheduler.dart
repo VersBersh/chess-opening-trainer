@@ -2,7 +2,17 @@ import 'package:drift/drift.dart';
 
 import '../repositories/local/database.dart';
 
+/// Quality breakdown buckets for session summary display.
+enum QualityBucket { perfect, hesitation, struggled, failed }
+
 class Sm2Scheduler {
+  /// Maps an SM-2 quality rating to a display bucket.
+  static QualityBucket bucketFromQuality(int quality) => switch (quality) {
+    5 => QualityBucket.perfect,
+    4 => QualityBucket.hesitation,
+    2 => QualityBucket.struggled,
+    _ => QualityBucket.failed,
+  };
   /// Maps drill mistake count to SM-2 quality rating (0-5).
   static int qualityFromMistakes(int mistakes) {
     switch (mistakes) {

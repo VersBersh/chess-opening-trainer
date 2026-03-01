@@ -66,16 +66,33 @@ class DrillMistakeFeedback extends DrillScreenState {
   });
 }
 
-class DrillSessionComplete extends DrillScreenState {
+class SessionSummary {
   final int totalCards;
   final int completedCards;
   final int skippedCards;
+  final int perfectCount;     // quality 5 (0 mistakes)
+  final int hesitationCount;  // quality 4 (1 mistake)
+  final int struggledCount;   // quality 2 (2 mistakes)
+  final int failedCount;      // quality 1 (3+ mistakes)
+  final Duration sessionDuration;
+  final DateTime? earliestNextDue;
 
-  const DrillSessionComplete({
+  const SessionSummary({
     required this.totalCards,
     required this.completedCards,
     required this.skippedCards,
+    required this.perfectCount,
+    required this.hesitationCount,
+    required this.struggledCount,
+    required this.failedCount,
+    required this.sessionDuration,
+    this.earliestNextDue,
   });
+}
+
+class DrillSessionComplete extends DrillScreenState {
+  final SessionSummary summary;
+  const DrillSessionComplete({required this.summary});
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +113,12 @@ class DrillController
   late ReviewRepository _reviewRepo;
   int _completedCards = 0;
   int _skippedCards = 0;
+  int _perfectCount = 0;
+  int _hesitationCount = 0;
+  int _struggledCount = 0;
+  int _failedCount = 0;
+  DateTime? _earliestNextDue;
+  DateTime _sessionStartTime = DateTime.now();
   String _preMoveFen = '';
   bool _isDisposed = false;
   int _cardGeneration = 0; // incremented on each card start/skip to cancel stale async ops
@@ -109,10 +132,17 @@ class DrillController
     final dueCards = await _reviewRepo.getDueCardsForRepertoire(repertoireId);
 
     if (dueCards.isEmpty) {
-      return const DrillSessionComplete(
-        totalCards: 0,
-        completedCards: 0,
-        skippedCards: 0,
+      return DrillSessionComplete(
+        summary: const SessionSummary(
+          totalCards: 0,
+          completedCards: 0,
+          skippedCards: 0,
+          perfectCount: 0,
+          hesitationCount: 0,
+          struggledCount: 0,
+          failedCount: 0,
+          sessionDuration: Duration.zero,
+        ),
       );
     }
 
@@ -130,10 +160,16 @@ class DrillController
 
     _completedCards = 0;
     _skippedCards = 0;
+    _perfectCount = 0;
+    _hesitationCount = 0;
+    _struggledCount = 0;
+    _failedCount = 0;
+    _earliestNextDue = null;
 
     // Start the first card and return the initial state.
     // _autoPlayIntro runs asynchronously after build returns, updating state
     // via the state setter as intro moves are played.
+    _sessionStartTime = DateTime.now();
     _engine.startCard();
     boardController.resetToInitial();
     _cardGeneration++;
@@ -283,19 +319,47 @@ class DrillController
     final result = _engine.completeCard();
     if (result != null) {
       await _reviewRepo.saveReview(result.updatedCard);
+
+      // Accumulate quality breakdown
+      switch (result.bucket) {
+        case QualityBucket.perfect:
+          _perfectCount++;
+        case QualityBucket.hesitation:
+          _hesitationCount++;
+        case QualityBucket.struggled:
+          _struggledCount++;
+        case QualityBucket.failed:
+          _failedCount++;
+      }
+
+      // Track earliest next due date
+      final nextDue = result.updatedCard.nextReviewDate.value;
+      if (_earliestNextDue == null || nextDue.isBefore(_earliestNextDue!)) {
+        _earliestNextDue = nextDue;
+      }
     }
     _completedCards++;
 
     if (_engine.isSessionComplete) {
-      state = AsyncData(DrillSessionComplete(
-        totalCards: _engine.totalCards,
-        completedCards: _completedCards,
-        skippedCards: _skippedCards,
-      ));
+      state = AsyncData(DrillSessionComplete(summary: _buildSummary()));
     } else {
       await _startNextCard();
     }
   }
+
+  // ---- Summary builder -----------------------------------------------------
+
+  SessionSummary _buildSummary() => SessionSummary(
+    totalCards: _engine.totalCards,
+    completedCards: _completedCards,
+    skippedCards: _skippedCards,
+    perfectCount: _perfectCount,
+    hesitationCount: _hesitationCount,
+    struggledCount: _struggledCount,
+    failedCount: _failedCount,
+    sessionDuration: DateTime.now().difference(_sessionStartTime),
+    earliestNextDue: _earliestNextDue,
+  );
 
   // ---- Skip ----------------------------------------------------------------
 
@@ -304,11 +368,7 @@ class DrillController
     _skippedCards++;
 
     if (_engine.isSessionComplete) {
-      state = AsyncData(DrillSessionComplete(
-        totalCards: _engine.totalCards,
-        completedCards: _completedCards,
-        skippedCards: _skippedCards,
-      ));
+      state = AsyncData(DrillSessionComplete(summary: _buildSummary()));
     } else {
       await _startNextCard();
     }
@@ -509,45 +569,122 @@ class DrillScreen extends ConsumerWidget {
 
   Widget _buildSessionComplete(
       BuildContext context, DrillSessionComplete drillState) {
+    final summary = drillState.summary;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Session Complete')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.check_circle_outline,
-                size: 80,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Session Complete',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '${drillState.completedCards} cards reviewed',
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              if (drillState.skippedCards > 0) ...[
-                const SizedBox(height: 8),
+      body: SingleChildScrollView(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.check_circle_outline,
+                  size: 80,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: 24),
                 Text(
-                  '${drillState.skippedCards} cards skipped',
+                  'Session Complete',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '${summary.completedCards} cards reviewed',
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
+                if (summary.skippedCards > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${summary.skippedCards} cards skipped',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Text(
+                  _formatDuration(summary.sessionDuration),
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                if (summary.completedCards > 0) ...[
+                  const SizedBox(height: 24),
+                  _buildBreakdownRow(
+                      context, 'Perfect', summary.perfectCount, Colors.green),
+                  const SizedBox(height: 8),
+                  _buildBreakdownRow(context, 'Hesitation',
+                      summary.hesitationCount, Colors.lightGreen),
+                  const SizedBox(height: 8),
+                  _buildBreakdownRow(context, 'Struggled',
+                      summary.struggledCount, Colors.orange),
+                  const SizedBox(height: 8),
+                  _buildBreakdownRow(
+                      context, 'Failed', summary.failedCount, Colors.red),
+                ],
+                if (summary.earliestNextDue != null) ...[
+                  const SizedBox(height: 24),
+                  Text(
+                    'Next review: ${_formatNextDue(summary.earliestNextDue!)}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+                const SizedBox(height: 48),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Done'),
+                ),
               ],
-              const SizedBox(height: 48),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Done'),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    }
+    return '${seconds}s';
+  }
+
+  Widget _buildBreakdownRow(
+      BuildContext context, String label, int count, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 100,
+          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+        Text('$count', style: Theme.of(context).textTheme.bodyMedium),
+      ],
+    );
+  }
+
+  String _formatNextDue(DateTime nextDue) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dueDay = DateTime(nextDue.year, nextDue.month, nextDue.day);
+    final difference = dueDay.difference(today).inDays;
+
+    if (difference <= 1) {
+      return 'Tomorrow';
+    } else if (difference <= 30) {
+      return 'In $difference days';
+    } else {
+      return '${nextDue.year}-${nextDue.month.toString().padLeft(2, '0')}-${nextDue.day.toString().padLeft(2, '0')}';
+    }
   }
 }

@@ -655,4 +655,159 @@ void main() {
       expect(find.text('1 cards skipped'), findsOneWidget);
     });
   });
+
+  group('DrillScreen — session summary', () {
+    testWidgets('shows mistake breakdown after completing a card',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Complete the card by playing the correct moves: Ba4, then O-O
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(1).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should show session complete with breakdown rows
+      expect(find.text('Session Complete'), findsNWidgets(2));
+      expect(find.text('1 cards reviewed'), findsOneWidget);
+      expect(find.text('Perfect'), findsOneWidget);
+      expect(find.text('Hesitation'), findsOneWidget);
+      expect(find.text('Struggled'), findsOneWidget);
+      expect(find.text('Failed'), findsOneWidget);
+
+      // Verify exact counts: 0-mistake card = quality 5 = Perfect
+      // The breakdown rows render count as standalone Text widgets
+      expect(find.text('1'), findsOneWidget); // Perfect count
+      expect(find.text('0'), findsNWidgets(3)); // Hesitation, Struggled, Failed
+    });
+
+    testWidgets('shows session duration text', (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Complete the card
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(1).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Duration will be near-zero in tests; verify the text widget exists
+      // by matching the "s" suffix pattern (e.g. "0s", "1s", "0m 0s")
+      expect(find.textContaining(RegExp(r'\d+s')), findsOneWidget);
+    });
+
+    testWidgets('shows next due date preview after completing a card',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Complete the card
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(1).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should show next review text (0 mistakes = quality 5, interval 1 day = "Tomorrow")
+      expect(find.textContaining('Next review:'), findsOneWidget);
+    });
+
+    testWidgets('hides breakdown when all cards skipped', (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Skip the card instead of completing it
+      await tester.tap(find.byIcon(Icons.skip_next));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should show session complete but NOT show breakdown labels
+      expect(find.text('Session Complete'), findsNWidgets(2));
+      expect(find.text('0 cards reviewed'), findsOneWidget);
+      expect(find.text('Perfect'), findsNothing);
+      expect(find.text('Hesitation'), findsNothing);
+      expect(find.text('Struggled'), findsNothing);
+      expect(find.text('Failed'), findsNothing);
+      // No next review date since no cards were completed
+      expect(find.textContaining('Next review:'), findsNothing);
+    });
+  });
 }
