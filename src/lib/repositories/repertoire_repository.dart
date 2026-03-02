@@ -23,6 +23,10 @@ abstract class RepertoireRepository {
       int repertoireId, String fen);
   Future<List<int>> extendLine(
       int oldLeafMoveId, List<RepertoireMovesCompanion> newMoves);
+  Future<List<int>> saveBranch(
+    int? parentMoveId,
+    List<RepertoireMovesCompanion> newMoves,
+  );
   Future<void> undoExtendLine(
       int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard);
   Future<void> undoNewLine(List<int> insertedMoveIds);

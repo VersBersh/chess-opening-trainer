@@ -143,6 +143,11 @@ class FakeRepertoireRepository implements RepertoireRepository {
       [];
 
   @override
+  Future<List<int>> saveBranch(int? parentMoveId,
+          List<RepertoireMovesCompanion> newMoves) async =>
+      [];
+
+  @override
   Future<void> undoExtendLine(
           int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) async {}
 

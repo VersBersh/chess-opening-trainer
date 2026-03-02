@@ -154,6 +154,15 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
       case ConfirmSuccess():
         _handleConfirmSuccess(result);
 
+      case ConfirmError(:final userMessage):
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(userMessage),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+
       case ConfirmNoNewMoves():
         break;
     }
@@ -257,8 +266,17 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   Future<void> _onFlipAndConfirm() async {
     setState(() => _parityWarning = null);
     final result = await _controller.flipAndConfirm();
-    if (mounted && result is ConfirmSuccess) {
+    if (!mounted) return;
+    if (result is ConfirmSuccess) {
       _handleConfirmSuccess(result);
+    } else if (result is ConfirmError) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.userMessage),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 

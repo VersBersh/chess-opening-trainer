@@ -1,5 +1,7 @@
 import 'package:dartchess/dartchess.dart';
+import 'package:drift/drift.dart' show DriftWrappedException;
 import 'package:flutter/foundation.dart';
+import 'package:sqlite3/common.dart';
 
 import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
@@ -89,6 +91,13 @@ class ConfirmParityMismatch extends ConfirmResult {
 /// No new moves to persist.
 class ConfirmNoNewMoves extends ConfirmResult {
   const ConfirmNoNewMoves();
+}
+
+/// Persistence failed. Caller shows error message.
+class ConfirmError extends ConfirmResult {
+  final String userMessage;
+  final Object error;
+  const ConfirmError({required this.userMessage, required this.error});
 }
 
 // ---------------------------------------------------------------------------
@@ -504,19 +513,46 @@ class AddLineController extends ChangeNotifier {
     return _persistMoves(engine);
   }
 
+  static SqliteException? _extractSqliteException(Object error) {
+    if (error is SqliteException) return error;
+    if (error is DriftWrappedException) {
+      final cause = error.cause;
+      if (cause is SqliteException) return cause;
+    }
+    return null;
+  }
+
   Future<ConfirmResult> _persistMoves(LineEntryEngine engine) async {
     final confirmData = engine.getConfirmData();
-    final result = await _persistenceService.persistNewMoves(confirmData);
 
-    // Rebuild tree cache and reset engine.
-    await loadData();
+    try {
+      final result = await _persistenceService.persistNewMoves(confirmData);
 
-    return ConfirmSuccess(
-      isExtension: result.isExtension,
-      oldLeafMoveId: result.oldLeafMoveId,
-      insertedMoveIds: result.insertedMoveIds,
-      oldCard: result.oldCard,
-    );
+      // Rebuild tree cache and reset engine.
+      await loadData();
+
+      return ConfirmSuccess(
+        isExtension: result.isExtension,
+        oldLeafMoveId: result.oldLeafMoveId,
+        insertedMoveIds: result.insertedMoveIds,
+        oldCard: result.oldCard,
+      );
+    } on Object catch (e) {
+      // Restore consistent state from DB.
+      await loadData();
+
+      final sqliteError = _extractSqliteException(e);
+      if (sqliteError != null && sqliteError.extendedResultCode == 2067) {
+        return ConfirmError(
+          userMessage: 'This line already exists in the repertoire.',
+          error: e,
+        );
+      }
+      return ConfirmError(
+        userMessage: 'Could not save the line. Please try again.',
+        error: e,
+      );
+    }
   }
 
   // ---- Undo extension -----------------------------------------------------

@@ -170,6 +170,10 @@ class SpyRepertoireRepository implements RepertoireRepository {
   @override
   Future<void> pruneOrphans(int repertoireId) =>
       _delegate.pruneOrphans(repertoireId);
+  @override
+  Future<List<int>> saveBranch(
+          int? parentMoveId, List<RepertoireMovesCompanion> newMoves) =>
+      _delegate.saveBranch(parentMoveId, newMoves);
 }
 
 // ---------------------------------------------------------------------------

@@ -1005,4 +1005,156 @@ void main() {
       boardController.dispose();
     });
   });
+
+  group('Confirm error handling', () {
+    test('duplicate sibling SAN triggers ConfirmError with constraint message', () async {
+      // Seed a tree with e4 -> e5.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (existing), then buffer a move d5 (new).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final fens = computeFens(['e4']);
+      final d5Move = sanToNormalMove(fens[0], 'd5');
+      boardController.playMove(d5Move);
+      controller.onBoardMove(d5Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+
+      // Flip board to match parity (2-ply = even = black).
+      controller.flipBoard();
+
+      // Now inject a conflicting row: insert 'd5' under e4's move ID directly.
+      // This simulates a race condition or cache staleness.
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      await db.into(db.repertoireMoves).insert(
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId,
+          fen: fens[0], // doesn't matter for the constraint
+          san: 'd5',
+          sortOrder: 1,
+        ).copyWith(parentMoveId: Value(e4Id)),
+      );
+
+      // Now confirm -- the engine thinks d5 is new, but DB has a duplicate.
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmError>());
+      final error = result as ConfirmError;
+      expect(error.userMessage, contains('already exists'));
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('state remains consistent after ConfirmError', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4, buffer d5.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final fens = computeFens(['e4']);
+      final d5Move = sanToNormalMove(fens[0], 'd5');
+      boardController.playMove(d5Move);
+      controller.onBoardMove(d5Move, boardController);
+
+      controller.flipBoard();
+
+      // Inject conflicting row.
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      await db.into(db.repertoireMoves).insert(
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId,
+          fen: fens[0],
+          san: 'd5',
+          sortOrder: 1,
+        ).copyWith(parentMoveId: Value(e4Id)),
+      );
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmError>());
+
+      // After error, loadData() was called. State should be consistent.
+      expect(controller.state.isLoading, false);
+      // hasNewMoves is false because loadData() rebuilt the engine from DB.
+      expect(controller.hasNewMoves, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('saveBranch atomicity: no partial moves after constraint failure', () async {
+      // Seed a tree with e4 -> e5. We'll branch from e4 with d5, Nf3 (2 new moves).
+      // Inject a conflicting d5 so the first insert fails.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ], createCards: true);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final movesBefore = await repRepo.getMovesForRepertoire(repId);
+      final moveCountBefore = movesBefore.length; // e4 + e5 = 2
+
+      final controller = AddLineController(
+        repRepo, LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4, buffer d5, then Nf6.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final fens = computeFens(['e4', 'd5', 'Nf3']);
+      final d5Move = sanToNormalMove(fens[0], 'd5');
+      boardController.playMove(d5Move);
+      controller.onBoardMove(d5Move, boardController);
+
+      final nf3Move = sanToNormalMove(fens[1], 'Nf3');
+      boardController.playMove(nf3Move);
+      controller.onBoardMove(nf3Move, boardController);
+
+      // Flip board for parity (3-ply = odd = white).
+      // Board is already white, so parity matches.
+
+      // Inject conflicting d5 under e4.
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      await db.into(db.repertoireMoves).insert(
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId,
+          fen: fens[0],
+          san: 'd5',
+          sortOrder: 1,
+        ).copyWith(parentMoveId: Value(e4Id)),
+      );
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmError>());
+
+      // Verify atomicity: no partial moves from the branch should remain.
+      // The only new row should be the conflicting d5 we injected manually.
+      final movesAfter = await repRepo.getMovesForRepertoire(repId);
+      // moveCountBefore (2) + 1 injected conflict = 3. No Nf3 should exist.
+      expect(movesAfter.length, moveCountBefore + 1);
+      expect(movesAfter.any((m) => m.san == 'Nf3'), false,
+          reason: 'Transaction rollback should prevent partial inserts');
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
 }

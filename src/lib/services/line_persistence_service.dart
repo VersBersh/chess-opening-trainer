@@ -1,5 +1,3 @@
-import 'package:drift/drift.dart';
-
 import '../repositories/local/database.dart';
 import '../repositories/repertoire_repository.dart';
 import '../repositories/review_repository.dart';
@@ -91,30 +89,22 @@ class LinePersistenceService {
   }
 
   Future<PersistResult> _persistBranch(ConfirmData confirmData) async {
-    int? parentId = confirmData.parentMoveId;
-    final insertedIds = <int>[];
-
+    final companions = <RepertoireMovesCompanion>[];
     for (var i = 0; i < confirmData.newMoves.length; i++) {
       final buffered = confirmData.newMoves[i];
-      final companion = RepertoireMovesCompanion.insert(
+      companions.add(RepertoireMovesCompanion.insert(
         repertoireId: confirmData.repertoireId,
         fen: buffered.fen,
         san: buffered.san,
         sortOrder: i == 0 ? confirmData.sortOrder : 0,
-      );
-      final withParent = parentId != null
-          ? companion.copyWith(parentMoveId: Value(parentId))
-          : companion;
-      parentId = await _repertoireRepo.saveMove(withParent);
-      insertedIds.add(parentId);
+      ));
     }
 
-    // Create card for the new leaf.
-    await _reviewRepo.saveReview(ReviewCardsCompanion.insert(
-      repertoireId: confirmData.repertoireId,
-      leafMoveId: parentId!,
-      nextReviewDate: DateTime.now(),
-    ));
+    // Atomic: inserts all moves + review card in a single transaction.
+    final insertedIds = await _repertoireRepo.saveBranch(
+      confirmData.parentMoveId,
+      companions,
+    );
 
     return PersistResult(
       isExtension: false,

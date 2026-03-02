@@ -120,6 +120,18 @@ NormalMove sanToNormalMove(String fen, String san) {
   return move as NormalMove;
 }
 
+/// Plays a sequence of SAN moves from a given FEN position and returns FENs.
+List<String> computeFens(List<String> sans, {String startFen = kInitialFEN}) {
+  final fens = <String>[];
+  Position position = Chess.fromSetup(Setup.parseFen(startFen));
+  for (final san in sans) {
+    final parsed = position.parseSan(san);
+    position = position.play(parsed!);
+    fens.add(position.fen);
+  }
+  return fens;
+}
+
 /// Plays e4 then e5 and taps Confirm to trigger a parity mismatch warning.
 /// Board is White (default) with 2 ply (even = Black expected) -> mismatch.
 /// Returns after pumpAndSettle so the inline warning is visible.
@@ -977,6 +989,99 @@ void main() {
 
       // Warning should be dismissed (position context changed).
       expect(find.text('Line parity mismatch'), findsNothing);
+    });
+
+    testWidgets('ConfirmError shows error SnackBar on confirm',
+        (tester) async {
+      // Seed tree with e4 -> e5.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Play e4 (follows existing), then d5 (buffers new move).
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.d7, to: Square.d5));
+      await tester.pumpAndSettle();
+
+      // Flip board for parity (2-ply = even = black).
+      await tester.ensureVisible(find.byIcon(Icons.swap_vert));
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pump();
+
+      // Inject a conflicting 'd5' row under e4 to trigger unique constraint.
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      final fens = computeFens(['e4']);
+      await db.into(db.repertoireMoves).insert(
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId,
+          fen: fens[0],
+          san: 'd5',
+          sortOrder: 1,
+        ).copyWith(parentMoveId: Value(e4Id)),
+      );
+
+      // Tap Confirm.
+      await tester.ensureVisible(find.text('Confirm'));
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Error SnackBar should appear.
+      expect(find.text('This line already exists in the repertoire.'),
+          findsOneWidget);
+    });
+
+    testWidgets('ConfirmError shows error SnackBar on flip-and-confirm',
+        (tester) async {
+      // Seed tree with e4 -> e5.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Play e4 (follows existing), then d5 (buffers new move).
+      // Board is White; 2-ply = even = Black expected -> parity mismatch.
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.d7, to: Square.d5));
+      await tester.pumpAndSettle();
+
+      // Tap Confirm to trigger parity mismatch warning.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Line parity mismatch'), findsOneWidget);
+
+      // Inject a conflicting 'd5' row under e4 to trigger unique constraint.
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      final fens = computeFens(['e4']);
+      await db.into(db.repertoireMoves).insert(
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId,
+          fen: fens[0],
+          san: 'd5',
+          sortOrder: 1,
+        ).copyWith(parentMoveId: Value(e4Id)),
+      );
+
+      // Tap "Flip and confirm as Black".
+      await tester.tap(find.textContaining('Flip and confirm as Black'));
+      await tester.pumpAndSettle();
+
+      // Error SnackBar should appear.
+      expect(find.text('This line already exists in the repertoire.'),
+          findsOneWidget);
     });
 
     testWidgets('PopScope warns on unsaved moves when navigating back',

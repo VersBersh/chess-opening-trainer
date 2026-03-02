@@ -174,6 +174,37 @@ class LocalRepertoireRepository implements RepertoireRepository {
   }
 
   @override
+  Future<List<int>> saveBranch(
+    int? parentMoveId,
+    List<RepertoireMovesCompanion> newMoves,
+  ) {
+    assert(newMoves.isNotEmpty);
+    return _db.transaction(() async {
+      int? parentId = parentMoveId;
+      final insertedIds = <int>[];
+      for (final move in newMoves) {
+        final withParent = parentId != null
+            ? move.copyWith(parentMoveId: Value(parentId))
+            : move;
+        parentId = await _db.into(_db.repertoireMoves).insert(withParent);
+        insertedIds.add(parentId);
+      }
+      // Create review card for the new leaf (mirrors extendLine pattern).
+      final newLeaf = await getMove(insertedIds.last);
+      if (newLeaf != null) {
+        await _db.into(_db.reviewCards).insert(
+              ReviewCardsCompanion.insert(
+                repertoireId: newLeaf.repertoireId,
+                leafMoveId: newLeaf.id,
+                nextReviewDate: DateTime.now(),
+              ),
+            );
+      }
+      return insertedIds;
+    });
+  }
+
+  @override
   Future<void> undoExtendLine(
       int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) {
     return _db.transaction(() async {

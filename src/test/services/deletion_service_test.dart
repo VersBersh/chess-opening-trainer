@@ -99,6 +99,13 @@ class FakeRepertoireRepository implements RepertoireRepository {
 
   @override
   Future<void> undoNewLine(List<int> insertedMoveIds) async {}
+
+  @override
+  Future<List<int>> saveBranch(
+    int? parentMoveId,
+    List<RepertoireMovesCompanion> newMoves,
+  ) async =>
+      [];
 }
 
 class FakeReviewRepository implements ReviewRepository {
@@ -139,6 +146,16 @@ class FakeReviewRepository implements ReviewRepository {
 
   @override
   Future<int> getCardCountForRepertoire(int repertoireId) async => 0;
+
+  @override
+  Future<Map<int, ({int dueCount, int totalCount})>> getRepertoireSummaries(
+      {DateTime? asOf}) async =>
+      {};
+
+  @override
+  Future<Map<int, int>> getDueCountForSubtrees(List<int> moveIds,
+      {DateTime? asOf}) async =>
+      {};
 }
 
 // ---------------------------------------------------------------------------

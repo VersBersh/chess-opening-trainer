@@ -670,7 +670,7 @@ packages:
     source: hosted
     version: "1.10.2"
   sqlite3:
-    dependency: "direct dev"
+    dependency: "direct main"
     description:
       name: sqlite3
       sha256: b7cf6b37667f6a921281797d2499ffc60fb878b161058d422064f0ddc78f6aa6
