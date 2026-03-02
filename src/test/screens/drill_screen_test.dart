@@ -908,7 +908,7 @@ void main() {
   });
 
   group('DrillScreen — line label display', () {
-    testWidgets('shows label above board when line has labels',
+    testWidgets('shows label below board when line has labels',
         (tester) async {
       final line = buildLine(
           ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
@@ -1700,7 +1700,7 @@ void main() {
   });
 
   group('DrillScreen -- line label in free practice', () {
-    testWidgets('shows line label above board in Free Practice mode',
+    testWidgets('shows line label below board in Free Practice mode',
         (tester) async {
       // Build a labeled line: label 'Sicilian' on the second move (e5)
       final line = buildLine(
@@ -1957,7 +1957,7 @@ void main() {
           reason: 'Narrow layout should not wrap board in LayoutBuilder');
     });
 
-    testWidgets('line label appears above board in narrow layout',
+    testWidgets('line label appears below board in narrow layout',
         (tester) async {
       final line = buildLine(
           ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
@@ -1985,6 +1985,11 @@ void main() {
 
       expect(find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
       expect(find.text('Sicilian'), findsOneWidget);
+
+      final boardBox = tester.getRect(find.byType(ChessboardWidget));
+      final labelBox = tester.getRect(find.byKey(const ValueKey('drill-line-label')));
+      expect(labelBox.top, greaterThanOrEqualTo(boardBox.bottom),
+          reason: 'Line label should appear below the board');
     });
 
     testWidgets('skip button works in narrow layout', (tester) async {
@@ -2061,7 +2066,7 @@ void main() {
           reason: 'Wide layout should wrap board in LayoutBuilder');
     });
 
-    testWidgets('line label appears in side panel in wide layout',
+    testWidgets('line label appears below board in wide layout',
         (tester) async {
       final line = buildLine(
           ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
@@ -2089,6 +2094,11 @@ void main() {
 
       expect(find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
       expect(find.text('Sicilian'), findsOneWidget);
+
+      final boardBox = tester.getRect(find.byType(ChessboardWidget));
+      final labelBox = tester.getRect(find.byKey(const ValueKey('drill-line-label')));
+      expect(labelBox.top, greaterThanOrEqualTo(boardBox.bottom),
+          reason: 'Line label should appear below the board in wide layout');
     });
 
     testWidgets('filter box renders in wide side panel (free practice)',

@@ -1,0 +1,8 @@
+- **Verdict** — `Approved`
+- **Progress**
+  - [x] **Step 1 (Done):** `lineLabelWidget` restyled in [src/lib/screens/drill_screen.dart](/C:/code/misc/chess-trainer-4/src/lib/screens/drill_screen.dart:182) to plain text (`SizedBox` + `Padding`), no background color, `titleMedium`, `FontWeight.normal`, reduced vertical padding, key preserved.
+  - [x] **Step 2 (Done):** Narrow layout label moved below board in [src/lib/screens/drill_screen.dart](/C:/code/misc/chess-trainer-4/src/lib/screens/drill_screen.dart:265).
+  - [x] **Step 3 (Done):** Wide layout updated with `labelHeight` reservation and board+label left-column composition in [src/lib/screens/drill_screen.dart](/C:/code/misc/chess-trainer-4/src/lib/screens/drill_screen.dart:233).
+  - [x] **Step 4 (Done):** Tests updated in [src/test/screens/drill_screen_test.dart](/C:/code/misc/chess-trainer-4/src/test/screens/drill_screen_test.dart:911), [src/test/screens/drill_screen_test.dart](/C:/code/misc/chess-trainer-4/src/test/screens/drill_screen_test.dart:1703), [src/test/screens/drill_screen_test.dart](/C:/code/misc/chess-trainer-4/src/test/screens/drill_screen_test.dart:1960), [src/test/screens/drill_screen_test.dart](/C:/code/misc/chess-trainer-4/src/test/screens/drill_screen_test.dart:2069), including positional assertions at [src/test/screens/drill_screen_test.dart](/C:/code/misc/chess-trainer-4/src/test/screens/drill_screen_test.dart:1989) and [src/test/screens/drill_screen_test.dart](/C:/code/misc/chess-trainer-4/src/test/screens/drill_screen_test.dart:2098).
+- **Issues**
+  1. None. Implementation matches the plan, changes are scoped to planned files, and no accidental/unplanned code changes were found in `git diff HEAD`.

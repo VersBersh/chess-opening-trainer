@@ -180,18 +180,20 @@ class DrillScreen extends ConsumerWidget {
     final isWide = screenWidth >= 600;
 
     final lineLabelWidget = lineLabel.isNotEmpty
-        ? Container(
+        ? SizedBox(
             key: const ValueKey('drill-line-label'),
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Text(
-              lineLabel,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text(
+                lineLabel,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.normal,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           )
         : null;
@@ -228,20 +230,28 @@ class DrillScreen extends ConsumerWidget {
       body: isWide
           ? LayoutBuilder(
               builder: (context, constraints) {
-                final boardSize =
-                    constraints.maxHeight.clamp(0.0, constraints.maxWidth * 0.6);
+                final maxBoardWidth = constraints.maxWidth * 0.6;
                 return Row(
                   children: [
                     SizedBox(
-                      width: boardSize,
-                      height: boardSize,
-                      child: boardWidget,
+                      width: maxBoardWidth,
+                      height: constraints.maxHeight,
+                      child: Column(
+                        children: [
+                          Flexible(
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: boardWidget,
+                            ),
+                          ),
+                          ?lineLabelWidget,
+                        ],
+                      ),
                     ),
                     Expanded(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ?lineLabelWidget,
                           Center(child: statusWidget),
                           ?filterWidget,
                         ],
@@ -253,8 +263,8 @@ class DrillScreen extends ConsumerWidget {
             )
           : Column(
               children: [
-                ?lineLabelWidget,
                 Expanded(child: boardWidget),
+                ?lineLabelWidget,
                 statusWidget,
                 ?filterWidget,
               ],
