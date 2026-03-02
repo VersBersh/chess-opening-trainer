@@ -500,5 +500,55 @@ void main() {
       final theme = Theme.of(tester.element(find.byIcon(Icons.label_outline).last));
       expect(icon.color, theme.colorScheme.onSurfaceVariant);
     });
+
+    testWidgets(
+        'tapping enlarged label icon area outside visual icon triggers onEditLabel, not onNodeSelected',
+        (tester) async {
+      int? editedId;
+      int? selectedId;
+      final line = buildLine(['e4']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+        onNodeSelected: (id) => selectedId = id,
+        onEditLabel: (id) => editedId = id,
+      ));
+
+      // The label icon is 18px but sits inside a 48x48 SizedBox.
+      // Tap 20px above the icon center — inside the 48dp box but outside
+      // the 18px visual icon.
+      final iconCenter = tester.getCenter(find.byIcon(Icons.label_outline));
+      await tester.tapAt(iconCenter + const Offset(0, -20));
+
+      expect(editedId, 1);
+      expect(selectedId, isNull);
+    });
+
+    testWidgets(
+        'tapping enlarged chevron area outside visual icon triggers onNodeToggleExpand, not onNodeSelected',
+        (tester) async {
+      int? toggledId;
+      int? selectedId;
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+        onNodeSelected: (id) => selectedId = id,
+        onNodeToggleExpand: (id) => toggledId = id,
+      ));
+
+      // The chevron icon is 20px but sits inside a 48x48 SizedBox.
+      // Tap 20px above the icon center — inside the 48dp box but outside
+      // the 20px visual icon.
+      final chevronCenter = tester.getCenter(find.byIcon(Icons.chevron_right));
+      await tester.tapAt(chevronCenter + const Offset(0, -20));
+
+      expect(toggledId, 1);
+      expect(selectedId, isNull);
+    });
   });
 }

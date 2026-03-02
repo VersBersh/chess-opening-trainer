@@ -179,29 +179,34 @@ class _MoveTreeNodeTile extends StatelessWidget {
           padding: EdgeInsets.only(
             left: 16.0 + node.depth * 24.0,
             right: 8.0,
-            top: 4.0,
-            bottom: 4.0,
           ),
-          child: Row(
-            children: [
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: kMinInteractiveDimension,
+            ),
+            child: Row(
+              children: [
               // Expand/collapse chevron
               if (node.hasChildren)
                 GestureDetector(
                   onTap: onToggleExpand,
                   behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 4.0),
-                    child: Icon(
-                      isExpanded
-                          ? Icons.expand_more
-                          : Icons.chevron_right,
-                      size: 20,
-                      color: colorScheme.onSurfaceVariant,
+                  child: SizedBox(
+                    width: kMinInteractiveDimension,
+                    height: kMinInteractiveDimension,
+                    child: Center(
+                      child: Icon(
+                        isExpanded
+                            ? Icons.expand_more
+                            : Icons.chevron_right,
+                        size: 20,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 )
               else
-                const SizedBox(width: 24),
+                const SizedBox(width: kMinInteractiveDimension),
 
               // Move notation
               Expanded(
@@ -242,16 +247,19 @@ class _MoveTreeNodeTile extends StatelessWidget {
                 GestureDetector(
                   onTap: onEditLabel,
                   behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                    child: Tooltip(
-                      message: 'Label',
-                      child: Icon(
-                        Icons.label_outline,
-                        size: 18,
-                        color: hasLabel
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
+                  child: SizedBox(
+                    width: kMinInteractiveDimension,
+                    height: kMinInteractiveDimension,
+                    child: Center(
+                      child: Tooltip(
+                        message: 'Label',
+                        child: Icon(
+                          Icons.label_outline,
+                          size: 18,
+                          color: hasLabel
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
@@ -276,7 +284,8 @@ class _MoveTreeNodeTile extends StatelessWidget {
                     ),
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
