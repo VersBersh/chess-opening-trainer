@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
 import '../repositories/local/database.dart';
+import 'add_line_screen.dart';
 import 'drill_screen.dart';
 import 'free_practice_setup_screen.dart';
 import 'repertoire_browser_screen.dart';
@@ -124,6 +125,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         .then((_) => ref.read(homeControllerProvider.notifier).refresh());
   }
 
+  Future<void> _onAddLineTap() async {
+    final id =
+        await ref.read(homeControllerProvider.notifier).openRepertoire();
+    if (mounted) {
+      Navigator.of(context)
+          .push(MaterialPageRoute(
+            builder: (_) => AddLineScreen(
+              db: widget.db,
+              repertoireId: id,
+            ),
+          ))
+          .then((_) => ref.read(homeControllerProvider.notifier).refresh());
+    }
+  }
+
   Future<void> _onRepertoireTap() async {
     final id =
         await ref.read(homeControllerProvider.notifier).openRepertoire();
@@ -226,6 +242,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onPressed: _onRepertoireTap,
               icon: const Icon(Icons.library_books),
               label: const Text('Repertoire'),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _onAddLineTap,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Line'),
             ),
           ],
         ),
