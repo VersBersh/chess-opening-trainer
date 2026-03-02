@@ -13,6 +13,7 @@ import 'package:chess_trainer/repositories/local/local_repertoire_repository.dar
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
+import 'package:chess_trainer/widgets/inline_label_editor.dart';
 import 'package:chess_trainer/widgets/move_tree_widget.dart';
 
 // ---------------------------------------------------------------------------
@@ -534,7 +535,7 @@ void main() {
       expect(labelButton.onPressed, isNotNull);
     });
 
-    testWidgets('open label dialog and save a label', (tester) async {
+    testWidgets('open inline editor and save a label', (tester) async {
       final repId = await seedRepertoire(
         db,
         lines: [
@@ -553,25 +554,20 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
-      // Dialog should be open with "Add label" title
-      expect(find.text('Add label'), findsOneWidget);
+      // Inline editor should appear
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Enter label text
+      // Enter label text and press Enter
       await tester.enterText(find.byType(TextField), 'King Pawn');
       await tester.pumpAndSettle();
-
-      // Tap Save
-      await tester.tap(find.text('Save'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // The label should appear in the tree (bold label text next to move)
       expect(find.textContaining('King Pawn'), findsWidgets);
-
-      // The aggregate display name header should show "King Pawn"
-      expect(find.text('King Pawn'), findsWidgets);
     });
 
-    testWidgets('open label dialog and clear a label', (tester) async {
+    testWidgets('open inline editor and clear a label', (tester) async {
       final repId = await seedRepertoire(
         db,
         lines: [
@@ -591,14 +587,13 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
-      // Dialog should be open with "Edit label" title
-      expect(find.text('Edit label'), findsOneWidget);
+      // Inline editor should appear with existing label pre-filled.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Remove button should be present since the node has a label
-      expect(find.text('Remove'), findsOneWidget);
-
-      // Tap Remove to clear the label
-      await tester.tap(find.text('Remove'));
+      // Clear the text and press Enter to remove the label.
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Verify the label is removed from the database
@@ -608,7 +603,8 @@ void main() {
       expect(e4Move.label, isNull);
     });
 
-    testWidgets('open label dialog and cancel', (tester) async {
+    testWidgets('dismiss inline editor by selecting a different node',
+        (tester) async {
       final repId = await seedRepertoire(
         db,
         lines: [
@@ -627,13 +623,15 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
-      // Enter some text
-      await tester.enterText(find.byType(TextField), 'Test Label');
-      await tester.pump();
+      // Inline editor should appear
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Tap Cancel
-      await tester.tap(find.text('Cancel'));
+      // Select a different node (e5) to dismiss the editor
+      await tester.tap(find.text('1...e5'));
       await tester.pumpAndSettle();
+
+      // Editor should be gone
+      expect(find.byType(InlineLabelEditor), findsNothing);
 
       // Verify no label was saved
       final repRepo = LocalRepertoireRepository(db);
@@ -642,7 +640,8 @@ void main() {
       expect(e4Move.label, isNull);
     });
 
-    testWidgets('aggregate display name preview in dialog', (tester) async {
+    testWidgets('aggregate display name preview in inline editor',
+        (tester) async {
       final repId = await seedRepertoire(
         db,
         lines: [
@@ -669,15 +668,18 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
+      // Inline editor should appear
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
       // Type "Najdorf" in the text field
       await tester.enterText(find.byType(TextField), 'Najdorf');
       await tester.pumpAndSettle();
 
-      // Preview should show "Sicilian — Najdorf"
+      // Preview should show "Sicilian -- Najdorf"
       expect(find.text('Sicilian \u2014 Najdorf'), findsOneWidget);
 
-      // Cancel the dialog to clean up
-      await tester.tap(find.text('Cancel'));
+      // Select a different node to dismiss without saving
+      await tester.tap(find.textContaining('1. e4'));
       await tester.pumpAndSettle();
     });
 
@@ -692,13 +694,13 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4, add a label
+      // Select e4, add a label via inline editor
       await tester.tap(find.text('1. e4'));
       await tester.pump();
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'King Pawn');
-      await tester.tap(find.text('Save'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Verify in DB directly
@@ -726,7 +728,7 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Root Label');
-      await tester.tap(find.text('Save'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Label interior node (e5) -- expand e4 first
@@ -737,7 +739,7 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Interior Label');
-      await tester.tap(find.text('Save'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Label leaf node (Nf3) -- after labeling e4 and e5, both are
@@ -754,7 +756,7 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Leaf Label');
-      await tester.tap(find.text('Save'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Verify all three labels in DB
@@ -785,12 +787,12 @@ void main() {
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
 
-      // Open label dialog
+      // Open inline editor
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
-      // Don't change the text, just tap Save
-      await tester.tap(find.text('Save'));
+      // Don't change the text, just press Enter
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Verify label is unchanged
@@ -800,7 +802,7 @@ void main() {
       expect(e4Move.label, 'Existing');
     });
 
-    testWidgets('inline label icon on tree row opens label dialog',
+    testWidgets('inline label icon on tree row opens inline editor',
         (tester) async {
       final repId = await seedRepertoire(
         db,
@@ -823,11 +825,11 @@ void main() {
       await tester.tap(inlineLabelIcons.first);
       await tester.pumpAndSettle();
 
-      // The label dialog should open.
-      expect(find.text('Add label'), findsOneWidget);
+      // The inline editor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Cancel the dialog to clean up.
-      await tester.tap(find.text('Cancel'));
+      // Select a different node to dismiss.
+      await tester.tap(find.text('1...e5'));
       await tester.pumpAndSettle();
     });
 
@@ -850,10 +852,13 @@ void main() {
       await tester.tap(inlineLabelIcons.first);
       await tester.pumpAndSettle();
 
-      // Enter label text and save.
+      // Inline editor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Enter label text and press Enter.
       await tester.enterText(find.byType(TextField), 'Inline Label');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Verify label was saved in the database.
@@ -878,9 +883,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Verify no node is selected: the display name header should be absent
-      // (no surfaceContainerHighest-colored container with text).
-      // Also the action bar Label button should be disabled (no selection).
+      // Verify no node is selected: the action bar Label button should be
+      // disabled (no selection).
       final labelButton = tester.widget<TextButton>(
         find.widgetWithText(TextButton, 'Label'),
       );
@@ -894,11 +898,11 @@ void main() {
       await tester.tap(inlineLabelIcons.last);
       await tester.pumpAndSettle();
 
-      // The label dialog should open even though no node was selected.
-      expect(find.text('Add label'), findsOneWidget);
+      // The inline editor should appear even though no node was selected.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Cancel the dialog to clean up.
-      await tester.tap(find.text('Cancel'));
+      // Select a different node to dismiss.
+      await tester.tap(find.text('1. e4'));
       await tester.pumpAndSettle();
     });
 
@@ -922,11 +926,13 @@ void main() {
       await tester.tap(inlineLabelIcons.first);
       await tester.pumpAndSettle();
 
-      // Dialog should show "Edit label" since e4 has an existing label.
-      expect(find.text('Edit label'), findsOneWidget);
+      // Inline editor should appear with existing label pre-filled.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Tap Remove to clear the label.
-      await tester.tap(find.text('Remove'));
+      // Clear the text and press Enter to remove the label.
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Verify label was cleared in the database.
@@ -934,6 +940,96 @@ void main() {
       final moves = await repRepo.getMovesForRepertoire(repId);
       final e4Move = moves.firstWhere((m) => m.san == 'e4');
       expect(e4Move.label, isNull);
+    });
+
+    testWidgets('editor closes on node selection change', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4 and open the editor.
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Select a different node (e5).
+      await tester.tap(find.text('1...e5'));
+      await tester.pumpAndSettle();
+
+      // Editor should be dismissed.
+      expect(find.byType(InlineLabelEditor), findsNothing);
+    });
+
+    testWidgets('editor closes on back navigation', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 and open the editor.
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Tap the back navigation button.
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+
+      // Editor should be dismissed.
+      expect(find.byType(InlineLabelEditor), findsNothing);
+    });
+
+    testWidgets('editor closes when edited node is deleted', (tester) async {
+      // Use sibling leaves so no orphan prompt after deleting one.
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+          ['e4', 'e5', 'Bc4'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select Nf3 and open the editor.
+      await tester.ensureVisible(find.text('2. Nf3'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2. Nf3'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Delete Nf3. Tap the Delete button.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // Confirm deletion.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // Editor should be dismissed (node no longer exists in tree cache).
+      expect(find.byType(InlineLabelEditor), findsNothing);
     });
   });
 

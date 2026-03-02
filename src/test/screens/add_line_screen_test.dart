@@ -13,6 +13,7 @@ import 'package:chess_trainer/repositories/local/local_repertoire_repository.dar
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/widgets/chessboard_controller.dart';
+import 'package:chess_trainer/widgets/inline_label_editor.dart';
 import 'package:chess_trainer/widgets/move_pills_widget.dart';
 
 // ---------------------------------------------------------------------------
@@ -394,7 +395,7 @@ void main() {
     });
 
     testWidgets(
-        'label on multi-line node: confirmation dialog appears, confirm persists label',
+        'label on multi-line node: inline editor shows warning, Enter persists label',
         (tester) async {
       // Tree: e4 -> e5 -> {Nf3, Bc4}  (e5 has 2 descendant leaves)
       final repId = await seedRepertoire(db, lines: [
@@ -413,22 +414,17 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
-      // Label dialog should open.
-      expect(find.text('Add label'), findsOneWidget);
+      // Inline label editor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Enter label text and save.
+      // Multi-line warning text should be shown inline.
+      expect(
+          find.text('This label applies to 2 lines'), findsOneWidget);
+
+      // Enter label text and press Enter.
       await tester.enterText(find.byType(TextField), 'Branch Point');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-
-      // Multi-line warning dialog should appear.
-      expect(find.text('Label affects multiple lines'), findsOneWidget);
-      expect(find.text('This label applies to 2 lines. Continue?'),
-          findsOneWidget);
-
-      // Confirm the dialog.
-      await tester.tap(find.text('Continue'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       // Verify the label was persisted.
@@ -439,7 +435,7 @@ void main() {
     });
 
     testWidgets(
-        'label on multi-line node: cancel confirmation dialog does NOT persist label',
+        'label on multi-line node: tapping different pill dismisses editor without saving',
         (tester) async {
       // Tree: e4 -> e5 -> {Nf3, Bc4}  (e5 has 2 descendant leaves)
       final repId = await seedRepertoire(db, lines: [
@@ -453,24 +449,25 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: e5Id));
       await tester.pumpAndSettle();
 
-      // Tap Label button.
+      // Tap Label button to open inline editor.
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
-      // Enter label text and save.
+      // Inline label editor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Enter label text but do NOT submit.
       await tester.enterText(find.byType(TextField), 'Branch Point');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
+
+      // Tap a different pill (e4) to dismiss the editor.
+      await tester.tap(find.text('e4'));
       await tester.pumpAndSettle();
 
-      // Multi-line warning dialog should appear.
-      expect(find.text('Label affects multiple lines'), findsOneWidget);
+      // Editor should be gone.
+      expect(find.byType(InlineLabelEditor), findsNothing);
 
-      // Cancel the dialog.
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-
-      // Verify the label was NOT persisted.
+      // Verify the label was NOT persisted (editor was dismissed, not saved).
       final repRepo = LocalRepertoireRepository(db);
       final moves = await repRepo.getMovesForRepertoire(repId);
       final e5Move = moves.firstWhere((m) => m.san == 'e5');
@@ -478,7 +475,7 @@ void main() {
     });
 
     testWidgets(
-        'label on leaf node: no confirmation dialog, label persists directly',
+        'label on leaf node: no multi-line warning, Enter persists label',
         (tester) async {
       // Tree: e4 -> e5 -> Nf3  (Nf3 is a leaf, 1 descendant leaf)
       final repId = await seedRepertoire(db, lines: [
@@ -496,17 +493,17 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
-      // Label dialog should open.
-      expect(find.text('Add label'), findsOneWidget);
+      // Inline label editor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Enter label text and save.
+      // No multi-line warning text (leaf node has 1 descendant leaf).
+      expect(find.textContaining('This label applies to'), findsNothing);
+
+      // Enter label text and press Enter.
       await tester.enterText(find.byType(TextField), 'Leaf Label');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-
-      // No confirmation dialog should appear.
-      expect(find.text('Label affects multiple lines'), findsNothing);
 
       // Verify the label was persisted directly.
       final repRepo = LocalRepertoireRepository(db);
@@ -584,17 +581,14 @@ void main() {
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
 
-      // Label dialog should open.
-      expect(find.text('Add label'), findsOneWidget);
+      // Inline label editor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Enter label text and save.
+      // Enter label text and press Enter.
       await tester.enterText(find.byType(TextField), 'Flipped Label');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save'));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-
-      // No multi-line dialog (leaf node with 1 descendant leaf).
-      expect(find.text('Label affects multiple lines'), findsNothing);
 
       // Verify the label was persisted to the database.
       final repRepo = LocalRepertoireRepository(db);
@@ -689,6 +683,75 @@ void main() {
       expect(cards.first.leafMoveId, e5Move.id);
     });
 
+    testWidgets('re-tapping a focused saved pill opens the inline editor',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: nf3Id));
+      await tester.pumpAndSettle();
+
+      // Nf3 should be the focused pill (last in existing path).
+      // Re-tap the focused pill (Nf3) to open the editor.
+      await tester.tap(find.text('Nf3'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+    });
+
+    testWidgets(
+        'tapping a different pill while editor is open closes the editor',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: nf3Id));
+      await tester.pumpAndSettle();
+
+      // Open editor via Label button.
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Tap a different pill (e4).
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Editor should be gone.
+      expect(find.byType(InlineLabelEditor), findsNothing);
+    });
+
+    testWidgets('board move while editor is open closes the editor',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      // Start at Nf3 -- no unsaved moves, so Label button is enabled.
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: nf3Id));
+      await tester.pumpAndSettle();
+
+      // Open editor via Label button.
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Simulate a board move by invoking the Chessboard's onMove callback.
+      // Position after e4 e5 Nf3 is black to move; Nc6 is a legal move.
+      final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(
+        NormalMove(from: Square.b8, to: Square.c6),
+      );
+      await tester.pumpAndSettle();
+
+      // Editor should be dismissed.
+      expect(find.byType(InlineLabelEditor), findsNothing);
+    });
     testWidgets('PopScope warns on unsaved moves when navigating back',
         (tester) async {
       final repId = await seedRepertoire(db);

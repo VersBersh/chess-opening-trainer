@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../controllers/add_line_controller.dart';
-import '../models/repertoire.dart';
 import '../providers.dart';
 import '../repositories/local/database.dart';
 import '../services/line_entry_engine.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
+import '../widgets/inline_label_editor.dart';
 import '../widgets/move_pills_widget.dart';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +40,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   late final AddLineController _controller;
   late final ChessboardController _boardController;
   late final bool _ownsController;
+  bool _isLabelEditorVisible = false;
 
   @override
   void initState() {
@@ -89,6 +90,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   // ---- Event handlers -----------------------------------------------------
 
   void _onBoardMove(NormalMove move) {
+    setState(() => _isLabelEditorVisible = false);
     final result = _controller.onBoardMove(move, _boardController);
     if (result is MoveBranchBlocked) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -102,14 +104,31 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   }
 
   void _onPillTapped(int index) {
+    final state = _controller.state;
+    final isSameAsFocused = index == state.focusedPillIndex;
+    final pill = index < state.pills.length ? state.pills[index] : null;
+
+    if (isSameAsFocused &&
+        pill != null &&
+        pill.isSaved &&
+        !_controller.hasNewMoves) {
+      // Re-tap on a focused saved pill: open the inline editor.
+      setState(() => _isLabelEditorVisible = true);
+      return;
+    }
+
+    // Different pill tapped: dismiss editor and navigate.
+    setState(() => _isLabelEditorVisible = false);
     _controller.onPillTapped(index, _boardController);
   }
 
   void _onTakeBack() {
+    setState(() => _isLabelEditorVisible = false);
     _controller.onTakeBack(_boardController);
   }
 
   Future<void> _onConfirmLine() async {
+    setState(() => _isLabelEditorVisible = false);
     final result = await _controller.confirmAndPersist();
 
     if (!mounted) return;
@@ -187,40 +206,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     );
   }
 
-  Future<void> _onEditLabel() async {
-    final focusedIndex = _controller.state.focusedPillIndex;
-    if (focusedIndex == null) return;
-
-    final move = _controller.getMoveAtPillIndex(focusedIndex);
-    if (move == null) return; // Can only label saved moves
-
-    final cache = _controller.state.treeCache;
-    if (cache == null) return;
-
-    final result = await _showLabelDialog(
-      context,
-      currentLabel: move.label,
-      moveId: move.id,
-      cache: cache,
-    );
-
-    // null means cancelled
-    if (result == null) return;
-
-    // Normalize: empty string means "remove label" -> save null to DB
-    final labelToSave = result.isEmpty ? null : result;
-
-    // No-op guard: skip if unchanged.
-    if (labelToSave == move.label) return;
-
-    // Multi-line impact check: warn if the label change affects multiple lines.
-    final leafCount = cache.countDescendantLeaves(move.id);
-    if (leafCount > 1) {
-      final confirmed = await _showMultiLineWarningDialog(leafCount);
-      if (confirmed != true) return;
-    }
-
-    await _controller.updateLabel(focusedIndex, labelToSave);
+  void _onEditLabel() {
+    setState(() => _isLabelEditorVisible = true);
   }
 
   void _onFlipBoard() {
@@ -284,100 +271,6 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Discard'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<String?> _showLabelDialog(
-    BuildContext context, {
-    required String? currentLabel,
-    required int moveId,
-    required RepertoireTreeCache cache,
-  }) async {
-    final controller = TextEditingController(text: currentLabel ?? '');
-    return showDialog<String>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final previewText = cache.previewAggregateDisplayName(
-              moveId,
-              controller.text.trim(),
-            );
-
-            return AlertDialog(
-              title:
-                  Text(currentLabel != null ? 'Edit label' : 'Add label'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Label',
-                      hintText: 'e.g. Sicilian, Najdorf',
-                    ),
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    previewText.isNotEmpty
-                        ? previewText
-                        : '(no display name)',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                          fontStyle: previewText.isEmpty
-                              ? FontStyle.italic
-                              : FontStyle.normal,
-                        ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(null),
-                  child: const Text('Cancel'),
-                ),
-                if (currentLabel != null)
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(''),
-                    child: const Text('Remove'),
-                  ),
-                TextButton(
-                  onPressed: () {
-                    final trimmed = controller.text.trim();
-                    Navigator.of(context).pop(trimmed);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<bool?> _showMultiLineWarningDialog(int lineCount) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Label affects multiple lines'),
-        content: Text('This label applies to $lineCount lines. Continue?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Continue'),
           ),
         ],
       ),
@@ -453,10 +346,39 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
             onPillTapped: _onPillTapped,
           ),
 
+          // Inline label editor
+          if (_isLabelEditorVisible) _buildInlineLabelEditor(state),
+
           // Action bar
           _buildActionBar(context, state),
         ],
       ),
+    );
+  }
+
+  Widget _buildInlineLabelEditor(AddLineState state) {
+    final focusedIndex = state.focusedPillIndex;
+    if (focusedIndex == null) return const SizedBox.shrink();
+
+    final move = _controller.getMoveAtPillIndex(focusedIndex);
+    if (move == null) return const SizedBox.shrink();
+
+    final cache = state.treeCache;
+    if (cache == null) return const SizedBox.shrink();
+
+    return InlineLabelEditor(
+      key: ValueKey('label-editor-${move.id}'),
+      currentLabel: move.label,
+      moveId: move.id,
+      descendantLeafCount: cache.countDescendantLeaves(move.id),
+      previewDisplayName: (text) =>
+          cache.previewAggregateDisplayName(move.id, text),
+      onSave: (label) => _controller.updateLabel(focusedIndex, label),
+      onClose: () {
+        if (mounted) {
+          setState(() => _isLabelEditorVisible = false);
+        }
+      },
     );
   }
 

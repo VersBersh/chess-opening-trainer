@@ -10,6 +10,7 @@ import 'add_line_screen.dart';
 import 'import_screen.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
+import '../widgets/inline_label_editor.dart';
 import '../widgets/move_tree_widget.dart';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ class _RepertoireBrowserScreenState
     extends ConsumerState<RepertoireBrowserScreen> {
   late final RepertoireBrowserController _controller;
   late final ChessboardController _boardController;
+  int? _labelEditorMoveId;
 
   @override
   void initState() {
@@ -60,12 +62,25 @@ class _RepertoireBrowserScreenState
   }
 
   void _onControllerChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      // Dismiss editor if the move no longer exists in the tree cache.
+      if (_labelEditorMoveId != null) {
+        final cache = _controller.state.treeCache;
+        if (cache == null ||
+            !cache.movesById.containsKey(_labelEditorMoveId)) {
+          _labelEditorMoveId = null;
+        }
+      }
+      setState(() {});
+    }
   }
 
   // ---- Event handlers -----------------------------------------------------
 
   void _onNodeSelected(int moveId) {
+    if (_labelEditorMoveId != null && moveId != _labelEditorMoveId) {
+      setState(() => _labelEditorMoveId = null);
+    }
     final fen = _controller.selectNode(moveId);
     if (fen != null) {
       _boardController.setPosition(fen);
@@ -81,6 +96,7 @@ class _RepertoireBrowserScreenState
   }
 
   void _onNavigateBack() {
+    setState(() => _labelEditorMoveId = null);
     final fen = _controller.navigateBack();
     if (fen != null) {
       _boardController.setPosition(fen);
@@ -88,6 +104,7 @@ class _RepertoireBrowserScreenState
   }
 
   void _onNavigateForward() {
+    setState(() => _labelEditorMoveId = null);
     final fen = _controller.navigateForward();
     if (fen != null) {
       _boardController.setPosition(fen);
@@ -96,43 +113,14 @@ class _RepertoireBrowserScreenState
 
   // ---- Label editing -------------------------------------------------------
 
-  Future<void> _onEditLabelForMove(int moveId) async {
-    final cache = _controller.state.treeCache;
-    if (cache == null) return;
-
-    final move = cache.movesById[moveId];
-    if (move == null) return;
-
-    final result = await _showLabelDialog(
-      context,
-      currentLabel: move.label,
-      moveId: moveId,
-      cache: cache,
-    );
-
-    // null means cancelled -- no action
-    if (result == null) return;
-
-    // Normalize: empty string means "remove label" -> save null to DB
-    final labelToSave = result.isEmpty ? null : result;
-
-    // No-op guard: skip DB write and cache rebuild if the label is unchanged.
-    if (labelToSave == move.label) return;
-
-    // Multi-line impact check: warn if the label change affects multiple lines.
-    final leafCount = cache.countDescendantLeaves(moveId);
-    if (leafCount > 1) {
-      final confirmed = await _showMultiLineWarningDialog(leafCount);
-      if (confirmed != true) return;
-    }
-
-    await _controller.editLabel(moveId, labelToSave);
+  void _onEditLabelForMove(int moveId) {
+    setState(() => _labelEditorMoveId = moveId);
   }
 
-  Future<void> _onEditLabel() async {
+  void _onEditLabel() {
     final selectedId = _controller.state.selectedMoveId;
     if (selectedId == null) return;
-    await _onEditLabelForMove(selectedId);
+    _onEditLabelForMove(selectedId);
   }
 
   // ---- Add Line navigation --------------------------------------------------
@@ -192,102 +180,6 @@ class _RepertoireBrowserScreenState
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ---- Dialogs --------------------------------------------------------------
-
-  Future<String?> _showLabelDialog(
-    BuildContext context, {
-    required String? currentLabel,
-    required int moveId,
-    required RepertoireTreeCache cache,
-  }) async {
-    final controller = TextEditingController(text: currentLabel ?? '');
-    return showDialog<String>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final previewText = cache.previewAggregateDisplayName(
-              moveId,
-              controller.text.trim(),
-            );
-
-            return AlertDialog(
-              title:
-                  Text(currentLabel != null ? 'Edit label' : 'Add label'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Label',
-                      hintText: 'e.g. Sicilian, Najdorf',
-                    ),
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    previewText.isNotEmpty
-                        ? previewText
-                        : '(no display name)',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                          fontStyle: previewText.isEmpty
-                              ? FontStyle.italic
-                              : FontStyle.normal,
-                        ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(null),
-                  child: const Text('Cancel'),
-                ),
-                if (currentLabel != null)
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(''),
-                    child: const Text('Remove'),
-                  ),
-                TextButton(
-                  onPressed: () {
-                    final trimmed = controller.text.trim();
-                    Navigator.of(context).pop(trimmed);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<bool?> _showMultiLineWarningDialog(int lineCount) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Label affects multiple lines'),
-        content: Text('This label applies to $lineCount lines. Continue?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Continue'),
           ),
         ],
       ),
@@ -527,15 +419,18 @@ class _RepertoireBrowserScreenState
     return Column(
       children: [
         _buildDisplayNameHeader(context, cache),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxBoardSize),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: _buildChessboard(),
+        Flexible(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxBoardSize),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: _buildChessboard(),
+            ),
           ),
         ),
         _buildBoardControls(cache),
         _buildActionBar(context, cache, compact: false),
+        if (_labelEditorMoveId != null) _buildInlineLabelEditor(cache),
         Expanded(child: _buildMoveTree(cache)),
       ],
     );
@@ -563,6 +458,8 @@ class _RepertoireBrowserScreenState
                   _buildDisplayNameHeader(context, cache),
                   _buildBoardControls(cache),
                   _buildActionBar(context, cache, compact: true),
+                  if (_labelEditorMoveId != null)
+                    _buildInlineLabelEditor(cache),
                   Expanded(child: _buildMoveTree(cache)),
                 ],
               ),
@@ -574,6 +471,29 @@ class _RepertoireBrowserScreenState
   }
 
   // ---- Shared widget builders -----------------------------------------------
+
+  Widget _buildInlineLabelEditor(RepertoireTreeCache cache) {
+    final moveId = _labelEditorMoveId;
+    if (moveId == null) return const SizedBox.shrink();
+
+    final move = cache.movesById[moveId];
+    if (move == null) return const SizedBox.shrink();
+
+    return InlineLabelEditor(
+      key: ValueKey('label-editor-$moveId'),
+      currentLabel: move.label,
+      moveId: moveId,
+      descendantLeafCount: cache.countDescendantLeaves(moveId),
+      previewDisplayName: (text) =>
+          cache.previewAggregateDisplayName(moveId, text),
+      onSave: (label) => _controller.editLabel(moveId, label),
+      onClose: () {
+        if (mounted) {
+          setState(() => _labelEditorMoveId = null);
+        }
+      },
+    );
+  }
 
   Widget _buildDisplayNameHeader(
     BuildContext context,
