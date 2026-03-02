@@ -113,7 +113,8 @@ Future<int> seedRepertoire(
 
 late SharedPreferences _testPrefs;
 
-Widget buildTestApp(AppDatabase db, int repertoireId) {
+Widget buildTestApp(AppDatabase db, int repertoireId,
+    {Size viewportSize = const Size(400, 800)}) {
   return ProviderScope(
     overrides: [
       repertoireRepositoryProvider
@@ -124,7 +125,7 @@ Widget buildTestApp(AppDatabase db, int repertoireId) {
     ],
     child: MaterialApp(
       home: MediaQuery(
-        data: const MediaQueryData(size: Size(400, 800)),
+        data: MediaQueryData(size: viewportSize),
         child: RepertoireBrowserScreen(repertoireId: repertoireId),
       ),
     ),
@@ -1540,6 +1541,193 @@ void main() {
 
       // Should NOT show the dialog
       expect(find.text('Card Stats'), findsNothing);
+    });
+  });
+
+  group('RepertoireBrowserScreen — wide layout', () {
+    testWidgets('renders board and tree side by side in wide layout',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+      );
+
+      await tester.pumpWidget(
+          buildTestApp(db, repId, viewportSize: const Size(900, 800)));
+      await tester.pumpAndSettle();
+
+      // Board and tree should render without overflow
+      expect(find.byType(Chessboard), findsOneWidget);
+      expect(find.byType(MoveTreeWidget), findsOneWidget);
+
+      // Wide layout uses compact action bar with IconButton tooltips.
+      // Verify IconButton with tooltip "Add Line" exists (compact bar).
+      expect(find.byTooltip('Add Line'), findsOneWidget);
+
+      // Verify TextButton with text "Add Line" does NOT exist
+      // (text-labeled buttons are unique to the narrow layout).
+      expect(find.widgetWithText(TextButton, 'Add Line'), findsNothing);
+    });
+
+    testWidgets('compact action bar shows icon buttons in wide layout',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+      );
+
+      await tester.pumpWidget(
+          buildTestApp(db, repId, viewportSize: const Size(900, 800)));
+      await tester.pumpAndSettle();
+
+      // Compact action bar should have IconButtons with these icons
+      expect(find.widgetWithIcon(IconButton, Icons.add), findsOneWidget);
+      expect(find.widgetWithIcon(IconButton, Icons.file_upload), findsOneWidget);
+      expect(find.widgetWithIcon(IconButton, Icons.label), findsOneWidget);
+      expect(find.widgetWithIcon(IconButton, Icons.bar_chart), findsOneWidget);
+      expect(find.widgetWithIcon(IconButton, Icons.delete), findsOneWidget);
+
+      // Verify tooltips on compact action bar buttons
+      expect(find.byTooltip('Add Line'), findsOneWidget);
+      expect(find.byTooltip('Import'), findsOneWidget);
+      expect(find.byTooltip('Stats'), findsOneWidget);
+      // No selection, so delete tooltip should be "Delete Branch"
+      expect(find.byTooltip('Delete Branch'), findsOneWidget);
+
+      // Text-labeled buttons should NOT exist (confirms compact branch)
+      expect(find.widgetWithText(TextButton, 'Add Line'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Label'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Stats'), findsNothing);
+    });
+
+    testWidgets(
+        'action bar buttons have correct enabled/disabled state in wide layout',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+        labelsOnSan: {'e4': 'King Pawn'},
+        createCards: true,
+      );
+
+      await tester.pumpWidget(
+          buildTestApp(db, repId, viewportSize: const Size(900, 800)));
+      await tester.pumpAndSettle();
+
+      // Add Line icon should always be enabled
+      final addLineButton = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.add),
+      );
+      expect(addLineButton.onPressed, isNotNull);
+
+      // Label icon should be disabled (no selection)
+      final labelButton = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.label),
+      );
+      expect(labelButton.onPressed, isNull);
+
+      // Select e4 (non-leaf, has children)
+      await tester.tap(find.textContaining('1. e4'));
+      await tester.pump();
+
+      // Label should now be enabled (node selected)
+      final labelButton2 = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.label),
+      );
+      expect(labelButton2.onPressed, isNotNull);
+
+      // Stats should be disabled (non-leaf)
+      final statsButton = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.bar_chart),
+      );
+      expect(statsButton.onPressed, isNull);
+
+      // Delete should be enabled (non-leaf selected)
+      final deleteButton = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.delete),
+      );
+      expect(deleteButton.onPressed, isNotNull);
+      // Delete tooltip should be "Delete Branch" for non-leaf
+      expect(deleteButton.tooltip, 'Delete Branch');
+
+      // Now expand and select the leaf node (Nf3)
+      await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+      await tester.ensureVisible(find.text('2. Nf3'));
+      await tester.pump();
+      await tester.tap(find.text('2. Nf3'));
+      await tester.pump();
+
+      // Stats should be enabled (leaf selected)
+      final statsButton2 = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.bar_chart),
+      );
+      expect(statsButton2.onPressed, isNotNull);
+
+      // Delete should be enabled (leaf selected)
+      final deleteButton2 = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.delete),
+      );
+      expect(deleteButton2.onPressed, isNotNull);
+      // Delete tooltip should change to "Delete" for leaf
+      expect(deleteButton2.tooltip, 'Delete');
+    });
+
+    testWidgets('board flip works in wide layout', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4'],
+        ],
+      );
+
+      await tester.pumpWidget(
+          buildTestApp(db, repId, viewportSize: const Size(900, 800)));
+      await tester.pumpAndSettle();
+
+      // Default orientation is white
+      var chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.orientation, Side.white);
+
+      // Tap the flip button
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pump();
+
+      // Orientation should now be black
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.orientation, Side.black);
+    });
+
+    testWidgets('node selection updates board in wide layout',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(
+          buildTestApp(db, repId, viewportSize: const Size(900, 800)));
+      await tester.pumpAndSettle();
+
+      // Tap on e5
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Board FEN should now reflect position after 1. e4 e5
+      final chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.fen, isNot(kInitialFEN));
     });
   });
 }

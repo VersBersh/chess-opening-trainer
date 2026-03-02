@@ -221,16 +221,22 @@ Widget buildTestApp({
   required FakeRepertoireRepository repertoireRepo,
   required FakeReviewRepository reviewRepo,
   DrillConfig config = _defaultConfig,
+  Size? viewportSize,
 }) {
+  Widget home = DrillScreen(config: config);
+  if (viewportSize != null) {
+    home = MediaQuery(
+      data: MediaQueryData(size: viewportSize),
+      child: home,
+    );
+  }
   return ProviderScope(
     overrides: [
       repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
       reviewRepositoryProvider.overrideWithValue(reviewRepo),
       sharedPreferencesProvider.overrideWithValue(_testPrefs),
     ],
-    child: MaterialApp(
-      home: DrillScreen(config: config),
-    ),
+    child: MaterialApp(home: home),
   );
 }
 
@@ -1868,6 +1874,193 @@ void main() {
       expect(find.text('Sicilian \u2014 French'), findsOneWidget);
       expect(
           find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
+    });
+  });
+
+  group('DrillScreen — narrow layout', () {
+    testWidgets('renders board and status in column layout at narrow width',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        viewportSize: const Size(400, 800),
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Board and status text should render without error
+      expect(find.byType(ChessboardWidget), findsOneWidget);
+      expect(find.text('Your turn'), findsOneWidget);
+
+      // Narrow layout uses Column, not a Row containing both board and status.
+      // Verify no LayoutBuilder is used (wide path wraps in LayoutBuilder).
+      // The scaffold body should not contain a LayoutBuilder in narrow mode
+      // (LayoutBuilder is only used in the wide path).
+      final boardWidget = find.byType(ChessboardWidget);
+      final boardElement = tester.element(boardWidget);
+      final ancestor = boardElement.findAncestorWidgetOfExactType<LayoutBuilder>();
+      expect(ancestor, isNull,
+          reason: 'Narrow layout should not wrap board in LayoutBuilder');
+    });
+
+    testWidgets('line label appears above board in narrow layout',
+        (tester) async {
+      final line = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3],
+        line[4],
+        line[5],
+        line[6],
+        line[7],
+        line[8],
+      ];
+      final card = buildReviewCard(labeledLine);
+      final repertoireRepo = FakeRepertoireRepository(moves: labeledLine);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        viewportSize: const Size(400, 800),
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
+      expect(find.text('Sicilian'), findsOneWidget);
+    });
+
+    testWidgets('skip button works in narrow layout', (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        viewportSize: const Size(400, 800),
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Tap the skip button
+      await tester.tap(find.byIcon(Icons.skip_next));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should show session complete
+      expect(find.text('Session Complete'), findsNWidgets(2));
+      expect(find.text('0 cards reviewed'), findsOneWidget);
+      expect(find.text('1 cards skipped'), findsOneWidget);
+    });
+
+    testWidgets('filter box renders in narrow layout (free practice)',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+        viewportSize: const Size(400, 800),
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(
+          find.byKey(const ValueKey('drill-filter-box')), findsOneWidget);
+    });
+  });
+
+  group('DrillScreen — wide layout', () {
+    testWidgets('renders board and status side by side in wide layout',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        viewportSize: const Size(900, 600),
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Board and status text should render without error
+      expect(find.byType(ChessboardWidget), findsOneWidget);
+      expect(find.text('Your turn'), findsOneWidget);
+
+      // Wide layout uses LayoutBuilder wrapping a Row.
+      // Verify the board is inside a LayoutBuilder (wide path).
+      final boardWidget = find.byType(ChessboardWidget);
+      final boardElement = tester.element(boardWidget);
+      final ancestor =
+          boardElement.findAncestorWidgetOfExactType<LayoutBuilder>();
+      expect(ancestor, isNotNull,
+          reason: 'Wide layout should wrap board in LayoutBuilder');
+    });
+
+    testWidgets('line label appears in side panel in wide layout',
+        (tester) async {
+      final line = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3],
+        line[4],
+        line[5],
+        line[6],
+        line[7],
+        line[8],
+      ];
+      final card = buildReviewCard(labeledLine);
+      final repertoireRepo = FakeRepertoireRepository(moves: labeledLine);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        viewportSize: const Size(900, 600),
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
+      expect(find.text('Sicilian'), findsOneWidget);
+    });
+
+    testWidgets('filter box renders in wide side panel (free practice)',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+        viewportSize: const Size(900, 600),
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(
+          find.byKey(const ValueKey('drill-filter-box')), findsOneWidget);
     });
   });
 }
