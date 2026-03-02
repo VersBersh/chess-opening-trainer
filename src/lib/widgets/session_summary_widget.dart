@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/session_summary.dart';
+import '../services/format_utils.dart';
 import '../theme/drill_feedback_theme.dart';
 
 // ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ class SessionSummaryWidget extends StatelessWidget {
                 ],
                 const SizedBox(height: 8),
                 Text(
-                  _formatDuration(summary.sessionDuration),
+                  formatDuration(summary.sessionDuration),
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 if (summary.completedCards > 0) ...[
@@ -85,7 +86,7 @@ class SessionSummaryWidget extends StatelessWidget {
                 if (!summary.isFreePractice && summary.earliestNextDue != null) ...[
                   const SizedBox(height: 24),
                   Text(
-                    'Next review: ${_formatNextDue(summary.earliestNextDue!)}',
+                    'Next review: ${formatNextDue(summary.earliestNextDue!)}',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ],
@@ -103,15 +104,6 @@ class SessionSummaryWidget extends StatelessWidget {
   }
 
   // ---- Private helpers -----------------------------------------------------
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    if (minutes > 0) {
-      return '${minutes}m ${seconds}s';
-    }
-    return '${seconds}s';
-  }
 
   Widget _buildBreakdownRow(
       BuildContext context, String label, int count, Color color) {
@@ -136,20 +128,4 @@ class SessionSummaryWidget extends StatelessWidget {
     );
   }
 
-  String _formatNextDue(DateTime nextDue) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final dueDay = DateTime(nextDue.year, nextDue.month, nextDue.day);
-    final difference = dueDay.difference(today).inDays;
-
-    if (difference <= 0) {
-      return 'Today';
-    } else if (difference == 1) {
-      return 'Tomorrow';
-    } else if (difference <= 30) {
-      return 'In $difference days';
-    } else {
-      return '${nextDue.year}-${nextDue.month.toString().padLeft(2, '0')}-${nextDue.day.toString().padLeft(2, '0')}';
-    }
-  }
 }
