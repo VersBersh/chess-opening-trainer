@@ -28,11 +28,13 @@ class DrillCardStart extends DrillScreenState {
   final int currentCardNumber; // 1-based
   final int totalCards;
   final Side userColor;
+  final String lineLabel;
 
   const DrillCardStart({
     required this.currentCardNumber,
     required this.totalCards,
     required this.userColor,
+    required this.lineLabel,
   });
 }
 
@@ -40,11 +42,13 @@ class DrillUserTurn extends DrillScreenState {
   final int currentCardNumber;
   final int totalCards;
   final Side userColor;
+  final String lineLabel;
 
   const DrillUserTurn({
     required this.currentCardNumber,
     required this.totalCards,
     required this.userColor,
+    required this.lineLabel,
   });
 }
 
@@ -52,6 +56,7 @@ class DrillMistakeFeedback extends DrillScreenState {
   final int currentCardNumber;
   final int totalCards;
   final Side userColor;
+  final String lineLabel;
   final bool isSiblingCorrection; // true = arrow only, false = X + arrow
   final NormalMove expectedMove; // for drawing the correction arrow
   final Square? wrongMoveDestination; // for X icon position (null if sibling)
@@ -60,6 +65,7 @@ class DrillMistakeFeedback extends DrillScreenState {
     required this.currentCardNumber,
     required this.totalCards,
     required this.userColor,
+    required this.lineLabel,
     required this.isSiblingCorrection,
     required this.expectedMove,
     this.wrongMoveDestination,
@@ -122,6 +128,7 @@ class DrillController
   String _preMoveFen = '';
   bool _isDisposed = false;
   int _cardGeneration = 0; // incremented on each card start/skip to cancel stale async ops
+  String _currentLineLabel = '';
 
   @override
   Future<DrillScreenState> build(int arg) async {
@@ -171,6 +178,7 @@ class DrillController
     // via the state setter as intro moves are played.
     _sessionStartTime = DateTime.now();
     _engine.startCard();
+    _currentLineLabel = _engine.getLineLabelName();
     boardController.resetToInitial();
     _cardGeneration++;
 
@@ -178,6 +186,7 @@ class DrillController
       currentCardNumber: _engine.currentIndex + 1,
       totalCards: _engine.totalCards,
       userColor: _engine.userColor,
+      lineLabel: _currentLineLabel,
     );
 
     // Fire-and-forget: intro plays asynchronously, updating state as it goes.
@@ -190,6 +199,7 @@ class DrillController
 
   Future<void> _startNextCard() async {
     _engine.startCard();
+    _currentLineLabel = _engine.getLineLabelName();
 
     boardController.resetToInitial();
     _cardGeneration++;
@@ -199,6 +209,7 @@ class DrillController
       currentCardNumber: _engine.currentIndex + 1,
       totalCards: _engine.totalCards,
       userColor: _engine.userColor,
+      lineLabel: _currentLineLabel,
     ));
 
     // Don't await -- let intro play asynchronously while UI shows CardStart.
@@ -232,6 +243,7 @@ class DrillController
       currentCardNumber: _engine.currentIndex + 1,
       totalCards: _engine.totalCards,
       userColor: _engine.userColor,
+      lineLabel: _currentLineLabel,
     ));
   }
 
@@ -265,6 +277,7 @@ class DrillController
             currentCardNumber: _engine.currentIndex + 1,
             totalCards: _engine.totalCards,
             userColor: _engine.userColor,
+            lineLabel: _currentLineLabel,
           ));
         }
 
@@ -275,6 +288,7 @@ class DrillController
             currentCardNumber: _engine.currentIndex + 1,
             totalCards: _engine.totalCards,
             userColor: _engine.userColor,
+            lineLabel: _currentLineLabel,
             isSiblingCorrection: false,
             expectedMove: expectedMove,
             wrongMoveDestination: move.to,
@@ -289,6 +303,7 @@ class DrillController
             currentCardNumber: _engine.currentIndex + 1,
             totalCards: _engine.totalCards,
             userColor: _engine.userColor,
+            lineLabel: _currentLineLabel,
             isSiblingCorrection: true,
             expectedMove: expectedMove,
           ));
@@ -310,6 +325,7 @@ class DrillController
       currentCardNumber: _engine.currentIndex + 1,
       totalCards: _engine.totalCards,
       userColor: _engine.userColor,
+      lineLabel: _currentLineLabel,
     ));
   }
 
@@ -428,6 +444,7 @@ class DrillScreen extends ConsumerWidget {
           drillState: drillState,
           title: 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
           userColor: drillState.userColor,
+          lineLabel: drillState.lineLabel,
           playerSide: PlayerSide.none,
           showSkip: true,
         );
@@ -439,6 +456,7 @@ class DrillScreen extends ConsumerWidget {
           drillState: drillState,
           title: 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
           userColor: drillState.userColor,
+          lineLabel: drillState.lineLabel,
           playerSide: drillState.userColor == Side.white
               ? PlayerSide.white
               : PlayerSide.black,
@@ -452,6 +470,7 @@ class DrillScreen extends ConsumerWidget {
           drillState: drillState,
           title: 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
           userColor: drillState.userColor,
+          lineLabel: drillState.lineLabel,
           playerSide: PlayerSide.none,
           showSkip: true,
           shapes: _buildFeedbackShapes(drillState),
@@ -468,6 +487,7 @@ class DrillScreen extends ConsumerWidget {
     required Side userColor,
     required PlayerSide playerSide,
     required bool showSkip,
+    required String lineLabel,
     ISet<Shape>? shapes,
     IMap<Square, Annotation>? annotations,
   }) {
@@ -488,6 +508,21 @@ class DrillScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
+          if (lineLabel.isNotEmpty)
+            Container(
+              key: const ValueKey('drill-line-label'),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: Text(
+                lineLabel,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           Expanded(
             child: ChessboardWidget(
               controller: notifier.boardController,

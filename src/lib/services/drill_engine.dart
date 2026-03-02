@@ -98,6 +98,21 @@ class DrillEngine {
 
   // ---- Public methods -----------------------------------------------------
 
+  /// Returns the aggregate display name for the deepest labeled position
+  /// along the current card's line, or an empty string if no labels exist.
+  String getLineLabelName() {
+    final state = _currentCardState;
+    if (state == null) return '';
+
+    // Walk the line in reverse to find the deepest labeled move
+    for (var i = state.lineMoves.length - 1; i >= 0; i--) {
+      if (state.lineMoves[i].label != null) {
+        return _treeCache.getAggregateDisplayName(state.lineMoves[i].id);
+      }
+    }
+    return '';
+  }
+
   /// Initializes the next card in the session and returns its state.
   ///
   /// Must be called once per card before [submitMove] or [completeCard].

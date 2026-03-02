@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dartchess/dartchess.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -816,6 +817,217 @@ void main() {
       expect(find.text('Failed'), findsNothing);
       // No next review date since no cards were completed
       expect(find.textContaining('Next review:'), findsNothing);
+    });
+  });
+
+  group('DrillScreen — line label display', () {
+    testWidgets('shows label above board when line has labels',
+        (tester) async {
+      final line = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3],
+        line[4],
+        line[5],
+        line[6],
+        line[7],
+        line[8],
+      ];
+      final card = buildReviewCard(labeledLine);
+      final repertoireRepo = FakeRepertoireRepository(moves: labeledLine);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(find.text('Sicilian'), findsOneWidget);
+    });
+
+    testWidgets('label is hidden when line has no labels', (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(find.byKey(const ValueKey('drill-line-label')), findsNothing);
+    });
+
+    testWidgets(
+        'label persists through user turn and mistake feedback states',
+        (tester) async {
+      final line = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3],
+        line[4],
+        line[5],
+        line[6],
+        line[7],
+        line[8],
+      ];
+      final card = buildReviewCard(labeledLine);
+      final repertoireRepo = FakeRepertoireRepository(moves: labeledLine);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // After intro, should be in DrillUserTurn -- label still visible
+      expect(find.text('Sicilian'), findsOneWidget);
+
+      // Play a wrong move to trigger DrillMistakeFeedback
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(1).notifier);
+
+      final pos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final wrongMove = pos.parseSan('Bc4')! as NormalMove;
+      notifier.boardController.playMove(wrongMove);
+      unawaited(notifier.processUserMove(wrongMove));
+      await tester.pump();
+
+      // In DrillMistakeFeedback state -- label still visible
+      expect(find.text('Sicilian'), findsOneWidget);
+
+      // Drain the pending 1500ms revert timer
+      await tester.pump(const Duration(milliseconds: 2000));
+      await tester.pump();
+    });
+
+    testWidgets('aggregate label format (multiple labels)', (tester) async {
+      final line = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3].copyWith(label: const Value('Najdorf')),
+        line[4],
+        line[5],
+        line[6],
+        line[7],
+        line[8],
+      ];
+      final card = buildReviewCard(labeledLine);
+      final repertoireRepo = FakeRepertoireRepository(moves: labeledLine);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(find.text('Sicilian \u2014 Najdorf'), findsOneWidget);
+    });
+
+    testWidgets('label updates when advancing to next card', (tester) async {
+      // Card 1: line with label "Sicilian" (ids 1-9)
+      final line1 = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine1 = [
+        line1[0],
+        line1[1].copyWith(label: const Value('Sicilian')),
+        line1[2],
+        line1[3],
+        line1[4],
+        line1[5],
+        line1[6],
+        line1[7],
+        line1[8],
+      ];
+
+      // Card 2: branch diverging after Ba4 (id 7) with label "French"
+      Position pos = Chess.initial;
+      for (final san in ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4']) {
+        pos = pos.play(pos.parseSan(san)!);
+      }
+      final posAfterB5 = pos.play(pos.parseSan('b5')!);
+      final posAfterBb3 = posAfterB5.play(posAfterB5.parseSan('Bb3')!);
+
+      final b5Move = RepertoireMove(
+        id: 50,
+        repertoireId: 1,
+        parentMoveId: 7, // Ba4
+        fen: posAfterB5.fen,
+        san: 'b5',
+        sortOrder: 1,
+        label: 'French',
+      );
+      final bb3Move = RepertoireMove(
+        id: 51,
+        repertoireId: 1,
+        parentMoveId: 50,
+        fen: posAfterBb3.fen,
+        san: 'Bb3',
+        sortOrder: 0,
+      );
+
+      final line2 = [...labeledLine1.sublist(0, 7), b5Move, bb3Move];
+      final allMoves = [...labeledLine1, b5Move, bb3Move];
+
+      final card1 = buildReviewCard(labeledLine1, cardId: 1);
+      final card2 = buildReviewCard(line2, cardId: 2);
+
+      final repertoireRepo = FakeRepertoireRepository(moves: allMoves);
+      final reviewRepo = FakeReviewRepository(dueCards: [card1, card2]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Card 1 should show "Sicilian"
+      expect(find.text('Sicilian'), findsOneWidget);
+
+      // Complete card 1 by playing correct moves
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(1).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Card 2 should show "Sicilian — French" (aggregate from root to deepest label)
+      expect(find.text('Sicilian \u2014 French'), findsOneWidget);
+      // Card 1's label alone should no longer be on screen
+      expect(find.text('Sicilian'), findsNothing);
     });
   });
 }

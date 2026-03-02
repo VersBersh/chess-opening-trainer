@@ -1,4 +1,5 @@
 import 'package:dartchess/dartchess.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:chess_trainer/models/repertoire.dart';
@@ -706,6 +707,65 @@ void main() {
       expect(result2!.quality, 5);
 
       expect(engine.isSessionComplete, true);
+    });
+  });
+
+  group('getLineLabelName', () {
+    test('line with no labels returns empty string', () {
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+      final engine = buildEngine(line, line);
+      engine.startCard();
+
+      expect(engine.getLineLabelName(), '');
+    });
+
+    test('line with a single label returns that label', () {
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3],
+        line[4],
+      ];
+      final engine = buildEngine(labeledLine, labeledLine);
+      engine.startCard();
+
+      expect(engine.getLineLabelName(), 'Sicilian');
+    });
+
+    test('line with multiple labels returns aggregate of root-to-deepest', () {
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3].copyWith(label: const Value('Najdorf')),
+        line[4],
+      ];
+      final engine = buildEngine(labeledLine, labeledLine);
+      engine.startCard();
+
+      expect(engine.getLineLabelName(), 'Sicilian \u2014 Najdorf');
+    });
+
+    test('uses deepest label, not leaf', () {
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+      // Label only on the intermediate move (index 1), not on the leaf (index 4)
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Open Game')),
+        line[2],
+        line[3],
+        line[4],
+      ];
+      final engine = buildEngine(labeledLine, labeledLine);
+      engine.startCard();
+
+      // Aggregate display name is computed for the labeled move's position,
+      // not the leaf. Since only move at index 1 has a label, result is just
+      // that label.
+      expect(engine.getLineLabelName(), 'Open Game');
     });
   });
 }
