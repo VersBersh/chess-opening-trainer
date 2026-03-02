@@ -1,6 +1,8 @@
-# Focus Mode
+# Focus Mode (ARCHIVED)
 
-Focus mode is a filtered drill session scoped to a specific labeled position or subtree in the repertoire. Instead of reviewing all due cards, the user selects a variation (e.g., a node labeled "Najdorf" under "Sicilian") and only drills cards from that subtree.
+> **This feature has been replaced by [Free Practice](free-practice.md).** Free Practice covers the same use case (label-filtered, SR-exempt drilling) with a simpler design. This file is retained for reference — particularly the cram detection design discussion below — but is no longer an active spec.
+
+Focus mode was a filtered drill session scoped to a specific labeled position or subtree in the repertoire. Instead of reviewing all due cards, the user selected a variation (e.g., a node labeled "Najdorf" under "Sicilian") and only drilled cards from that subtree.
 
 ## Domain Models
 

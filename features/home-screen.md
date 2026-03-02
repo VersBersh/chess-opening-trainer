@@ -49,6 +49,15 @@ Each repertoire list item includes a drill button. Tapping it enters drill mode 
 - If the repertoire has due cards, drill mode opens immediately with those cards queued.
 - If the repertoire has no due cards, the button is still visible but visually muted (e.g., grayed out or showing "0 due"). Tapping it shows a brief message: "No cards due for review. Come back later!" The user is not navigated to an empty drill screen.
 
+### Per-Repertoire Free Practice Button
+
+Each repertoire list item also includes a **"Free Practice"** button. Tapping it enters free practice mode for that repertoire.
+
+- Free Practice is **always available** as long as the repertoire has cards (regardless of due status).
+- If the repertoire has no cards at all, the button is visually muted.
+- On tap, the user is taken to a label selection screen (search box with autocomplete) where they can optionally scope the session to specific variations, or start immediately with all cards.
+- See [free-practice.md](free-practice.md) for full details.
+
 ### Global Drill Entry (Deferred)
 
 A "Drill all" button that combines due cards from all repertoires into a single session is a natural extension but raises questions about cross-repertoire queue ordering and session scope. This is deferred — the per-repertoire drill button is sufficient for v1.
@@ -62,6 +71,14 @@ Tapping a repertoire's name or body (not the drill button) navigates to the repe
 ### Drill Mode
 
 The per-repertoire drill button navigates to drill mode. See [drill-mode.md](drill-mode.md).
+
+### Free Practice
+
+The per-repertoire free practice button navigates to free practice mode. See [free-practice.md](free-practice.md).
+
+### Add Line
+
+A per-repertoire "Add Line" action navigates to the Add Line screen for that repertoire. See [add-line.md](add-line.md).
 
 ### PGN Import (Phase 3)
 

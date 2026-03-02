@@ -1,6 +1,8 @@
-# Repertoire Browser
+# Repertoire Manager
 
-The repertoire browser is the read/navigate interface for the move tree. It lets the user explore, view, and navigate an existing repertoire. The browser is also the entry point for focus mode and line editing.
+The repertoire manager is the read/navigate/manage interface for the move tree. It lets the user explore, view, and navigate an existing repertoire, and perform management operations such as deleting branches and editing labels.
+
+Line entry (adding new lines) is handled by the separate [Add Line](add-line.md) screen. Free practice (formerly Focus Mode) is accessed from the home screen — see [free-practice.md](free-practice.md).
 
 **Phase:** 3 (Repertoire Management)
 
@@ -69,23 +71,16 @@ A chessboard widget shows the position at the currently selected node.
 
 ### Board Interaction
 
-The board is **read-only** in browse mode. The user cannot play moves on the board while browsing. To add moves, the user must explicitly enter line-entry mode (see Actions below). This prevents accidental line creation.
+The board is **read-only** in the repertoire manager. The user cannot play moves on the board while browsing. To add moves, the user navigates to the [Add Line](add-line.md) screen. This prevents accidental line creation.
 
 ## Actions from Browser
 
 From a selected node, the user can perform several actions via a context menu or action bar:
 
-### Enter Focus Mode
-
-- Available when the selected node has a label.
-- Enters focus mode scoped to the subtree rooted at this node.
-- See [focus-mode.md](focus-mode.md) for details.
-
 ### Add a Line
 
-- Transitions to line-entry mode from the selected node's position.
-- The board becomes interactive. The user plays moves to extend the repertoire from this point.
-- Uses the same mechanics as [line-management.md](line-management.md), starting from the selected position rather than the initial position.
+- Navigates to the **Add Line** screen, starting from the selected node's position.
+- See [add-line.md](add-line.md) for details.
 
 ### Delete a Leaf
 
@@ -147,8 +142,8 @@ Due-card counts for subtrees (e.g., "12 due" next to a labeled node) require a c
 ## Dependencies
 
 - **Repository layer:** Uses `getMovesForRepertoire` (via `RepertoireTreeCache`), `getCardsForSubtree`, and individual move/card CRUD methods.
-- **Line management:** The browser is the navigation layer that line management builds on top of. Add-line and delete-leaf actions transition to line management.
-- **Focus mode:** The browser is one of the entry points for focus mode.
+- **Line management:** The manager uses line management for delete-leaf and delete-branch operations. Adding lines is handled by the separate Add Line screen.
+- **Add Line screen:** The manager can navigate to the Add Line screen to start entry from a selected position. See [add-line.md](add-line.md).
 - **`move_tree_widget.dart`:** Listed in the project structure but has no spec. The tree visualization described here is the spec for that widget.
 
 ## Key Decisions

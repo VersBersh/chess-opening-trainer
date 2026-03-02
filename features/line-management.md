@@ -47,22 +47,14 @@ The user doesn't have to start from the initial position every time. When enteri
 
 This means entering a second Sicilian variation doesn't require replaying 1. e4 c5 — the user navigates to that position and branches from there.
 
-## Browse / Edit Mode
+## Screen Separation
 
-The repertoire screen has two modes, toggled via an explicit button:
+Line entry and repertoire browsing are handled by separate screens:
 
-### Browse Mode (Default)
+- **Add Line screen** — dedicated to building new lines on the board. Always in entry mode. See [add-line.md](add-line.md).
+- **Repertoire Manager** — dedicated to browsing and managing existing lines (delete, label edit, view stats). The board is read-only. See [repertoire-browser.md](repertoire-browser.md).
 
-- The user can navigate the repertoire tree, view lines, and label positions.
-- Playing a move at a leaf node does **nothing** — the move is ignored. This prevents accidental line extension.
-- All read-only operations (viewing, naming, deleting) are available.
-
-### Edit Mode
-
-- Entered via an explicit "Edit" button.
-- Only in edit mode can the user append moves to a leaf node to extend a line or enter new moves.
-- Line entry (including the in-memory buffer, take-back, and confirm flow) is only active in edit mode.
-- Exiting edit mode without confirming discards the buffer.
+There is no Browse/Edit mode toggle. The Add Line screen is always in entry mode; the Repertoire Manager is always in browse/manage mode.
 
 ## Labeling Positions
 

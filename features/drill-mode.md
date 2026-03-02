@@ -22,10 +22,19 @@ The board orientation is determined by the card's **derived color**: the leaf mo
 
 The board flips between cards if consecutive cards have different colors (e.g., drilling a white line followed by a black line).
 
+## Line Label Display
+
+When a new card begins, the **most specific label** from the card's line is displayed **above the board** (e.g., "Sicilian — Najdorf"). This gives the user context about which variation they're being tested on, reducing ambiguity — especially when intro moves alone don't make the line obvious.
+
+- The label shown is the **deepest labeled position** along the card's line (i.e., the most specific variation name). The full aggregate display name (root-to-deepest-label) is shown.
+- If the line has no labels at all, no label is shown (the header area can be blank or show a generic fallback like the repertoire name).
+- The label updates each time a new card begins.
+
 ## Starting a Card
 
 1. The board resets to the **initial chess position**, oriented per the card's derived color (see Board Orientation above).
-2. The engine auto-plays **intro moves** to set the context for the line being drilled.
+2. The line label is displayed above the board (see Line Label Display above).
+3. The engine auto-plays **intro moves** to set the context for the line being drilled.
 
 ### Intro Move Logic
 
