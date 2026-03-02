@@ -26,7 +26,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
+#ifdef _DEBUG
+  // Pixel 5 logical resolution for mobile layout preview during development.
+  // The window is still resizable — this is just the default size.
+  Win32Window::Size size(393, 851);
+#else
   Win32Window::Size size(1280, 720);
+#endif
   if (!window.Create(L"chess_trainer", origin, size)) {
     return EXIT_FAILURE;
   }
