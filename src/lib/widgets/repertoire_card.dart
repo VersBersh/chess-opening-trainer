@@ -75,9 +75,8 @@ class RepertoireCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             // Action row
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 FilledButton.icon(
                   onPressed: () {
@@ -92,23 +91,31 @@ class RepertoireCard extends StatelessWidget {
                       );
                     }
                   },
-                  style: hasDueCards
-                      ? null
-                      : FilledButton.styleFrom(
-                          backgroundColor: theme
-                              .colorScheme.primary
-                              .withValues(alpha: 0.38),
-                        ),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                    backgroundColor: hasDueCards
+                        ? null
+                        : theme.colorScheme.primary
+                            .withValues(alpha: 0.38),
+                  ),
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Start Drill'),
                 ),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
                   onPressed: hasCards ? onFreePractice : null,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
                   icon: const Icon(Icons.fitness_center),
                   label: const Text('Free Practice'),
                 ),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
                   onPressed: onAddLine,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
                   icon: const Icon(Icons.add),
                   label: const Text('Add Line'),
                 ),

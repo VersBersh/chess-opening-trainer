@@ -30,10 +30,16 @@ class HomeEmptyState extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 32),
-          FilledButton.icon(
-            onPressed: onCreateFirstRepertoire,
-            icon: const Icon(Icons.add),
-            label: const Text('Create your first repertoire'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: FilledButton.icon(
+              onPressed: onCreateFirstRepertoire,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Create your first repertoire'),
+            ),
           ),
         ],
       ),
