@@ -173,6 +173,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
         result.insertedMoveIds,
         result.oldCard!,
       );
+    } else if (!result.isExtension && result.insertedMoveIds.isNotEmpty) {
+      _showNewLineUndoSnackbar(result.insertedMoveIds);
     }
   }
 
@@ -199,6 +201,35 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
             );
             if (mounted) {
               // Reset board after undo + loadData.
+              final fen = _controller.state.currentFen;
+              if (fen == kInitialFEN) {
+                _boardController.resetToInitial();
+              } else {
+                _boardController.setPosition(fen);
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showNewLineUndoSnackbar(List<int> insertedMoveIds) {
+    final capturedGeneration = _controller.undoGeneration;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Line saved'),
+        duration: const Duration(seconds: 8),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            await _controller.undoNewLine(
+              capturedGeneration,
+              insertedMoveIds,
+            );
+            if (mounted) {
               final fen = _controller.state.currentFen;
               if (fen == kInitialFEN) {
                 _boardController.resetToInitial();

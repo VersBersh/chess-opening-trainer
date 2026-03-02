@@ -824,6 +824,118 @@ void main() {
     });
   });
 
+  group('undoNewLine', () {
+    test('removes inserted moves after new-line confirm', () async {
+      // Seed an empty repertoire, play e4, e5 (2-ply, even), flip, confirm.
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5.
+      final moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Flip board for parity (2-ply = even = black expected).
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+      final success = result as ConfirmSuccess;
+      expect(success.isExtension, false);
+      expect(success.insertedMoveIds.length, 2);
+
+      // Capture generation before undo.
+      final gen = controller.undoGeneration;
+
+      // Verify DB state: 2 moves, 1 card.
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      var allMoves = await repRepo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 2);
+      var cards = await reviewRepo.getAllCardsForRepertoire(repId);
+      expect(cards.length, 1);
+
+      // Undo.
+      await controller.undoNewLine(gen, success.insertedMoveIds);
+
+      // Verify DB state: 0 moves, 0 cards.
+      allMoves = await repRepo.getMovesForRepertoire(repId);
+      expect(allMoves, isEmpty);
+      cards = await reviewRepo.getAllCardsForRepertoire(repId);
+      expect(cards, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('is a no-op when generation does not match', () async {
+      // Seed empty repertoire, play e4, e5, flip, confirm first line.
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5 for the first line.
+      var moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      controller.flipBoard();
+
+      final result1 = await controller.confirmAndPersist();
+      expect(result1, isA<ConfirmSuccess>());
+      final success1 = result1 as ConfirmSuccess;
+      final gen1 = controller.undoGeneration;
+
+      // Confirm a second line (d4, d5) to increment generation.
+      // Flip back to white first since confirmAndPersist calls loadData.
+      controller.flipBoard();
+
+      moves = ['d4', 'd5'];
+      currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Flip for parity (even ply -> black).
+      controller.flipBoard();
+
+      final result2 = await controller.confirmAndPersist();
+      expect(result2, isA<ConfirmSuccess>());
+
+      // Now try to undo the first line with gen1 -- should be a no-op.
+      await controller.undoNewLine(gen1, success1.insertedMoveIds);
+
+      // Verify both lines still exist (4 moves, 2 cards).
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 4);
+      final cards = await reviewRepo.getAllCardsForRepertoire(repId);
+      expect(cards.length, 2);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
   group('canBranchFromFocusedPill', () {
     test('returns false when no pill is focused', () async {
       final repId = await seedRepertoire(db);

@@ -578,6 +578,18 @@ class AddLineController extends ChangeNotifier {
     await loadData();
   }
 
+  // ---- Undo new line -------------------------------------------------------
+
+  /// Undoes a new-line confirm if the undo generation matches.
+  Future<void> undoNewLine(
+    int capturedGeneration,
+    List<int> insertedMoveIds,
+  ) async {
+    if (capturedGeneration != _undoGeneration) return;
+    await _repertoireRepo.undoNewLine(insertedMoveIds);
+    await loadData();
+  }
+
   // ---- Label editing ------------------------------------------------------
 
   /// Updates the label on the move at the given pill index.

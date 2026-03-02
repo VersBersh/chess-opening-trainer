@@ -159,6 +159,9 @@ class SpyRepertoireRepository implements RepertoireRepository {
           int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) =>
       _delegate.undoExtendLine(oldLeafMoveId, insertedMoveIds, oldCard);
   @override
+  Future<void> undoNewLine(List<int> insertedMoveIds) =>
+      _delegate.undoNewLine(insertedMoveIds);
+  @override
   Future<int> countLeavesInSubtree(int moveId) =>
       _delegate.countLeavesInSubtree(moveId);
   @override

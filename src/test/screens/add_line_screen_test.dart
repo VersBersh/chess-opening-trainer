@@ -203,6 +203,41 @@ Future<({AddLineController controller, ChessboardController testBoard, int repId
   return (controller: controller, testBoard: testBoard, repId: repId);
 }
 
+/// Pumps AddLineScreen from initial position with an empty repertoire, plays
+/// the move `e4` (1-ply, odd, matches default white orientation), and returns
+/// the pieces needed for snackbar assertions. After calling this, the Confirm
+/// button is enabled.
+Future<({AddLineController controller, ChessboardController testBoard, int repId})>
+    pumpWithNewLine(WidgetTester tester, AppDatabase db) async {
+  final repId = await seedRepertoire(db);
+
+  final repRepo = LocalRepertoireRepository(db);
+  final reviewRepo = LocalReviewRepository(db);
+  final controller = AddLineController(repRepo, reviewRepo, repId);
+
+  await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+  await tester.pumpAndSettle(); // completes loadData()
+
+  // Play e4 using a test-local board controller.
+  final testBoard = ChessboardController();
+  final e4NormalMove = sanToNormalMove(kInitialFEN, 'e4');
+  testBoard.playMove(e4NormalMove);
+  controller.onBoardMove(e4NormalMove, testBoard);
+
+  // No flip needed: 1-ply (odd) matches default white orientation.
+
+  // Register teardown so callers don't need to remember disposal.
+  addTearDown(() {
+    controller.dispose();
+    testBoard.dispose();
+  });
+
+  // Rebuild widget with updated controller state.
+  await tester.pump();
+
+  return (controller: controller, testBoard: testBoard, repId: repId);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1151,6 +1186,86 @@ void main() {
       final moves = await repRepo.getMovesForRepertoire(repId);
       final e4Move = moves.firstWhere((m) => m.san == 'e4');
       expect(e4Move.label, 'Sicilian');
+    });
+
+    testWidgets('new-line undo snackbar appears after confirming a new line',
+        (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Snackbar should appear with "Line saved" and "Undo".
+      expect(find.text('Line saved'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+    });
+
+    testWidgets(
+        'undo action on new-line snackbar rolls back the new line',
+        (tester) async {
+      final result = await pumpWithNewLine(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Snackbar should appear.
+      expect(find.text('Line saved'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+
+      // Verify DB state after confirm: e4 move + card.
+      final reviewRepo = LocalReviewRepository(db);
+      final repRepo = LocalRepertoireRepository(db);
+      var moves = await repRepo.getMovesForRepertoire(result.repId);
+      expect(moves.length, 1);
+      expect(moves.first.san, 'e4');
+      var cards = await reviewRepo.getAllCardsForRepertoire(result.repId);
+      expect(cards.length, 1);
+
+      // Tap Undo on the snackbar.
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      // Verify DB state after undo: no moves, no cards.
+      moves = await repRepo.getMovesForRepertoire(result.repId);
+      expect(moves, isEmpty);
+      cards = await reviewRepo.getAllCardsForRepertoire(result.repId);
+      expect(cards, isEmpty);
+    });
+
+    testWidgets('new-line persists after snackbar dismissed without undo',
+        (tester) async {
+      final result = await pumpWithNewLine(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Snackbar should appear with 8-second auto-dismiss duration.
+      expect(find.text('Line saved'), findsOneWidget);
+      final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(snackBar.duration, const Duration(seconds: 8));
+
+      // Dismiss the snackbar without tapping Undo.
+      final scaffoldContext =
+          tester.element(find.byType(AddLineScreen));
+      ScaffoldMessenger.of(scaffoldContext).hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+
+      // Snackbar should be gone.
+      expect(find.text('Line saved'), findsNothing);
+
+      // Verify new line persists: e4 move + card.
+      final reviewRepo = LocalReviewRepository(db);
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(result.repId);
+      expect(moves.length, 1);
+      expect(moves.first.san, 'e4');
+
+      final cards = await reviewRepo.getAllCardsForRepertoire(result.repId);
+      expect(cards.length, 1);
+      expect(cards.first.leafMoveId, moves.first.id);
     });
   });
 }

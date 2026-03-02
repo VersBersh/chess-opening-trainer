@@ -25,6 +25,7 @@ abstract class RepertoireRepository {
       int oldLeafMoveId, List<RepertoireMovesCompanion> newMoves);
   Future<void> undoExtendLine(
       int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard);
+  Future<void> undoNewLine(List<int> insertedMoveIds);
   Future<int> countLeavesInSubtree(int moveId);
   Future<List<RepertoireMove>> getOrphanedLeaves(int repertoireId);
   Future<void> pruneOrphans(int repertoireId);

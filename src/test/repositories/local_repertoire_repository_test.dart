@@ -316,6 +316,134 @@ void main() {
       );
     });
 
+  });
+
+  group('undoNewLine', () {
+    test('deletes inserted moves and card', () async {
+      // Seed: 1. e4 (leaf = e4, card on e4)
+      final (repId, e4Id, _) = await seedLineWithCard(db, ['e4']);
+
+      // Manually insert a branch: d4, d5 as root moves (new line from root).
+      Position pos = Chess.initial;
+      final posAfterD4 = pos.play(pos.parseSan('d4')!);
+      final posAfterD5 = posAfterD4.play(posAfterD4.parseSan('d5')!);
+
+      final d4Id = await db.into(db.repertoireMoves).insert(
+            RepertoireMovesCompanion.insert(
+              repertoireId: repId,
+              fen: posAfterD4.fen,
+              san: 'd4',
+              sortOrder: 1,
+            ),
+          );
+      final d5Id = await db.into(db.repertoireMoves).insert(
+            RepertoireMovesCompanion.insert(
+              repertoireId: repId,
+              parentMoveId: Value(d4Id),
+              fen: posAfterD5.fen,
+              san: 'd5',
+              sortOrder: 0,
+            ),
+          );
+
+      // Create a card for the d5 leaf.
+      await db.into(db.reviewCards).insert(
+            ReviewCardsCompanion.insert(
+              repertoireId: repId,
+              leafMoveId: d5Id,
+              nextReviewDate: DateTime(2026, 6, 15),
+            ),
+          );
+
+      // Verify both moves and card exist before undo.
+      var allMoves = await repo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 3); // e4, d4, d5
+      var d5Card = await reviewRepo.getCardForLeaf(d5Id);
+      expect(d5Card, isNotNull);
+
+      // Undo the new line.
+      await repo.undoNewLine([d4Id, d5Id]);
+
+      // d4 and d5 should be gone (CASCADE).
+      allMoves = await repo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 1);
+      expect(allMoves.first.san, 'e4');
+
+      // Card for d5 should be gone (CASCADE).
+      d5Card = await reviewRepo.getCardForLeaf(d5Id);
+      expect(d5Card, isNull);
+
+      // Original e4 card should still exist.
+      final e4Card = await reviewRepo.getCardForLeaf(e4Id);
+      expect(e4Card, isNotNull);
+    });
+
+    test('with empty list is a no-op', () async {
+      final (repId, e4Id, _) = await seedLineWithCard(db, ['e4']);
+
+      // Call undoNewLine with empty list -- should not crash or change data.
+      await repo.undoNewLine([]);
+
+      final allMoves = await repo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 1);
+      final card = await reviewRepo.getCardForLeaf(e4Id);
+      expect(card, isNotNull);
+    });
+
+    test('does not affect sibling branches', () async {
+      // Seed: 1. e4 e5 (leaf = e5, card on e5)
+      final (repId, _, _) = await seedLineWithCard(db, ['e4', 'e5']);
+
+      // Get the e4 move ID.
+      final allMoves = await repo.getMovesForRepertoire(repId);
+      final e4Move = allMoves.firstWhere((m) => m.san == 'e4');
+      final e5Move = allMoves.firstWhere((m) => m.san == 'e5');
+
+      // Add a sibling branch: e4 -> d5
+      Position pos = Chess.initial;
+      pos = pos.play(pos.parseSan('e4')!);
+      final posAfterD5 = pos.play(pos.parseSan('d5')!);
+
+      final d5Id = await db.into(db.repertoireMoves).insert(
+            RepertoireMovesCompanion.insert(
+              repertoireId: repId,
+              parentMoveId: Value(e4Move.id),
+              fen: posAfterD5.fen,
+              san: 'd5',
+              sortOrder: 1,
+            ),
+          );
+
+      // Create a card for d5.
+      await db.into(db.reviewCards).insert(
+            ReviewCardsCompanion.insert(
+              repertoireId: repId,
+              leafMoveId: d5Id,
+              nextReviewDate: DateTime(2026, 6, 15),
+            ),
+          );
+
+      // Undo only the d5 branch.
+      await repo.undoNewLine([d5Id]);
+
+      // d5 should be gone.
+      final movesAfter = await repo.getMovesForRepertoire(repId);
+      expect(movesAfter.length, 2); // e4, e5
+      expect(movesAfter.any((m) => m.san == 'e4'), isTrue);
+      expect(movesAfter.any((m) => m.san == 'e5'), isTrue);
+      expect(movesAfter.any((m) => m.san == 'd5'), isFalse);
+
+      // e5 card should still exist.
+      final e5Card = await reviewRepo.getCardForLeaf(e5Move.id);
+      expect(e5Card, isNotNull);
+
+      // d5 card should be gone.
+      final d5Card = await reviewRepo.getCardForLeaf(d5Id);
+      expect(d5Card, isNull);
+    });
+  });
+
+  group('undoExtendLine (continued)', () {
     test('sequential extend then undo restores correct intermediate state',
         () async {
       // Seed: 1. e4 e5 (leaf = e5, card on e5)

@@ -205,6 +205,16 @@ class LocalRepertoireRepository implements RepertoireRepository {
   }
 
   @override
+  Future<void> undoNewLine(List<int> insertedMoveIds) {
+    return _db.transaction(() async {
+      if (insertedMoveIds.isEmpty) return;
+      await (_db.delete(_db.repertoireMoves)
+            ..where((m) => m.id.equals(insertedMoveIds.first)))
+          .go();
+    });
+  }
+
+  @override
   Future<int> countLeavesInSubtree(int moveId) async {
     final result = await _db.customSelect(
       '''

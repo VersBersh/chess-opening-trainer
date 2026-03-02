@@ -104,6 +104,9 @@ class FakeRepertoireRepository implements RepertoireRepository {
           int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) async {}
 
   @override
+  Future<void> undoNewLine(List<int> insertedMoveIds) async {}
+
+  @override
   Future<int> countLeavesInSubtree(int moveId) async => 0;
 
   @override
