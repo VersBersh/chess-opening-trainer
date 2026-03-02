@@ -8,10 +8,12 @@
 
 **Why discovered:** Both code reviews flagged the absence of `Semantics` wrappers as a gap. The plan's Risk #5 identified this as a consideration but deferred it. It should be addressed before release.
 
-## CT-7.7: Move Pills Auto-Scroll
+## ~~CT-7.7: Move Pills Auto-Scroll~~ → SUPERSEDED by CT-9.2
 
 **Title:** Auto-scroll move pills to keep focused pill visible
 
 **Description:** When a pill is focused or a new pill is appended, the horizontal scroll view should auto-scroll to keep the relevant pill visible. This requires either the parent screen owning the `ScrollController` or making `MovePillsWidget` internally stateful for scroll mechanics only.
 
 **Why discovered:** The original plan included auto-scroll (Step 4) but it was removed during plan review because it would make the widget stateful. The UX need remains -- for long lines, the focused pill may be off-screen. Best addressed in CT-7.2 where the parent screen can own the scroll controller.
+
+**Status:** Superseded — CT-9.2 changes pills from horizontal scrolling to wrapping (`Wrap` widget), making auto-scroll moot.
