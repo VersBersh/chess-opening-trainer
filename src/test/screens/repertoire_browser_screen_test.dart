@@ -1372,6 +1372,60 @@ void main() {
       expect(find.text('1. d4'), findsOneWidget);
       expect(find.text('1...d5'), findsOneWidget);
     });
+
+    testWidgets('orphan prompt -- dismiss preserves the orphaned move',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (leaf).
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Tap Delete.
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await tester.pumpAndSettle();
+
+      // Confirm deletion.
+      expect(find.text('Delete this move and its review card?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.pumpAndSettle();
+
+      // Orphan prompt should appear for e4 (now childless).
+      expect(find.text('Keep shorter line'), findsOneWidget);
+      expect(find.text('Remove move'), findsOneWidget);
+
+      // Dismiss the dialog by tapping outside it (returns null to the
+      // controller). Tapping at (10, 10) hits the ModalBarrier rather than the
+      // dialog content that sits at the screen centre.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      // e4 should still be visible in the tree (orphan preserved).
+      expect(find.text('1. e4'), findsOneWidget);
+      // e5 was deleted as intended.
+      expect(find.text('1...e5'), findsNothing);
+
+      // Verify DB state: only e4 remains.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.length, 1);
+      expect(moves.first.san, 'e4');
+
+      // No card should exist for e4 -- "Keep shorter line" was NOT chosen,
+      // so no card was created. The original e5 card was cascade-deleted.
+      final reviewRepo = LocalReviewRepository(db);
+      final cards = await reviewRepo.getAllCardsForRepertoire(repId);
+      expect(cards, isEmpty);
+    });
   });
 
   group('Add Line', () {
