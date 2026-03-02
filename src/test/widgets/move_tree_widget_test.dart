@@ -248,6 +248,7 @@ void main() {
       Map<int, int> dueCountByMoveId = const {},
       void Function(int)? onNodeSelected,
       void Function(int)? onNodeToggleExpand,
+      void Function(int)? onEditLabel,
     }) {
       return MaterialApp(
         home: Scaffold(
@@ -260,6 +261,7 @@ void main() {
               dueCountByMoveId: dueCountByMoveId,
               onNodeSelected: onNodeSelected ?? (_) {},
               onNodeToggleExpand: onNodeToggleExpand ?? (_) {},
+              onEditLabel: onEditLabel,
             ),
           ),
         ),
@@ -385,6 +387,118 @@ void main() {
       ));
 
       expect(find.textContaining('due'), findsNothing);
+    });
+
+    testWidgets('each row shows a label icon when onEditLabel is provided',
+        (tester) async {
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {1},
+        onEditLabel: (_) {},
+      ));
+
+      // Two visible rows (e4 and e5), each should have a label_outline icon.
+      expect(find.byIcon(Icons.label_outline), findsNWidgets(2));
+    });
+
+    testWidgets('no label icon when onEditLabel is null', (tester) async {
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {1},
+        // onEditLabel not set — defaults to null
+      ));
+
+      expect(find.byIcon(Icons.label_outline), findsNothing);
+    });
+
+    testWidgets('tapping the label icon calls onEditLabel with the correct move ID',
+        (tester) async {
+      int? editedId;
+      int? selectedId;
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {1},
+        onNodeSelected: (id) => selectedId = id,
+        onEditLabel: (id) => editedId = id,
+      ));
+
+      // Tap the second label icon (e5, id=2)
+      await tester.tap(find.byIcon(Icons.label_outline).last);
+
+      // onEditLabel should fire, but onNodeSelected should not.
+      expect(editedId, 2);
+      expect(selectedId, isNull);
+    });
+
+    testWidgets('tapping the row itself does not trigger onEditLabel',
+        (tester) async {
+      int? editedId;
+      int? selectedId;
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {1},
+        onNodeSelected: (id) => selectedId = id,
+        onEditLabel: (id) => editedId = id,
+      ));
+
+      // Tap on the row text for e5
+      await tester.tap(find.text('1...e5'));
+
+      // onNodeSelected should fire, but onEditLabel should not.
+      expect(selectedId, 2);
+      expect(editedId, isNull);
+    });
+
+    testWidgets('label icon uses primary color when node has a label',
+        (tester) async {
+      final line = buildLine(
+        ['e4', 'e5'],
+        labels: {0: 'King Pawn'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {1},
+        onEditLabel: (_) {},
+      ));
+
+      // The first label icon belongs to e4 (which has a label).
+      final icon = tester.widget<Icon>(find.byIcon(Icons.label_outline).first);
+      final theme = Theme.of(tester.element(find.byIcon(Icons.label_outline).first));
+      expect(icon.color, theme.colorScheme.primary);
+    });
+
+    testWidgets('label icon uses onSurfaceVariant when node has no label',
+        (tester) async {
+      final line = buildLine(
+        ['e4', 'e5'],
+        labels: {0: 'King Pawn'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {1},
+        onEditLabel: (_) {},
+      ));
+
+      // The second label icon belongs to e5 (which has no label).
+      final icon = tester.widget<Icon>(find.byIcon(Icons.label_outline).last);
+      final theme = Theme.of(tester.element(find.byIcon(Icons.label_outline).last));
+      expect(icon.color, theme.colorScheme.onSurfaceVariant);
     });
   });
 }

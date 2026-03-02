@@ -78,6 +78,7 @@ class MoveTreeWidget extends StatelessWidget {
     this.dueCountByMoveId = const {},
     required this.onNodeSelected,
     required this.onNodeToggleExpand,
+    this.onEditLabel,
   });
 
   /// The tree data.
@@ -97,6 +98,9 @@ class MoveTreeWidget extends StatelessWidget {
 
   /// Callback when expand/collapse indicator is tapped.
   final void Function(int moveId) onNodeToggleExpand;
+
+  /// Callback when the inline label icon is tapped on a node.
+  final void Function(int moveId)? onEditLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -125,6 +129,9 @@ class MoveTreeWidget extends StatelessWidget {
           onToggleExpand: vn.hasChildren
               ? () => onNodeToggleExpand(vn.move.id)
               : null,
+          onEditLabel: onEditLabel != null
+              ? () => onEditLabel!(vn.move.id)
+              : null,
         );
       },
     );
@@ -144,6 +151,7 @@ class _MoveTreeNodeTile extends StatelessWidget {
     required this.moveNotation,
     required this.onTap,
     this.onToggleExpand,
+    this.onEditLabel,
   });
 
   final VisibleNode node;
@@ -153,6 +161,7 @@ class _MoveTreeNodeTile extends StatelessWidget {
   final String moveNotation;
   final VoidCallback onTap;
   final VoidCallback? onToggleExpand;
+  final VoidCallback? onEditLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -227,6 +236,26 @@ class _MoveTreeNodeTile extends StatelessWidget {
                   ),
                 ),
               ),
+
+              // Inline label icon
+              if (onEditLabel != null)
+                GestureDetector(
+                  onTap: onEditLabel,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: Tooltip(
+                      message: 'Label',
+                      child: Icon(
+                        Icons.label_outline,
+                        size: 18,
+                        color: hasLabel
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
 
               // Due count badge
               if (dueCount > 0)

@@ -259,19 +259,17 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
 
   // ---- Label editing -------------------------------------------------------
 
-  Future<void> _onEditLabel() async {
-    final selectedId = _state.selectedMoveId;
-    if (selectedId == null) return;
+  Future<void> _onEditLabelForMove(int moveId) async {
     final cache = _state.treeCache;
     if (cache == null) return;
 
-    final move = cache.movesById[selectedId];
+    final move = cache.movesById[moveId];
     if (move == null) return;
 
     final result = await _showLabelDialog(
       context,
       currentLabel: move.label,
-      moveId: selectedId,
+      moveId: moveId,
       cache: cache,
     );
 
@@ -282,8 +280,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     final labelToSave = result.isEmpty ? null : result;
 
     // No-op guard: skip DB write and cache rebuild if the label is unchanged.
-    final currentLabel = move.label;
-    if (labelToSave == currentLabel) return;
+    if (labelToSave == move.label) return;
 
     // Multi-line impact check: warn if the label change affects multiple lines.
     final leafCount = cache.countDescendantLeaves(selectedId);
@@ -293,8 +290,14 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     }
 
     final repRepo = LocalRepertoireRepository(widget.db);
-    await repRepo.updateMoveLabel(selectedId, labelToSave);
+    await repRepo.updateMoveLabel(moveId, labelToSave);
     await _loadData(); // Rebuild cache
+  }
+
+  Future<void> _onEditLabel() async {
+    final selectedId = _state.selectedMoveId;
+    if (selectedId == null) return;
+    await _onEditLabelForMove(selectedId);
   }
 
   // ---- Add Line navigation --------------------------------------------------
@@ -884,6 +887,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
       dueCountByMoveId: _state.dueCountByMoveId,
       onNodeSelected: _onNodeSelected,
       onNodeToggleExpand: _onNodeToggleExpand,
+      onEditLabel: _onEditLabelForMove,
     );
   }
 

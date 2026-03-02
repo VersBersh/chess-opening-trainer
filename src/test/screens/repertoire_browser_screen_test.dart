@@ -13,6 +13,7 @@ import 'package:chess_trainer/repositories/local/local_repertoire_repository.dar
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
+import 'package:chess_trainer/widgets/move_tree_widget.dart';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -793,6 +794,142 @@ void main() {
       final moves = await repRepo.getMovesForRepertoire(repId);
       final e4Move = moves.firstWhere((m) => m.san == 'e4');
       expect(e4Move.label, 'Existing');
+    });
+
+    testWidgets('inline label icon on tree row opens label dialog',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // No node is selected initially.
+      // Tap the inline label icon scoped to the MoveTreeWidget.
+      final inlineLabelIcons = find.descendant(
+        of: find.byType(MoveTreeWidget),
+        matching: find.byTooltip('Label'),
+      );
+      expect(inlineLabelIcons, findsWidgets);
+
+      await tester.tap(inlineLabelIcons.first);
+      await tester.pumpAndSettle();
+
+      // The label dialog should open.
+      expect(find.text('Add label'), findsOneWidget);
+
+      // Cancel the dialog to clean up.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('inline label save updates the move label', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Tap the inline label icon for e4 (first icon in the tree).
+      final inlineLabelIcons = find.descendant(
+        of: find.byType(MoveTreeWidget),
+        matching: find.byTooltip('Label'),
+      );
+      await tester.tap(inlineLabelIcons.first);
+      await tester.pumpAndSettle();
+
+      // Enter label text and save.
+      await tester.enterText(find.byType(TextField), 'Inline Label');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Verify label was saved in the database.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'Inline Label');
+
+      // Verify the label is visible in the tree UI.
+      expect(find.textContaining('Inline Label'), findsWidgets);
+    });
+
+    testWidgets('inline label icon works without selecting the node first',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Verify no node is selected: the display name header should be absent
+      // (no surfaceContainerHighest-colored container with text).
+      // Also the action bar Label button should be disabled (no selection).
+      final labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNull);
+
+      // Tap the inline label icon for e5 (second icon in the tree).
+      final inlineLabelIcons = find.descendant(
+        of: find.byType(MoveTreeWidget),
+        matching: find.byTooltip('Label'),
+      );
+      await tester.tap(inlineLabelIcons.last);
+      await tester.pumpAndSettle();
+
+      // The label dialog should open even though no node was selected.
+      expect(find.text('Add label'), findsOneWidget);
+
+      // Cancel the dialog to clean up.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('inline label clear removes the label', (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        labelsOnSan: {'e4': 'To Remove'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Tap the inline label icon for e4 (the labeled node).
+      final inlineLabelIcons = find.descendant(
+        of: find.byType(MoveTreeWidget),
+        matching: find.byTooltip('Label'),
+      );
+      await tester.tap(inlineLabelIcons.first);
+      await tester.pumpAndSettle();
+
+      // Dialog should show "Edit label" since e4 has an existing label.
+      expect(find.text('Edit label'), findsOneWidget);
+
+      // Tap Remove to clear the label.
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+
+      // Verify label was cleared in the database.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, isNull);
     });
   });
 
