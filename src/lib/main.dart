@@ -9,6 +9,7 @@ import 'repositories/local/local_repertoire_repository.dart';
 import 'repositories/local/local_review_repository.dart';
 import 'screens/home_screen.dart';
 import 'services/dev_seed.dart';
+import 'theme/pill_theme.dart';
 
 // ---------------------------------------------------------------------------
 // App entry point
@@ -51,6 +52,13 @@ class ChessTrainerApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: colorScheme,
         useMaterial3: true,
+        extensions: const [
+          PillTheme(
+            savedColor: Color(0xFF5B8FDB),
+            unsavedColor: Color(0xFFB0CBF0),
+            focusedBorderColor: Color(0xFF1A56A8),
+          ),
+        ],
         appBarTheme: AppBarTheme(
           backgroundColor: colorScheme.inversePrimary,
           foregroundColor: colorScheme.onSurface,

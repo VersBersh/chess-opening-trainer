@@ -369,54 +369,56 @@ class _AddLineScreenState extends State<AddLineScreen> {
   Widget _buildContent(BuildContext context, AddLineState state) {
     final displayName = state.aggregateDisplayName;
 
-    return Column(
-      children: [
-        // Aggregate display name banner + gap
-        if (displayName.isNotEmpty) ...[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Aggregate display name banner + gap
+          if (displayName.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: Text(
+                displayName,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Text(
-              displayName,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            const SizedBox(height: 12),
+          ],
+
+          // Chessboard
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 300),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: ChessboardWidget(
+                controller: _boardController,
+                orientation: state.boardOrientation,
+                playerSide: PlayerSide.both,
+                onMove: _onBoardMove,
+              ),
             ),
           ),
-          const SizedBox(height: 12),
+
+          // Move pills
+          MovePillsWidget(
+            pills: state.pills,
+            focusedIndex: state.focusedPillIndex,
+            onPillTapped: _onPillTapped,
+            onDeleteLast: _controller.canTakeBack ? _onTakeBack : null,
+          ),
+
+          // Action bar
+          _buildActionBar(context, state),
         ],
-
-        // Chessboard
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 300),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: ChessboardWidget(
-              controller: _boardController,
-              orientation: state.boardOrientation,
-              playerSide: PlayerSide.both,
-              onMove: _onBoardMove,
-            ),
-          ),
-        ),
-
-        // Move pills
-        MovePillsWidget(
-          pills: state.pills,
-          focusedIndex: state.focusedPillIndex,
-          onPillTapped: _onPillTapped,
-          onDeleteLast: _controller.canTakeBack ? _onTakeBack : null,
-        ),
-
-        // Action bar
-        _buildActionBar(context, state),
-      ],
+      ),
     );
   }
 
