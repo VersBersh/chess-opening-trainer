@@ -1,105 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../providers.dart';
-import '../repositories/local/database.dart';
+import '../controllers/home_controller.dart';
+import '../widgets/home_empty_state.dart';
+import '../widgets/repertoire_card.dart';
 import 'add_line_screen.dart';
 import 'drill_screen.dart';
 import 'repertoire_browser_screen.dart';
 import 'settings_screen.dart';
-
-// ---------------------------------------------------------------------------
-// Home screen state
-// ---------------------------------------------------------------------------
-
-class RepertoireSummary {
-  final Repertoire repertoire;
-  final int dueCount;
-  final int totalCardCount;
-  const RepertoireSummary({
-    required this.repertoire,
-    required this.dueCount,
-    required this.totalCardCount,
-  });
-}
-
-class HomeState {
-  final List<RepertoireSummary> repertoires;
-  final int totalDueCount;
-  const HomeState({this.repertoires = const [], this.totalDueCount = 0});
-}
-
-// ---------------------------------------------------------------------------
-// HomeController provider
-// ---------------------------------------------------------------------------
-
-final homeControllerProvider =
-    AsyncNotifierProvider.autoDispose<HomeController, HomeState>(
-        HomeController.new);
-
-// ---------------------------------------------------------------------------
-// HomeController
-// ---------------------------------------------------------------------------
-
-class HomeController extends AutoDisposeAsyncNotifier<HomeState> {
-  @override
-  Future<HomeState> build() async {
-    return _load();
-  }
-
-  Future<HomeState> _load() async {
-    final repertoireRepo = ref.read(repertoireRepositoryProvider);
-    final reviewRepo = ref.read(reviewRepositoryProvider);
-
-    final repertoires = await repertoireRepo.getAllRepertoires();
-    final summaries = <RepertoireSummary>[];
-    var totalDue = 0;
-
-    for (final repertoire in repertoires) {
-      final dueCards =
-          await reviewRepo.getDueCardsForRepertoire(repertoire.id);
-      final totalCardCount =
-          await reviewRepo.getCardCountForRepertoire(repertoire.id);
-      summaries.add(RepertoireSummary(
-        repertoire: repertoire,
-        dueCount: dueCards.length,
-        totalCardCount: totalCardCount,
-      ));
-      totalDue += dueCards.length;
-    }
-
-    return HomeState(repertoires: summaries, totalDueCount: totalDue);
-  }
-
-  Future<void> refresh() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(_load);
-  }
-
-  /// Creates a new repertoire with the given name. Returns the new ID.
-  Future<int> createRepertoire(String name) async {
-    final repertoireRepo = ref.read(repertoireRepositoryProvider);
-    final id = await repertoireRepo.saveRepertoire(
-      RepertoiresCompanion.insert(name: name),
-    );
-    state = AsyncData(await _load());
-    return id;
-  }
-
-  /// Renames an existing repertoire.
-  Future<void> renameRepertoire(int id, String newName) async {
-    final repertoireRepo = ref.read(repertoireRepositoryProvider);
-    await repertoireRepo.renameRepertoire(id, newName);
-    state = AsyncData(await _load());
-  }
-
-  /// Deletes a repertoire and all its lines and review history.
-  Future<void> deleteRepertoire(int id) async {
-    final repertoireRepo = ref.read(repertoireRepositoryProvider);
-    await repertoireRepo.deleteRepertoire(id);
-    state = AsyncData(await _load());
-  }
-}
 
 // ---------------------------------------------------------------------------
 // HomeScreen widget
@@ -312,7 +220,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
       body: homeState.repertoires.isEmpty
-          ? _buildEmptyState(context)
+          ? HomeEmptyState(onCreateFirstRepertoire: _onCreateFirstRepertoire)
           : _buildRepertoireList(context, homeState),
       floatingActionButton: homeState.repertoires.isNotEmpty
           ? FloatingActionButton(
@@ -347,156 +255,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: 16),
           for (final summary in homeState.repertoires)
-            _buildRepertoireCard(context, summary),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRepertoireCard(BuildContext context, RepertoireSummary summary) {
-    final theme = Theme.of(context);
-    final hasDueCards = summary.dueCount > 0;
-    final hasCards = summary.totalCardCount > 0;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header row: repertoire name + due badge + context menu
-            Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () =>
-                        _onRepertoireTap(summary.repertoire.id),
-                    child: Text(
-                      summary.repertoire.name,
-                      style: theme.textTheme.titleMedium,
-                    ),
-                  ),
-                ),
-                if (summary.dueCount > 0)
-                  Badge(
-                    label: Text('${summary.dueCount} due'),
-                  ),
-                PopupMenuButton<String>(
-                  onSelected: (value) async {
-                    switch (value) {
-                      case 'rename':
-                        final newName = await _showRenameRepertoireDialog(
-                            summary.repertoire.name);
-                        if (newName != null) {
-                          await ref
-                              .read(homeControllerProvider.notifier)
-                              .renameRepertoire(
-                                  summary.repertoire.id, newName);
-                        }
-                      case 'delete':
-                        final confirmed = await _showDeleteRepertoireDialog(
-                            summary.repertoire.name);
-                        if (confirmed == true) {
-                          await ref
-                              .read(homeControllerProvider.notifier)
-                              .deleteRepertoire(summary.repertoire.id);
-                        }
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: 'rename',
-                      child: Text('Rename'),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Delete'),
-                    ),
-                  ],
-                ),
-              ],
+            RepertoireCard(
+              summary: summary,
+              onStartDrill: () => _startDrill(summary.repertoire.id),
+              onFreePractice: () =>
+                  _startFreePractice(summary.repertoire.id),
+              onAddLine: () => _onAddLineTap(summary.repertoire.id),
+              onTapName: () => _onRepertoireTap(summary.repertoire.id),
+              onRename: () async {
+                final newName = await _showRenameRepertoireDialog(
+                    summary.repertoire.name);
+                if (newName != null) {
+                  await ref
+                      .read(homeControllerProvider.notifier)
+                      .renameRepertoire(summary.repertoire.id, newName);
+                }
+              },
+              onDelete: () async {
+                final confirmed = await _showDeleteRepertoireDialog(
+                    summary.repertoire.name);
+                if (confirmed == true) {
+                  await ref
+                      .read(homeControllerProvider.notifier)
+                      .deleteRepertoire(summary.repertoire.id);
+                }
+              },
             ),
-            const SizedBox(height: 12),
-            // Action row
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed: () {
-                    if (hasDueCards) {
-                      _startDrill(summary.repertoire.id);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'No cards due for review. Come back later!'),
-                        ),
-                      );
-                    }
-                  },
-                  style: hasDueCards
-                      ? null
-                      : FilledButton.styleFrom(
-                          backgroundColor: theme
-                              .colorScheme.primary
-                              .withValues(alpha: 0.38),
-                        ),
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Start Drill'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: hasCards
-                      ? () => _startFreePractice(summary.repertoire.id)
-                      : null,
-                  icon: const Icon(Icons.fitness_center),
-                  label: const Text('Free Practice'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      _onAddLineTap(summary.repertoire.id),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Line'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // -------------------------------------------------------------------------
-  // Empty state (no repertoires)
-  // -------------------------------------------------------------------------
-
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.school,
-            size: 80,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              'Build your opening repertoire and practice it with '
-              'spaced repetition.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          ),
-          const SizedBox(height: 32),
-          FilledButton.icon(
-            onPressed: _onCreateFirstRepertoire,
-            icon: const Icon(Icons.add),
-            label: const Text('Create your first repertoire'),
-          ),
         ],
       ),
     );

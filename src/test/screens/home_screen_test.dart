@@ -14,6 +14,7 @@ import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/repositories/review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/screens/drill_screen.dart';
+import 'package:chess_trainer/controllers/home_controller.dart';
 import 'package:chess_trainer/screens/home_screen.dart';
 import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
 
