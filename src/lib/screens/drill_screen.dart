@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
@@ -142,6 +144,13 @@ class DrillSessionComplete extends DrillScreenState {
   const DrillSessionComplete({required this.summary});
 }
 
+/// Emitted when a label filter produces zero matching cards.
+/// Distinct from [DrillSessionComplete] (finished session) and
+/// [DrillCardStart] (which assumes a real current card exists).
+class DrillFilterNoResults extends DrillScreenState {
+  const DrillFilterNoResults();
+}
+
 // ---------------------------------------------------------------------------
 // DrillController provider
 // ---------------------------------------------------------------------------
@@ -171,6 +180,18 @@ class DrillController
   bool _isDisposed = false;
   int _cardGeneration = 0; // incremented on each card start/skip to cancel stale async ops
   String _currentLineLabel = '';
+
+  // ---- Filter state (free practice only) ----------------------------------
+  Set<String> _selectedLabels = {};
+  List<String> _availableLabels = [];
+  late RepertoireTreeCache _treeCache;
+
+  /// Currently selected filter labels (unmodifiable view).
+  Set<String> get selectedLabels => Set.unmodifiable(_selectedLabels);
+
+  /// All distinct labels available for filtering (unmodifiable view).
+  List<String> get availableLabels =>
+      UnmodifiableListView(_availableLabels);
 
   @override
   Future<DrillScreenState> build(DrillConfig arg) async {
@@ -207,11 +228,12 @@ class DrillController
 
     final allMoves =
         await repertoireRepo.getMovesForRepertoire(config.repertoireId);
-    final treeCache = RepertoireTreeCache.build(allMoves);
+    _treeCache = RepertoireTreeCache.build(allMoves);
+    _availableLabels = _treeCache.getDistinctLabels();
 
     _engine = DrillEngine(
       cards: cardList,
-      treeCache: treeCache,
+      treeCache: _treeCache,
       isExtraPractice: config.isExtraPractice,
     );
 
@@ -446,6 +468,64 @@ class DrillController
       await _startNextCard();
     }
   }
+
+  // ---- Filter (free practice only) ----------------------------------------
+
+  /// Applies a label filter to the card queue.
+  ///
+  /// If [labels] is empty, reloads all cards for the repertoire.
+  /// If non-empty, fetches the union of subtree cards for all moves
+  /// matching the selected labels, deduplicates, and shuffles.
+  Future<void> applyFilter(Set<String> labels) async {
+    if (!_isExtraPractice) return;
+    _selectedLabels = Set.of(labels);
+
+    // Immediately invalidate any in-flight intro animations or revert timers
+    // from the previous card so stale callbacks bail out via _isStale(gen).
+    _cardGeneration++;
+    final gen = _cardGeneration;
+
+    final config = arg;
+    List<ReviewCard> filteredCards;
+
+    if (labels.isEmpty) {
+      filteredCards =
+          await _reviewRepo.getAllCardsForRepertoire(config.repertoireId);
+      filteredCards.shuffle();
+    } else {
+      // Find all move IDs matching the selected labels
+      final moveIdsForLabel = _treeCache.movesById.values
+          .where((m) => labels.contains(m.label))
+          .map((m) => m.id)
+          .toList();
+
+      // Fetch subtree cards for each move ID and deduplicate
+      final seen = <int>{};
+      final cards = <ReviewCard>[];
+      for (final moveId in moveIdsForLabel) {
+        final subtreeCards = await _reviewRepo.getCardsForSubtree(moveId);
+        for (final card in subtreeCards) {
+          if (seen.add(card.id)) cards.add(card);
+        }
+      }
+      cards.shuffle();
+      filteredCards = cards;
+    }
+
+    // Check staleness after async work — another filter change may have
+    // occurred while we were fetching cards.
+    if (_isStale(gen)) return;
+
+    _engine.replaceQueue(filteredCards);
+
+    if (filteredCards.isEmpty) {
+      boardController.resetToInitial();
+      state = const AsyncData(DrillFilterNoResults());
+      return;
+    }
+
+    await _startNextCard();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -572,6 +652,18 @@ class DrillScreen extends ConsumerWidget {
           shapes: _buildFeedbackShapes(drillState),
           annotations: _buildFeedbackAnnotations(drillState),
         );
+
+      case DrillFilterNoResults():
+        return _buildDrillScaffold(
+          context,
+          ref,
+          drillState: drillState,
+          title: 'Free Practice',
+          userColor: Side.white,
+          lineLabel: '',
+          playerSide: PlayerSide.none,
+          showSkip: false,
+        );
     }
   }
 
@@ -626,6 +718,8 @@ class DrillScreen extends ConsumerWidget {
       child: _buildStatusText(context, drillState),
     );
 
+    final filterWidget = _buildFilterBox(context, ref);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
@@ -656,6 +750,7 @@ class DrillScreen extends ConsumerWidget {
                         children: [
                           ?lineLabelWidget,
                           Center(child: statusWidget),
+                          ?filterWidget,
                         ],
                       ),
                     ),
@@ -668,6 +763,7 @@ class DrillScreen extends ConsumerWidget {
                 ?lineLabelWidget,
                 Expanded(child: boardWidget),
                 statusWidget,
+                ?filterWidget,
               ],
             ),
     );
@@ -690,6 +786,13 @@ class DrillScreen extends ConsumerWidget {
             color: isSiblingCorrection
                 ? colorScheme.tertiary
                 : colorScheme.error,
+          ),
+        );
+      case DrillFilterNoResults():
+        return Text(
+          'No cards match this filter',
+          style: style?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         );
       default:
@@ -734,6 +837,52 @@ class DrillScreen extends ConsumerWidget {
       });
     }
     return null;
+  }
+
+  Widget? _buildFilterBox(BuildContext context, WidgetRef ref) {
+    if (!config.isExtraPractice) return null;
+
+    final notifier = ref.read(drillControllerProvider(config).notifier);
+    final selected = notifier.selectedLabels;
+    final available = notifier.availableLabels;
+
+    return Container(
+      key: const ValueKey('drill-filter-box'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (selected.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: selected.map((label) {
+                  return InputChip(
+                    label: Text(label),
+                    onDeleted: () {
+                      final updated = Set<String>.of(selected)..remove(label);
+                      notifier.applyFilter(updated);
+                    },
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  );
+                }).toList(),
+              ),
+            ),
+          _DrillFilterAutocomplete(
+            availableLabels: available,
+            selectedLabels: selected,
+            onSelected: (label) {
+              final updated = Set<String>.of(selected)..add(label);
+              notifier.applyFilter(updated);
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSessionComplete(
@@ -868,5 +1017,106 @@ class DrillScreen extends ConsumerWidget {
     } else {
       return '${nextDue.year}-${nextDue.month.toString().padLeft(2, '0')}-${nextDue.day.toString().padLeft(2, '0')}';
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _DrillFilterAutocomplete — compact autocomplete for label search
+// ---------------------------------------------------------------------------
+
+class _DrillFilterAutocomplete extends StatefulWidget {
+  final List<String> availableLabels;
+  final Set<String> selectedLabels;
+  final ValueChanged<String> onSelected;
+
+  const _DrillFilterAutocomplete({
+    required this.availableLabels,
+    required this.selectedLabels,
+    required this.onSelected,
+  });
+
+  @override
+  State<_DrillFilterAutocomplete> createState() =>
+      _DrillFilterAutocompleteState();
+}
+
+class _DrillFilterAutocompleteState extends State<_DrillFilterAutocomplete> {
+  final _textController = TextEditingController();
+  final _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RawAutocomplete<String>(
+      textEditingController: _textController,
+      focusNode: _focusNode,
+      optionsBuilder: (textEditingValue) {
+        final query = textEditingValue.text.toLowerCase();
+        if (query.isEmpty) {
+          return widget.availableLabels
+              .where((l) => !widget.selectedLabels.contains(l));
+        }
+        return widget.availableLabels.where((label) =>
+            !widget.selectedLabels.contains(label) &&
+            label.toLowerCase().contains(query));
+      },
+      onSelected: (label) {
+        _textController.clear();
+        widget.onSelected(label);
+      },
+      fieldViewBuilder:
+          (context, textEditingController, focusNode, onFieldSubmitted) {
+        return TextField(
+          controller: textEditingController,
+          focusNode: focusNode,
+          decoration: InputDecoration(
+            hintText: 'Filter by label...',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            isDense: true,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          style: Theme.of(context).textTheme.bodyMedium,
+          onSubmitted: (_) => onFieldSubmitted(),
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options.elementAt(index);
+                  return InkWell(
+                    onTap: () => onSelected(option),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      child: Text(option),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

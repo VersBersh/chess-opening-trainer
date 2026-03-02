@@ -15,6 +15,14 @@ class DrillSession {
   ReviewCard get currentCard => cardQueue[currentCardIndex];
   bool get isComplete => currentCardIndex >= cardQueue.length;
   int get totalCards => cardQueue.length;
+
+  /// Replaces the queue contents in-place and resets the index to 0.
+  void resetQueue(List<ReviewCard> newCards) {
+    cardQueue
+      ..clear()
+      ..addAll(newCards);
+    currentCardIndex = 0;
+  }
 }
 
 /// Tracks progress through a single card within a drill session.

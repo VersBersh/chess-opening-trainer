@@ -96,6 +96,16 @@ class DrillEngine {
     return _userColor!;
   }
 
+  /// Replaces the card queue with [newCards] and resets the session index.
+  ///
+  /// Used by the filter system to swap the card set mid-session without
+  /// creating a new engine instance.
+  void replaceQueue(List<ReviewCard> newCards) {
+    _session.resetQueue(newCards);
+    _currentCardState = null;
+    _userColor = null;
+  }
+
   // ---- Public methods -----------------------------------------------------
 
   /// Returns the aggregate display name for the deepest labeled position
