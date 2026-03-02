@@ -86,7 +86,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen>
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pgn'],
-      withData: false,
+      withData: true,
     );
 
     if (result != null && result.files.isNotEmpty) {

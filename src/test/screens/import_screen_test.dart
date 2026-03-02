@@ -49,6 +49,7 @@ Widget buildTestApp(AppDatabase db, int repertoireId) {
 
 class FakeFilePicker extends FilePicker with MockPlatformInterfaceMixin {
   FilePickerResult? result;
+  bool? lastWithData;
 
   @override
   Future<FilePickerResult?> pickFiles({
@@ -64,8 +65,10 @@ class FakeFilePicker extends FilePicker with MockPlatformInterfaceMixin {
     bool withReadStream = false,
     bool lockParentWindow = false,
     bool readSequential = false,
-  }) async =>
-      result;
+  }) async {
+    lastWithData = withData;
+    return result;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +352,36 @@ void main() {
 
       // File name should be shown (file was loaded).
       expect(find.text('large.pgn'), findsOneWidget);
+    });
+  });
+
+  group('File picker withData', () {
+    late FakeFilePicker fakePicker;
+
+    setUp(() {
+      fakePicker = FakeFilePicker();
+      FilePicker.platform = fakePicker;
+    });
+
+    testWidgets('pickFiles is called with withData: true', (tester) async {
+      final repId = await createRepertoire(db);
+      final pgnBytes = Uint8List.fromList(utf8.encode('1. e4 e5 *'));
+
+      fakePicker.result = FilePickerResult([
+        PlatformFile(
+          name: 'test.pgn',
+          size: 512,
+          bytes: pgnBytes,
+        ),
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Select PGN File'));
+      await tester.pumpAndSettle();
+
+      expect(fakePicker.lastWithData, true);
     });
   });
 }

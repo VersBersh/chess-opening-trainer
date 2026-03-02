@@ -901,4 +901,154 @@ void main() {
       expect(cards.length, 2);
     });
   });
+
+  group('Real-world PGN formatting', () {
+    test('no blank line between games (with terminator)', () async {
+      final repId = await createRepertoire(db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      // Two games separated by only \n (no blank line) after terminator.
+      final pgn = '[Event "Game 1"]\n\n1. e4 e5 1-0\n[Event "Game 2"]\n\n1. d4 d5 0-1';
+
+      final result = await importer.importPgn(pgn, repId, ImportColor.both);
+
+      expect(result.gamesProcessed, 2);
+      expect(result.gamesImported, 2);
+      expect(result.errors, isEmpty);
+    });
+
+    test('no blank line between games (star terminator)', () async {
+      final repId = await createRepertoire(db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      final pgn = '[Event "Game 1"]\n\n1. e4 e5 *\n[Event "Game 2"]\n\n1. d4 d5 *';
+
+      final result = await importer.importPgn(pgn, repId, ImportColor.both);
+
+      expect(result.gamesProcessed, 2);
+      expect(result.gamesImported, 2);
+      expect(result.errors, isEmpty);
+    });
+
+    test('no blank line between games (no terminator)', () async {
+      final repId = await createRepertoire(db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      // No terminator at all, just moves followed by next game header.
+      final pgn = '[Event "Game 1"]\n\n1. e4 e5\n[Event "Game 2"]\n\n1. d4 d5 *';
+
+      final result = await importer.importPgn(pgn, repId, ImportColor.both);
+
+      expect(result.gamesProcessed, 2);
+      expect(result.gamesImported, 2);
+      expect(result.errors, isEmpty);
+    });
+
+    test('CRLF line endings', () async {
+      final repId = await createRepertoire(db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      final pgn =
+          '[Event "Game 1"]\r\n\r\n1. e4 e5 *\r\n\r\n[Event "Game 2"]\r\n\r\n1. d4 d5 *';
+
+      final result = await importer.importPgn(pgn, repId, ImportColor.both);
+
+      expect(result.gamesProcessed, 2);
+      expect(result.gamesImported, 2);
+      expect(result.errors, isEmpty);
+    });
+
+    test('BOM prefix stripped', () async {
+      final repId = await createRepertoire(db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      final pgn = '\uFEFF[Event "Game 1"]\n\n1. e4 e5 *';
+
+      final result = await importer.importPgn(pgn, repId, ImportColor.both);
+
+      expect(result.gamesProcessed, 1);
+      expect(result.gamesImported, 1);
+      expect(result.errors, isEmpty);
+    });
+
+    test('extra blank lines between games', () async {
+      final repId = await createRepertoire(db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      final pgn = '[Event "Game 1"]\n\n1. e4 e5 *\n\n\n\n[Event "Game 2"]\n\n1. d4 d5 *';
+
+      final result = await importer.importPgn(pgn, repId, ImportColor.both);
+
+      expect(result.gamesProcessed, 2);
+      expect(result.gamesImported, 2);
+      expect(result.errors, isEmpty);
+    });
+
+    test('multi-header single game is not split', () async {
+      final repId = await createRepertoire(db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      // A game with multiple headers should NOT be split by normalization.
+      final pgn = '[Event "Test"]\n[Site "Lichess"]\n[Date "2024.01.01"]\n\n1. e4 e5 *';
+
+      final result = await importer.importPgn(pgn, repId, ImportColor.both);
+
+      expect(result.gamesProcessed, 1);
+      expect(result.gamesImported, 1);
+      expect(result.errors, isEmpty);
+
+      final moves = await getAllMoves(db, repId);
+      expect(moves.length, 2);
+    });
+
+    test('single game is not affected by normalization', () async {
+      final repId = await createRepertoire(db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      final result = await importer.importPgn(
+        '1. e4 e5 2. Nf3 *',
+        repId,
+        ImportColor.both,
+      );
+
+      expect(result.gamesProcessed, 1);
+      expect(result.gamesImported, 1);
+      expect(result.errors, isEmpty);
+
+      final moves = await getAllMoves(db, repId);
+      expect(moves.length, 3);
+    });
+  });
 }

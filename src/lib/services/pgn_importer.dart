@@ -82,6 +82,9 @@ class PgnImporter {
     int repertoireId,
     ImportColor color,
   ) async {
+    // Normalize PGN text to handle real-world formatting variants.
+    pgnText = _normalizePgn(pgnText);
+
     // Parse all games from the PGN text.
     final List<PgnGame<PgnNodeData>> games;
     try {
@@ -507,4 +510,38 @@ class _ValidationResult {
   final GameError? error;
 
   const _ValidationResult({required this.lines, this.error});
+}
+
+/// Preprocesses raw PGN text to handle real-world formatting variants that
+/// the upstream dartchess `parseMultiGamePgn` split regex may not handle.
+///
+/// The upstream splits on `\n\s+(?=\[)`, which requires whitespace between
+/// a newline and the next `[` header. This normalizer ensures that whitespace
+/// is always present.
+String _normalizePgn(String pgnText) {
+  // Strip UTF-8 BOM.
+  if (pgnText.startsWith('\uFEFF')) {
+    pgnText = pgnText.substring(1);
+  }
+
+  // Normalize line endings.
+  pgnText = pgnText.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
+  // Pass 1: Insert blank line after a game terminator followed directly by a
+  // header on the next line (e.g. "1-0\n[Event").
+  pgnText = pgnText.replaceAllMapped(
+    RegExp(r'((?:1-0|0-1|1/2-1/2|\*)\s*)\n(\[)'),
+    (m) => '${m[1]}\n\n${m[2]}',
+  );
+
+  // Pass 2: Insert blank line before any `[` preceded by exactly one newline
+  // after a non-header line (movetext). The negative lookbehinds ensure we
+  // skip positions already preceded by a blank line, and skip consecutive
+  // header lines (which end with `]`).
+  pgnText = pgnText.replaceAllMapped(
+    RegExp(r'(?<!\n)(?<!\])\n(\[)'),
+    (m) => '\n\n${m[1]}',
+  );
+
+  return pgnText;
 }
