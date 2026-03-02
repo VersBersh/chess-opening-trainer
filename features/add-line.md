@@ -27,7 +27,7 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 - Pills are shown in order: e.g. `e4` → `e5` → `Nf3` → `Nc6` → ...
 - As the user makes moves on the board, new pills are appended to the row.
 - If a pill's move exists in the database and has a **label**, the label is shown beneath the pill as **flat text** (not angled/slanted). The label may overflow underneath neighboring pills — this is acceptable since it's unlikely adjacent pills will both have labels.
-- Pills for moves that already exist in the database are visually distinct from new (unsaved) pills (e.g., different background color or border).
+- All pills use the same styling regardless of whether the move is already saved in the database or is new/unsaved.
 - **Equal width:** All pills have the **same width**, regardless of the SAN text length. This provides a clean, uniform appearance.
 - **Styling:** Pills use a blue fill, modest border radius (not full stadium shape), per [design/ui-guidelines.md](../design/ui-guidelines.md).
 - **Wrapping:** The pill row wraps onto multiple lines when moves exceed the available width. Pills must never scroll off-screen invisibly.
@@ -47,8 +47,8 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 
 ### Editing Labels
 
-- The Label button is **enabled** in Add Line mode, **regardless of board orientation**. Labels are independent of the line color (not tied to white/black move context) and should always be editable.
-- When a pill is focused (tapped), the user can **add or edit the label** for that position.
+- The Label button is **enabled** whenever any pill is focused, **regardless of board orientation or save state**. Labels are independent of the line color (not tied to white/black move context) and should always be editable — including on unsaved pills.
+- When a pill is focused (tapped), the user can **add or edit the label** for that position. This applies to both saved and unsaved pills.
 - **No popup dialog.** Clicking a pill shows the label below it in an **inline editing box**. Clicking the box enables editing. See [design/ui-guidelines.md](../design/ui-guidelines.md) for the inline editing convention.
 - This follows the same labeling rules as [line-management.md](line-management.md) — labels are short local segments, the aggregate display name is computed by walking root-to-leaf.
 - **Multi-line impact warning:** If adding or editing a label would affect multiple existing lines (e.g., labeling a shared ancestor node), an inline warning is shown (not a popup). See the confirmation behavior below.
