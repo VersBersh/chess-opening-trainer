@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -348,6 +350,61 @@ void main() {
       );
       final decoration = container.decoration! as BoxDecoration;
       expect(decoration.color, colorScheme.primaryContainer);
+    });
+
+    testWidgets('pills have correct semantic labels', (tester) async {
+      final handle = tester.ensureSemantics();
+
+      final pills = [
+        const MovePillData(san: 'e4', isSaved: true),
+        const MovePillData(san: 'e5', isSaved: true),
+        const MovePillData(san: 'Nf3', isSaved: false),
+      ];
+
+      await tester.pumpWidget(buildTestApp(pills: pills));
+
+      final semantics1 = tester.getSemantics(find.text('e4'));
+      expect(semantics1.label, 'Move 1: e4, saved');
+
+      final semantics2 = tester.getSemantics(find.text('e5'));
+      expect(semantics2.label, 'Move 1: e5, saved');
+
+      final semantics3 = tester.getSemantics(find.text('Nf3'));
+      expect(semantics3.label, 'Move 2: Nf3, new');
+
+      handle.dispose();
+    });
+
+    testWidgets('selected pill has selected semantic flag', (tester) async {
+      final handle = tester.ensureSemantics();
+
+      final pills = [
+        const MovePillData(san: 'e4', isSaved: true),
+        const MovePillData(san: 'e5', isSaved: true),
+      ];
+
+      await tester.pumpWidget(buildTestApp(pills: pills, focusedIndex: 1));
+
+      final selectedNode = tester.getSemantics(find.text('e5'));
+      expect(selectedNode.flagsCollection.isSelected, Tristate.isTrue);
+
+      final unselectedNode = tester.getSemantics(find.text('e4'));
+      expect(unselectedNode.flagsCollection.isSelected, Tristate.isFalse);
+
+      handle.dispose();
+    });
+
+    testWidgets('empty state has semantic label', (tester) async {
+      final handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(buildTestApp(pills: []));
+
+      expect(
+        find.bySemanticsLabel('No moves played yet. Play a move to begin.'),
+        findsOneWidget,
+      );
+
+      handle.dispose();
     });
   });
 }

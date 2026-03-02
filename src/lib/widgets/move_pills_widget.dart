@@ -56,10 +56,15 @@ class MovePillsWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (pills.isEmpty) {
-      return const SizedBox(
-        height: 48,
-        child: Center(
-          child: Text('Play a move to begin'),
+      return Semantics(
+        label: 'No moves played yet. Play a move to begin.',
+        child: const ExcludeSemantics(
+          child: SizedBox(
+            height: 48,
+            child: Center(
+              child: Text('Play a move to begin'),
+            ),
+          ),
         ),
       );
     }
@@ -76,6 +81,7 @@ class MovePillsWidget extends StatelessWidget {
               data: pills[i],
               isFocused: i == focusedIndex,
               onTap: () => onPillTapped(i),
+              pillIndex: i,
             ),
         ],
       ),
@@ -92,11 +98,22 @@ class _MovePill extends StatelessWidget {
     required this.data,
     required this.isFocused,
     required this.onTap,
+    required this.pillIndex,
   });
 
   final MovePillData data;
   final bool isFocused;
   final VoidCallback onTap;
+  final int pillIndex;
+
+  /// Descriptive label for assistive technology. Uses the same ply-to-move-
+  /// number formula as [RepertoireTreeCache.getMoveNotation].
+  String get _semanticLabel {
+    final plyCount = pillIndex + 1;
+    final moveNumber = (plyCount + 1) ~/ 2;
+    final status = data.isSaved ? 'saved' : 'new';
+    return 'Move $moveNumber: ${data.san}, $status';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -171,35 +188,47 @@ class _MovePill extends StatelessWidget {
           border: Border.all(color: borderColor, width: borderWidth),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Text(
-          data.san,
-          style: TextStyle(color: textColor),
+        child: ExcludeSemantics(
+          child: Text(
+            data.san,
+            style: TextStyle(color: textColor),
+          ),
         ),
       ),
     );
 
+    final Widget content;
     if (data.label == null) {
-      return pillBody;
+      content = pillBody;
+    } else {
+      content = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          pillBody,
+          Positioned(
+            left: 0,
+            bottom: _kLabelBottomOffset,
+            child: ExcludeSemantics(
+              child: Text(
+                data.label!,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: colorScheme.primary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.visible,
+              ),
+            ),
+          ),
+        ],
+      );
     }
 
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        pillBody,
-        Positioned(
-          left: 0,
-          bottom: _kLabelBottomOffset,
-          child: Text(
-            data.label!,
-            style: TextStyle(
-              fontSize: 10,
-              color: colorScheme.primary,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.visible,
-          ),
-        ),
-      ],
+    return Semantics(
+      label: _semanticLabel,
+      button: true,
+      selected: isFocused,
+      child: content,
     );
   }
 }
