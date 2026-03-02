@@ -133,6 +133,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return ChoiceChip(
           label: Text(choice.label),
           selected: isSelected,
+          showCheckmark: false,
+          side: BorderSide(
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outlineVariant,
+            width: isSelected ? 2 : 1,
+          ),
           onSelected: (_) =>
               ref.read(boardThemeProvider.notifier).setPieceSet(choice),
         );
