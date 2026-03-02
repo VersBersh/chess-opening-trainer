@@ -768,4 +768,121 @@ void main() {
       expect(engine.getLineLabelName(), 'Open Game');
     });
   });
+
+  group('RepertoireTreeCache -- getDistinctLabels', () {
+    test('returns empty list when no moves have labels', () {
+      final moves = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(moves);
+      expect(cache.getDistinctLabels(), isEmpty);
+    });
+
+    test('returns single label when one move has a label', () {
+      final moves = buildLine(['e4', 'e5', 'Nf3']);
+      final labeled = [
+        RepertoireMove(
+          id: moves[0].id,
+          repertoireId: 1,
+          parentMoveId: null,
+          fen: moves[0].fen,
+          san: moves[0].san,
+          sortOrder: 0,
+          label: 'Sicilian',
+        ),
+        moves[1],
+        moves[2],
+      ];
+      final cache = RepertoireTreeCache.build(labeled);
+      expect(cache.getDistinctLabels(), ['Sicilian']);
+    });
+
+    test('returns distinct labels sorted alphabetically', () {
+      final moves = buildLine(['e4', 'e5', 'Nf3', 'Nc6']);
+      final labeled = [
+        RepertoireMove(
+          id: moves[0].id,
+          repertoireId: 1,
+          parentMoveId: null,
+          fen: moves[0].fen,
+          san: moves[0].san,
+          sortOrder: 0,
+          label: 'Sicilian',
+        ),
+        moves[1],
+        RepertoireMove(
+          id: moves[2].id,
+          repertoireId: 1,
+          parentMoveId: moves[2].parentMoveId,
+          fen: moves[2].fen,
+          san: moves[2].san,
+          sortOrder: 0,
+          label: 'Italian',
+        ),
+        RepertoireMove(
+          id: moves[3].id,
+          repertoireId: 1,
+          parentMoveId: moves[3].parentMoveId,
+          fen: moves[3].fen,
+          san: moves[3].san,
+          sortOrder: 0,
+          label: 'Sicilian',
+        ),
+      ];
+      final cache = RepertoireTreeCache.build(labeled);
+      expect(cache.getDistinctLabels(), ['Italian', 'Sicilian']);
+    });
+
+    test('ignores null labels and returns only non-null values', () {
+      final moves = buildLine(['e4', 'e5', 'Nf3']);
+      final labeled = [
+        moves[0], // no label
+        RepertoireMove(
+          id: moves[1].id,
+          repertoireId: 1,
+          parentMoveId: moves[1].parentMoveId,
+          fen: moves[1].fen,
+          san: moves[1].san,
+          sortOrder: 0,
+          label: 'French',
+        ),
+        moves[2], // no label
+      ];
+      final cache = RepertoireTreeCache.build(labeled);
+      expect(cache.getDistinctLabels(), ['French']);
+    });
+
+    test('returns labels from different branches of the tree', () {
+      // Main line: 1. e4 e5 2. Nf3
+      final mainLine = buildLine(['e4', 'e5', 'Nf3']);
+      // Branch: 1. e4 d5 (branching at root's child)
+      Position pos = Chess.initial;
+      pos = pos.play(pos.parseSan('e4')!);
+      pos = pos.play(pos.parseSan('d5')!);
+      final branchMove = RepertoireMove(
+        id: 100,
+        repertoireId: 1,
+        parentMoveId: mainLine[0].id,
+        fen: pos.fen,
+        san: 'd5',
+        sortOrder: 1,
+        label: 'Scandinavian',
+      );
+
+      final labeled = [
+        mainLine[0],
+        RepertoireMove(
+          id: mainLine[1].id,
+          repertoireId: 1,
+          parentMoveId: mainLine[1].parentMoveId,
+          fen: mainLine[1].fen,
+          san: mainLine[1].san,
+          sortOrder: 0,
+          label: 'Open Game',
+        ),
+        mainLine[2],
+        branchMove,
+      ];
+      final cache = RepertoireTreeCache.build(labeled);
+      expect(cache.getDistinctLabels(), ['Open Game', 'Scandinavian']);
+    });
+  });
 }

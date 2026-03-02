@@ -9,6 +9,7 @@ import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/repositories/review_repository.dart';
+import 'package:chess_trainer/screens/free_practice_setup_screen.dart';
 import 'package:chess_trainer/screens/home_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -402,6 +403,70 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Repertoire'), findsOneWidget);
+    });
+  });
+
+  group('HomeScreen -- Free Practice button', () {
+    testWidgets('shows Free Practice button', (tester) async {
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo = FakeReviewRepository(dueCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Free Practice'), findsOneWidget);
+    });
+
+    testWidgets('Free Practice button is enabled when repertoire exists',
+        (tester) async {
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo = FakeReviewRepository(dueCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<OutlinedButton>(
+          find.widgetWithText(OutlinedButton, 'Free Practice'));
+      expect(button.onPressed, isNotNull);
+    });
+
+    testWidgets('Free Practice button is disabled when no repertoire exists',
+        (tester) async {
+      final repertoireRepo = FakeRepertoireRepository(repertoires: []);
+      final reviewRepo = FakeReviewRepository(dueCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<OutlinedButton>(
+          find.widgetWithText(OutlinedButton, 'Free Practice'));
+      expect(button.onPressed, isNull);
+    });
+
+    testWidgets('tapping Free Practice navigates to setup screen',
+        (tester) async {
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo = FakeReviewRepository(dueCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Free Practice'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FreePracticeSetupScreen), findsOneWidget);
     });
   });
 }

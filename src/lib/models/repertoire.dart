@@ -112,6 +112,18 @@ class RepertoireTreeCache {
     return '$moveNumber. ${movesById[moveId]!.san}';
   }
 
+  /// Returns all distinct non-null labels across the tree, sorted alphabetically.
+  List<String> getDistinctLabels() {
+    final labels = <String>{};
+    for (final move in movesById.values) {
+      if (move.label != null) {
+        labels.add(move.label!);
+      }
+    }
+    final sorted = labels.toList()..sort();
+    return sorted;
+  }
+
   /// Returns the move and all its descendants.
   List<RepertoireMove> getSubtree(int moveId) {
     final result = <RepertoireMove>[];

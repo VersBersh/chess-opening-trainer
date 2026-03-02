@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
 import '../repositories/local/database.dart';
 import 'drill_screen.dart';
+import 'free_practice_setup_screen.dart';
 import 'repertoire_browser_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -103,7 +104,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Navigator.of(context)
         .push(
           MaterialPageRoute(
-            builder: (_) => DrillScreen(repertoireId: repertoireId),
+            builder: (_) => DrillScreen(
+              config: DrillConfig(repertoireId: repertoireId),
+            ),
+          ),
+        )
+        .then((_) => ref.read(homeControllerProvider.notifier).refresh());
+  }
+
+  void _startFreePractice(int repertoireId) {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => FreePracticeSetupScreen(
+                repertoireId: repertoireId),
           ),
         )
         .then((_) => ref.read(homeControllerProvider.notifier).refresh());
@@ -191,6 +205,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   : null,
               icon: const Icon(Icons.play_arrow),
               label: const Text('Start Drill'),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: repertoireId != null
+                  ? () => _startFreePractice(repertoireId)
+                  : null,
+              icon: const Icon(Icons.fitness_center),
+              label: const Text('Free Practice'),
             ),
             const SizedBox(height: 16),
             OutlinedButton.icon(

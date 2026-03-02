@@ -6,11 +6,49 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
 import '../models/repertoire.dart';
+import '../repositories/local/database.dart' show ReviewCard;
 import '../repositories/review_repository.dart';
 import '../services/chess_utils.dart';
 import '../services/drill_engine.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
+
+// ---------------------------------------------------------------------------
+// DrillConfig -- configuration for launching a drill session
+// ---------------------------------------------------------------------------
+
+/// Configuration for launching a drill session.
+/// [repertoireId] identifies which repertoire's tree to load.
+/// [isExtraPractice] suppresses SM-2 updates.
+/// [preloadedCards] are included in equality via reference identity so that
+/// two configs with different card lists are never collapsed into the same
+/// Riverpod family instance.
+class DrillConfig {
+  final int repertoireId;
+  final bool isExtraPractice;
+  final List<ReviewCard>? preloadedCards;
+
+  const DrillConfig({
+    required this.repertoireId,
+    this.isExtraPractice = false,
+    this.preloadedCards,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DrillConfig &&
+          repertoireId == other.repertoireId &&
+          isExtraPractice == other.isExtraPractice &&
+          identical(preloadedCards, other.preloadedCards);
+
+  @override
+  int get hashCode => Object.hash(
+        repertoireId,
+        isExtraPractice,
+        identityHashCode(preloadedCards),
+      );
+}
 
 // ---------------------------------------------------------------------------
 // Drill screen state sealed class hierarchy
@@ -82,6 +120,7 @@ class SessionSummary {
   final int failedCount;      // quality 1 (3+ mistakes)
   final Duration sessionDuration;
   final DateTime? earliestNextDue;
+  final bool isFreePractice;
 
   const SessionSummary({
     required this.totalCards,
@@ -93,6 +132,7 @@ class SessionSummary {
     required this.failedCount,
     required this.sessionDuration,
     this.earliestNextDue,
+    this.isFreePractice = false,
   });
 }
 
@@ -106,17 +146,18 @@ class DrillSessionComplete extends DrillScreenState {
 // ---------------------------------------------------------------------------
 
 final drillControllerProvider = AsyncNotifierProvider.autoDispose
-    .family<DrillController, DrillScreenState, int>(DrillController.new);
+    .family<DrillController, DrillScreenState, DrillConfig>(DrillController.new);
 
 // ---------------------------------------------------------------------------
 // DrillController
 // ---------------------------------------------------------------------------
 
 class DrillController
-    extends AutoDisposeFamilyAsyncNotifier<DrillScreenState, int> {
+    extends AutoDisposeFamilyAsyncNotifier<DrillScreenState, DrillConfig> {
   late DrillEngine _engine;
   late ChessboardController boardController;
   late ReviewRepository _reviewRepo;
+  bool _isExtraPractice = false;
   int _completedCards = 0;
   int _skippedCards = 0;
   int _perfectCount = 0;
@@ -131,16 +172,18 @@ class DrillController
   String _currentLineLabel = '';
 
   @override
-  Future<DrillScreenState> build(int arg) async {
-    final repertoireId = arg;
+  Future<DrillScreenState> build(DrillConfig arg) async {
+    final config = arg;
+    _isExtraPractice = config.isExtraPractice;
     final repertoireRepo = ref.read(repertoireRepositoryProvider);
     _reviewRepo = ref.read(reviewRepositoryProvider);
 
-    final dueCards = await _reviewRepo.getDueCardsForRepertoire(repertoireId);
+    final cards = config.preloadedCards ??
+        await _reviewRepo.getDueCardsForRepertoire(config.repertoireId);
 
-    if (dueCards.isEmpty) {
+    if (cards.isEmpty) {
       return DrillSessionComplete(
-        summary: const SessionSummary(
+        summary: SessionSummary(
           totalCards: 0,
           completedCards: 0,
           skippedCards: 0,
@@ -149,15 +192,20 @@ class DrillController
           struggledCount: 0,
           failedCount: 0,
           sessionDuration: Duration.zero,
+          isFreePractice: _isExtraPractice,
         ),
       );
     }
 
     final allMoves =
-        await repertoireRepo.getMovesForRepertoire(repertoireId);
+        await repertoireRepo.getMovesForRepertoire(config.repertoireId);
     final treeCache = RepertoireTreeCache.build(allMoves);
 
-    _engine = DrillEngine(cards: dueCards, treeCache: treeCache);
+    _engine = DrillEngine(
+      cards: cards,
+      treeCache: treeCache,
+      isExtraPractice: config.isExtraPractice,
+    );
 
     boardController = ChessboardController();
     ref.onDispose(() {
@@ -375,6 +423,7 @@ class DrillController
     failedCount: _failedCount,
     sessionDuration: DateTime.now().difference(_sessionStartTime),
     earliestNextDue: _earliestNextDue,
+    isFreePractice: _isExtraPractice,
   );
 
   // ---- Skip ----------------------------------------------------------------
@@ -396,13 +445,13 @@ class DrillController
 // ---------------------------------------------------------------------------
 
 class DrillScreen extends ConsumerWidget {
-  final int repertoireId;
+  final DrillConfig config;
 
-  const DrillScreen({super.key, required this.repertoireId});
+  const DrillScreen({super.key, required this.config});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final asyncState = ref.watch(drillControllerProvider(repertoireId));
+    final asyncState = ref.watch(drillControllerProvider(config));
 
     return asyncState.when(
       loading: () => Scaffold(
@@ -492,7 +541,7 @@ class DrillScreen extends ConsumerWidget {
     IMap<Square, Annotation>? annotations,
   }) {
     final notifier =
-        ref.read(drillControllerProvider(repertoireId).notifier);
+        ref.read(drillControllerProvider(config).notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -607,7 +656,7 @@ class DrillScreen extends ConsumerWidget {
     final summary = drillState.summary;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Session Complete')),
+      appBar: AppBar(title: Text(summary.isFreePractice ? 'Practice Complete' : 'Session Complete')),
       body: SingleChildScrollView(
         child: Center(
           child: Padding(
@@ -622,9 +671,18 @@ class DrillScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'Session Complete',
+                  summary.isFreePractice ? 'Practice Complete' : 'Session Complete',
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
+                if (summary.isFreePractice) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Free Practice \u2014 no SR updates',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Text(
                   '${summary.completedCards} cards reviewed',
@@ -656,7 +714,7 @@ class DrillScreen extends ConsumerWidget {
                   _buildBreakdownRow(
                       context, 'Failed', summary.failedCount, Colors.red),
                 ],
-                if (summary.earliestNextDue != null) ...[
+                if (!summary.isFreePractice && summary.earliestNextDue != null) ...[
                   const SizedBox(height: 24),
                   Text(
                     'Next review: ${_formatNextDue(summary.earliestNextDue!)}',

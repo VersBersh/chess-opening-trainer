@@ -197,10 +197,12 @@ class FakeReviewRepository implements ReviewRepository {
 // Widget builder helper
 // ---------------------------------------------------------------------------
 
+const _defaultConfig = DrillConfig(repertoireId: 1);
+
 Widget buildTestApp({
   required FakeRepertoireRepository repertoireRepo,
   required FakeReviewRepository reviewRepo,
-  int repertoireId = 1,
+  DrillConfig config = _defaultConfig,
 }) {
   return ProviderScope(
     overrides: [
@@ -208,7 +210,7 @@ Widget buildTestApp({
       reviewRepositoryProvider.overrideWithValue(reviewRepo),
     ],
     child: MaterialApp(
-      home: DrillScreen(repertoireId: repertoireId),
+      home: DrillScreen(config: config),
     ),
   );
 }
@@ -308,7 +310,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       // Get the position before the user's move to compute the correct
       // NormalMove for Ba4
@@ -327,7 +329,7 @@ void main() {
 
       // After correct move Ba4 + opponent auto-play Nf6, state should still
       // be DrillUserTurn (one more user move remaining: O-O)
-      final state = container.read(drillControllerProvider(1));
+      final state = container.read(drillControllerProvider(_defaultConfig));
       expect(state.value, isA<DrillUserTurn>());
     });
   });
@@ -348,7 +350,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       // Play a wrong move: Bc4 instead of Ba4
       final pos =
@@ -363,7 +365,7 @@ void main() {
       await tester.pump();
 
       // State should be DrillMistakeFeedback
-      final state = container.read(drillControllerProvider(1));
+      final state = container.read(drillControllerProvider(_defaultConfig));
       expect(state.value, isA<DrillMistakeFeedback>());
 
       final feedback = state.value! as DrillMistakeFeedback;
@@ -396,7 +398,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       final pos =
           Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
@@ -452,7 +454,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       // With the branch, intro ends at index 4 (the branch point).
       // Expected move is Bb5. Play the sibling Bc4.
@@ -463,7 +465,7 @@ void main() {
       unawaited(notifier.processUserMove(siblingMove));
       await tester.pump();
 
-      final state = container.read(drillControllerProvider(1));
+      final state = container.read(drillControllerProvider(_defaultConfig));
       expect(state.value, isA<DrillMistakeFeedback>());
 
       final feedback = state.value! as DrillMistakeFeedback;
@@ -499,7 +501,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       // Store the FEN before the mistake
       final fenBeforeMistake = notifier.boardController.fen;
@@ -521,7 +523,7 @@ void main() {
       expect(notifier.boardController.fen, fenBeforeMistake);
 
       // State should be back to DrillUserTurn
-      final state = container.read(drillControllerProvider(1));
+      final state = container.read(drillControllerProvider(_defaultConfig));
       expect(state.value, isA<DrillUserTurn>());
     });
   });
@@ -573,7 +575,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       // Complete first card: play Ba4, pump past opponent delay, then O-O
       var prePos =
@@ -598,7 +600,7 @@ void main() {
       expect(reviewRepo.savedReviews.length, 1);
 
       // State should show the second card (CardStart or UserTurn)
-      final state = container.read(drillControllerProvider(1));
+      final state = container.read(drillControllerProvider(_defaultConfig));
       final stateVal = state.value!;
       final isCard2 = stateVal is DrillCardStart &&
               stateVal.currentCardNumber == 2 ||
@@ -683,7 +685,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       var prePos =
           Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
@@ -731,7 +733,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       var prePos =
           Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
@@ -771,7 +773,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       var prePos =
           Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
@@ -897,7 +899,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       final pos =
           Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
@@ -1006,7 +1008,7 @@ void main() {
         tester.element(find.byType(DrillScreen)),
       );
       final notifier =
-          container.read(drillControllerProvider(1).notifier);
+          container.read(drillControllerProvider(_defaultConfig).notifier);
 
       var prePos =
           Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
@@ -1028,6 +1030,183 @@ void main() {
       expect(find.text('Sicilian \u2014 French'), findsOneWidget);
       // Card 1's label alone should no longer be on screen
       expect(find.text('Sicilian'), findsNothing);
+    });
+  });
+
+  group('DrillScreen -- free practice', () {
+    testWidgets('free practice does not save reviews', (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Complete the card by playing correct moves
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // No reviews should have been saved
+      expect(reviewRepo.savedReviews, isEmpty);
+    });
+
+    testWidgets('free practice session summary shows "Practice Complete"',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should show "Practice Complete" instead of "Session Complete"
+      expect(find.text('Practice Complete'), findsNWidgets(2));
+      expect(find.text('Session Complete'), findsNothing);
+    });
+
+    testWidgets('free practice session summary shows SR-exempt subtitle',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      expect(find.textContaining('no SR updates'), findsOneWidget);
+    });
+
+    testWidgets('free practice session summary hides next review date',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      expect(find.textContaining('Next review:'), findsNothing);
     });
   });
 }
