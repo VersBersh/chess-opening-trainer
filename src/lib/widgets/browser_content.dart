@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/repertoire_browser_controller.dart';
 import '../models/repertoire.dart';
+import '../theme/spacing.dart';
 import 'browser_action_bar.dart';
 import 'browser_board_panel.dart';
 import 'chessboard_controller.dart';
@@ -89,7 +90,7 @@ class BrowserContent extends StatelessWidget {
     final isWide = screenWidth >= 600;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: kBannerGapInsets,
       child: isWide ? _buildWide(context) : _buildNarrow(context),
     );
   }

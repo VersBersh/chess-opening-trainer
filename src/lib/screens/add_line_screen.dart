@@ -10,6 +10,7 @@ import '../services/line_entry_engine.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
 import '../widgets/inline_label_editor.dart';
+import '../theme/spacing.dart';
 import '../widgets/label_conflict_dialog.dart';
 import '../widgets/move_pills_widget.dart';
 import '../widgets/repertoire_dialogs.dart';
@@ -344,7 +345,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: kBannerGap),
           ],
 
           // Chessboard
