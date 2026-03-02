@@ -586,27 +586,31 @@ class AddLineController extends ChangeNotifier {
 
   /// Whether label editing is permitted.
   ///
-  /// The UI gates editing behind this (via `canEditLabel`), but `updateLabel()`
-  /// is a public API so we also check internally.
+  /// Label editing is allowed whenever a saved pill is focused, regardless of
+  /// whether unsaved (buffered) moves exist. The `updateLabel()` method
+  /// preserves buffered moves via replay after the cache rebuild.
   bool get canEditLabel {
     final focusedIndex = _state.focusedPillIndex;
     if (focusedIndex == null) return false;
     if (focusedIndex >= _state.pills.length) return false;
     if (!_state.pills[focusedIndex].isSaved) return false;
-    return !hasNewMoves;
+    return true;
   }
 
   /// Updates the label on the move at the given pill index.
   ///
   /// Preserves navigation state (focusedPillIndex, currentFen, preMoveFen,
   /// boardOrientation) instead of doing a full reset via [loadData].
+  /// Any buffered (unsaved) moves are replayed onto the rebuilt engine so
+  /// they are not lost.
   Future<void> updateLabel(int pillIndex, String? newLabel) async {
-    // Guard: label editing requires no unsaved moves (the UI enforces this
-    // via canEditLabel, but protect against direct callers).
-    if (hasNewMoves) return;
-
     final moveId = getMoveIdAtPillIndex(pillIndex);
     if (moveId == null) return;
+
+    // Capture engine state before any async gaps, so the replay uses a
+    // consistent snapshot even if _state changes during the awaits below.
+    final savedBufferedMoves = List.of(_state.engine?.bufferedMoves ?? []);
+    final savedLastExistingMoveId = _state.engine?.lastExistingMoveId;
 
     // Save navigation state before refresh.
     final savedFocusedPillIndex = _state.focusedPillIndex;
@@ -623,16 +627,21 @@ class AddLineController extends ChangeNotifier {
         await _repertoireRepo.getMovesForRepertoire(_repertoireId);
     final cache = RepertoireTreeCache.build(allMoves);
 
-    // Create a new engine with startingMoveId set to the old engine's
-    // lastExistingMoveId. Since hasNewMoves is false (guarded above), the
-    // new engine's _existingPath covers the full navigated trail and
-    // _bufferedMoves starts empty -- no data is lost.
-    final lastExistingMoveId = _state.engine?.lastExistingMoveId;
+    // Create a new engine with startingMoveId set to the snapshotted
+    // lastExistingMoveId. Buffered moves are preserved via replay below
+    // rather than being lost during the engine rebuild.
     final engine = LineEntryEngine(
       treeCache: cache,
       repertoireId: _repertoireId,
-      startingMoveId: lastExistingMoveId,
+      startingMoveId: savedLastExistingMoveId,
     );
+
+    // Replay buffered moves onto the fresh engine. Since only a label was
+    // changed (no structural tree modification), acceptMove() will correctly
+    // re-buffer them.
+    for (final buffered in savedBufferedMoves) {
+      engine.acceptMove(buffered.san, buffered.fen);
+    }
 
     // Rebuild pills and display name from the fresh engine/cache.
     final pills = _buildPillsList(engine);

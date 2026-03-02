@@ -114,10 +114,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     final isSameAsFocused = index == state.focusedPillIndex;
     final pill = index < state.pills.length ? state.pills[index] : null;
 
-    if (isSameAsFocused &&
-        pill != null &&
-        pill.isSaved &&
-        !_controller.hasNewMoves) {
+    if (isSameAsFocused && pill != null && pill.isSaved) {
       // Re-tap on a focused saved pill: open the inline editor.
       setState(() => _isLabelEditorVisible = true);
       return;
@@ -514,9 +511,9 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   }
 
   Widget _buildActionBar(BuildContext context, AddLineState state) {
-    // Label editing is enabled when a saved pill is focused and no unsaved
-    // moves exist. Board orientation is intentionally NOT a factor — labels
-    // are organizational metadata independent of line color (see add-line.md).
+    // Label editing is enabled when a saved pill is focused, regardless of
+    // board orientation or unsaved moves. Labels are organizational metadata
+    // independent of line color (see add-line.md).
     final canEditLabel = _controller.canEditLabel;
 
     return Padding(

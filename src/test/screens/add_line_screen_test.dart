@@ -615,6 +615,77 @@ void main() {
       expect(labelButton.onPressed, isNotNull);
     });
 
+    testWidgets('label button enabled with buffered moves present',
+        (tester) async {
+      // Seed a repertoire with saved moves.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Follow e4 and e5 (saved pills) by playing them on the board.
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e7, to: Square.e5));
+      await tester.pumpAndSettle();
+
+      // Play Nf3 (buffered pill).
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.g1, to: Square.f3));
+      await tester.pumpAndSettle();
+
+      // Tap pill 0 (e4, saved) to focus it.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Label button should be enabled (saved pill focused, even with buffered moves).
+      final labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNotNull);
+    });
+
+    testWidgets('double-tap saved pill opens label editor with buffered moves present',
+        (tester) async {
+      // Seed a repertoire with saved moves.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Follow e4 and e5 (saved pills) by playing them on the board.
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e7, to: Square.e5));
+      await tester.pumpAndSettle();
+
+      // Play Nf3 (buffered pill).
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.g1, to: Square.f3));
+      await tester.pumpAndSettle();
+
+      // Tap pill 0 (e4, saved) to focus it.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Tap pill 0 again (double-tap) to open the inline label editor.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // InlineLabelEditor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+    });
+
     testWidgets(
         'full label editing flow works with board flipped to black',
         (tester) async {

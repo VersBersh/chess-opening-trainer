@@ -900,7 +900,7 @@ void main() {
       boardController.dispose();
     });
 
-    test('updateLabel is a no-op when hasNewMoves is true', () async {
+    test('updateLabel succeeds and preserves buffered moves when hasNewMoves is true', () async {
       final repId = await seedRepertoire(db, lines: [
         ['e4'],
       ]);
@@ -923,19 +923,96 @@ void main() {
       expect(controller.state.pills.length, 2);
       expect(controller.state.pills[0].label, isNull);
 
-      // Attempt to update label while hasNewMoves is true.
+      // Focus pill 0 (the saved e4 pill) before editing.
+      controller.onPillTapped(0, boardController);
+
+      // Update label while hasNewMoves is true.
       await controller.updateLabel(0, 'Test');
 
-      // Assert: no-op -- label unchanged, state unchanged.
-      expect(controller.state.pills[0].label, isNull);
-      expect(controller.hasNewMoves, true);
-      expect(controller.state.pills.length, 2);
-
-      // Verify the label was NOT persisted to DB.
+      // Assert: label IS persisted in the DB.
       final repRepo = LocalRepertoireRepository(db);
       final allMoves = await repRepo.getMovesForRepertoire(repId);
       final e4Move2 = allMoves.firstWhere((m) => m.san == 'e4');
-      expect(e4Move2.label, isNull);
+      expect(e4Move2.label, 'Test');
+
+      // Assert: hasNewMoves remains true (buffered moves preserved).
+      expect(controller.hasNewMoves, true);
+
+      // Assert: pills list still has 2 items.
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].isSaved, true);
+      expect(controller.state.pills[0].label, 'Test');
+      expect(controller.state.pills[1].isSaved, false);
+
+      // Assert: focusedPillIndex and currentFen are preserved.
+      expect(controller.state.focusedPillIndex, 0);
+      expect(controller.state.currentFen, fens[0]);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('label editing preserves buffered moves across multiple pills', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 and e5 (both saved).
+      final fens = computeFens(['e4', 'e5', 'Nf3', 'Nc6']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      // Buffer Nf3 and Nc6 (unsaved).
+      final nf3Move = sanToNormalMove(fens[1], 'Nf3');
+      boardController.playMove(nf3Move);
+      controller.onBoardMove(nf3Move, boardController);
+
+      final nc6Move = sanToNormalMove(fens[2], 'Nc6');
+      boardController.playMove(nc6Move);
+      controller.onBoardMove(nc6Move, boardController);
+
+      expect(controller.state.pills.length, 4);
+      expect(controller.hasNewMoves, true);
+
+      // Focus on pill 0 (e4, saved).
+      controller.onPillTapped(0, boardController);
+      expect(controller.canEditLabel, true);
+
+      // Update label on pill 0.
+      await controller.updateLabel(0, 'King Pawn');
+
+      // Assert: label is persisted in DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Db.label, 'King Pawn');
+
+      // Assert: pills list has 4 items with correct saved/unsaved status.
+      expect(controller.state.pills.length, 4);
+      expect(controller.state.pills[0].isSaved, true);
+      expect(controller.state.pills[0].label, 'King Pawn');
+      expect(controller.state.pills[1].isSaved, true);
+      expect(controller.state.pills[2].isSaved, false);
+      expect(controller.state.pills[3].isSaved, false);
+
+      // Assert: hasNewMoves is still true.
+      expect(controller.hasNewMoves, true);
+
+      // Assert: canEditLabel is true when focused on pill 0 (saved).
+      expect(controller.canEditLabel, true);
+
+      // Focus on pill 3 (Nc6, unsaved). Assert canEditLabel is false.
+      controller.onPillTapped(3, boardController);
+      expect(controller.canEditLabel, false);
 
       controller.dispose();
       boardController.dispose();

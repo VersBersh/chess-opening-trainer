@@ -1,0 +1,11 @@
+- **Verdict** — `Approved`
+- **Progress**
+  - [done] Step 1: `updateLabel()` now removes the `hasNewMoves` early return and replays buffered moves after cache/engine rebuild.
+  - [done] Step 2: `canEditLabel` now allows editing whenever a saved pill is focused (independent of unsaved buffered moves), with updated docs.
+  - [done] Step 3: `_onPillTapped()` no longer blocks double-tap label editing when buffered moves exist.
+  - [done] Step 4: `_buildActionBar()` comment updated to match new behavior.
+  - [done] Step 5: Existing controller test was renamed and updated to assert successful label save plus buffered-move preservation.
+  - [done] Step 6: New controller test added for multi-pill buffered replay + saved/unsaved `canEditLabel` behavior.
+  - [done] Step 7: New screen tests added for Label button enabled with buffered moves and double-tap opening inline editor in that state.
+- **Issues**
+  1. None. Implementation matches the plan, is logically consistent with the architecture in `1-context.md`, and introduces no obvious regressions in modified call paths.
