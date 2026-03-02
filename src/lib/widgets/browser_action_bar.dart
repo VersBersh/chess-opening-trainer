@@ -1,6 +1,27 @@
 import 'package:flutter/material.dart';
 
 // ---------------------------------------------------------------------------
+// Action definition
+// ---------------------------------------------------------------------------
+
+/// A single action (icon, label, handler) rendered by [BrowserActionBar].
+///
+/// Private to this file. The [onPressed] field being nullable naturally
+/// expresses enabled vs disabled, matching the existing convention. [label]
+/// serves as visible text in full-width mode and tooltip in compact mode.
+class _ActionDef {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  const _ActionDef({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // BrowserActionBar
 // ---------------------------------------------------------------------------
 
@@ -40,6 +61,15 @@ class BrowserActionBar extends StatelessWidget {
   /// Display text for the delete button -- `'Delete'` or `'Delete Branch'`.
   final String deleteLabel;
 
+  /// The shared action list, defined once and consumed by both layout modes.
+  List<_ActionDef> get _actions => [
+        _ActionDef(icon: Icons.add, label: 'Add Line', onPressed: onAddLine),
+        _ActionDef(icon: Icons.file_upload, label: 'Import', onPressed: onImport),
+        _ActionDef(icon: Icons.label, label: 'Label', onPressed: onEditLabel),
+        _ActionDef(icon: Icons.bar_chart, label: 'Stats', onPressed: onViewCardStats),
+        _ActionDef(icon: Icons.delete, label: deleteLabel, onPressed: onDelete),
+      ];
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -52,31 +82,12 @@ class BrowserActionBar extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        IconButton(
-          onPressed: onAddLine,
-          icon: const Icon(Icons.add),
-          tooltip: 'Add Line',
-        ),
-        IconButton(
-          onPressed: onImport,
-          icon: const Icon(Icons.file_upload),
-          tooltip: 'Import',
-        ),
-        IconButton(
-          onPressed: onEditLabel,
-          icon: const Icon(Icons.label),
-          tooltip: 'Label',
-        ),
-        IconButton(
-          onPressed: onViewCardStats,
-          icon: const Icon(Icons.bar_chart),
-          tooltip: 'Stats',
-        ),
-        IconButton(
-          onPressed: onDelete,
-          icon: const Icon(Icons.delete),
-          tooltip: deleteLabel,
-        ),
+        for (final action in _actions)
+          IconButton(
+            onPressed: action.onPressed,
+            icon: Icon(action.icon),
+            tooltip: action.label,
+          ),
       ],
     );
   }
@@ -85,41 +96,14 @@ class BrowserActionBar extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        Flexible(
-          child: TextButton.icon(
-            onPressed: onAddLine,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add Line'),
+        for (final action in _actions)
+          Flexible(
+            child: TextButton.icon(
+              onPressed: action.onPressed,
+              icon: Icon(action.icon, size: 18),
+              label: Text(action.label),
+            ),
           ),
-        ),
-        Flexible(
-          child: TextButton.icon(
-            onPressed: onImport,
-            icon: const Icon(Icons.file_upload, size: 18),
-            label: const Text('Import'),
-          ),
-        ),
-        Flexible(
-          child: TextButton.icon(
-            onPressed: onEditLabel,
-            icon: const Icon(Icons.label, size: 18),
-            label: const Text('Label'),
-          ),
-        ),
-        Flexible(
-          child: TextButton.icon(
-            onPressed: onViewCardStats,
-            icon: const Icon(Icons.bar_chart, size: 18),
-            label: const Text('Stats'),
-          ),
-        ),
-        Flexible(
-          child: TextButton.icon(
-            onPressed: onDelete,
-            icon: const Icon(Icons.delete, size: 18),
-            label: Text(deleteLabel),
-          ),
-        ),
       ],
     );
   }
