@@ -285,6 +285,119 @@ void main() {
     });
   });
 
+  group('getDescendantLabelImpact', () {
+    test('returns empty list when no labeled descendants', () {
+      // 1. e4 e5 2. Nf3 -- no labels anywhere
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.getDescendantLabelImpact(1, 'King Pawn'), isEmpty);
+    });
+
+    test('returns one entry for a single labeled descendant', () {
+      // 1. e4 (label: "A") e5 2. Nf3 (label: "B")
+      final line = buildLine(
+        ['e4', 'e5', 'Nf3'],
+        labels: {0: 'A', 2: 'B'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Changing e4's label from "A" to "X"
+      final impact = cache.getDescendantLabelImpact(1, 'X');
+
+      expect(impact, hasLength(1));
+      expect(impact[0].moveId, 3);
+      expect(impact[0].before, 'A \u2014 B');
+      expect(impact[0].after, 'X \u2014 B');
+    });
+
+    test('returns entries for multiple labeled descendants at different depths',
+        () {
+      // 1. e4 (label: "Root") e5 (label: "Mid") 2. Nf3 (label: "Leaf")
+      final line = buildLine(
+        ['e4', 'e5', 'Nf3'],
+        labels: {0: 'Root', 1: 'Mid', 2: 'Leaf'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Changing e4's label from "Root" to "NewRoot"
+      final impact = cache.getDescendantLabelImpact(1, 'NewRoot');
+
+      expect(impact, hasLength(2));
+      // e5 (id=2): "Root -- Mid" -> "NewRoot -- Mid"
+      final e5Entry = impact.firstWhere((e) => e.moveId == 2);
+      expect(e5Entry.before, 'Root \u2014 Mid');
+      expect(e5Entry.after, 'NewRoot \u2014 Mid');
+      // Nf3 (id=3): "Root -- Mid -- Leaf" -> "NewRoot -- Mid -- Leaf"
+      final nf3Entry = impact.firstWhere((e) => e.moveId == 3);
+      expect(nf3Entry.before, 'Root \u2014 Mid \u2014 Leaf');
+      expect(nf3Entry.after, 'NewRoot \u2014 Mid \u2014 Leaf');
+    });
+
+    test('changing an existing label reflects before/after correctly', () {
+      // 1. e4 (label: "Sicilian") c5 2. Nf3 (label: "Open")
+      final line = buildLine(
+        ['e4', 'c5', 'Nf3'],
+        labels: {0: 'Sicilian', 2: 'Open'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Changing e4's label from "Sicilian" to "French"
+      final impact = cache.getDescendantLabelImpact(1, 'French');
+
+      expect(impact, hasLength(1));
+      expect(impact[0].moveId, 3);
+      expect(impact[0].before, 'Sicilian \u2014 Open');
+      expect(impact[0].after, 'French \u2014 Open');
+    });
+
+    test('removing a label (null) causes descendants to lose the segment', () {
+      // 1. e4 (label: "Sicilian") c5 2. Nf3 (label: "Open")
+      final line = buildLine(
+        ['e4', 'c5', 'Nf3'],
+        labels: {0: 'Sicilian', 2: 'Open'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Removing e4's label
+      final impact = cache.getDescendantLabelImpact(1, null);
+
+      expect(impact, hasLength(1));
+      expect(impact[0].moveId, 3);
+      expect(impact[0].before, 'Sicilian \u2014 Open');
+      expect(impact[0].after, 'Open');
+    });
+
+    test('no-op (same label) returns empty list', () {
+      // 1. e4 (label: "Sicilian") c5 2. Nf3 (label: "Open")
+      final line = buildLine(
+        ['e4', 'c5', 'Nf3'],
+        labels: {0: 'Sicilian', 2: 'Open'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Setting e4's label to the same value
+      final impact = cache.getDescendantLabelImpact(1, 'Sicilian');
+
+      expect(impact, isEmpty);
+    });
+
+    test('unlabeled descendants are not included', () {
+      // 1. e4 (label: "A") e5 2. Nf3 -- e5 and Nf3 are unlabeled
+      final line = buildLine(
+        ['e4', 'e5', 'Nf3'],
+        labels: {0: 'A'},
+      );
+      final cache = RepertoireTreeCache.build(line);
+
+      // Changing e4's label from "A" to "B"
+      final impact = cache.getDescendantLabelImpact(1, 'B');
+
+      // e5 and Nf3 have no label of their own, so they're not reported
+      expect(impact, isEmpty);
+    });
+  });
+
   group('countDescendantLeaves', () {
     test('a leaf node returns 1 (itself)', () {
       // 1. e4 e5 2. Nf3  -- Nf3 (id=3) is a leaf

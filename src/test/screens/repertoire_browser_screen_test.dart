@@ -997,6 +997,162 @@ void main() {
       expect(find.byType(InlineLabelEditor), findsNothing);
     });
 
+    testWidgets(
+        'no warning dialog when no labeled descendants -- label saved directly',
+        (tester) async {
+      // Tree: e4 -> e5 -> Nf3 -- no labels anywhere
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // Open inline editor
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Enter label text and press Enter
+      await tester.enterText(find.byType(TextField), 'King Pawn');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // No warning dialog should appear
+      expect(find.text('Label affects other names'), findsNothing);
+
+      // Verify label was saved directly
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'King Pawn');
+    });
+
+    testWidgets(
+        'warning dialog shown when labeled descendants exist -- correct before/after names',
+        (tester) async {
+      // Tree: e4 (label: "Sicilian") -> c5 -> Nf3 (label: "Open")
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'c5', 'Nf3'],
+        ],
+        labelsOnSan: {'e4': 'Sicilian', 'Nf3': 'Open'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4 (which has label "Sicilian")
+      await tester.tap(find.textContaining('1. e4'));
+      await tester.pump();
+
+      // Open inline editor
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Change label from "Sicilian" to "French"
+      await tester.enterText(find.byType(TextField), 'French');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Warning dialog should appear
+      expect(find.text('Label affects other names'), findsOneWidget);
+
+      // Should show the before/after display names for Nf3
+      expect(find.text('Sicilian \u2014 Open'), findsOneWidget);
+      expect(find.text('French \u2014 Open'), findsOneWidget);
+    });
+
+    testWidgets(
+        'warning dialog -- Apply saves the label',
+        (tester) async {
+      // Tree: e4 (label: "Sicilian") -> c5 -> Nf3 (label: "Open")
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'c5', 'Nf3'],
+        ],
+        labelsOnSan: {'e4': 'Sicilian', 'Nf3': 'Open'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4, open editor, change label
+      await tester.tap(find.textContaining('1. e4'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'French');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Warning dialog should appear
+      expect(find.text('Label affects other names'), findsOneWidget);
+
+      // Tap Apply
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+
+      // Verify label was saved
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'French');
+    });
+
+    testWidgets(
+        'warning dialog -- Cancel does NOT save, editor stays open',
+        (tester) async {
+      // Tree: e4 (label: "Sicilian") -> c5 -> Nf3 (label: "Open")
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'c5', 'Nf3'],
+        ],
+        labelsOnSan: {'e4': 'Sicilian', 'Nf3': 'Open'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4, open editor, change label
+      await tester.tap(find.textContaining('1. e4'));
+      await tester.pump();
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'French');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Warning dialog should appear
+      expect(find.text('Label affects other names'), findsOneWidget);
+
+      // Tap Cancel
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Editor should stay open (LabelChangeCancelledException keeps it open)
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Verify label was NOT changed
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'Sicilian');
+    });
+
     testWidgets('editor closes when edited node is deleted', (tester) async {
       // Use sibling leaves so no orphan prompt after deleting one.
       final repId = await seedRepertoire(

@@ -231,7 +231,19 @@ class _RepertoireBrowserScreenState
       descendantLeafCount: cache.countDescendantLeaves(moveId),
       previewDisplayName: (text) =>
           cache.previewAggregateDisplayName(moveId, text),
-      onSave: (label) => _controller.editLabel(moveId, label),
+      onSave: (label) async {
+        final impact = cache.getDescendantLabelImpact(moveId, label);
+        if (impact.isNotEmpty) {
+          final confirmed = await showLabelImpactWarningDialog(
+            context,
+            affectedEntries: impact,
+          );
+          if (confirmed != true) {
+            throw LabelChangeCancelledException();
+          }
+        }
+        await _controller.editLabel(moveId, label);
+      },
       onClose: () {
         if (mounted) {
           setState(() => _labelEditorMoveId = null);

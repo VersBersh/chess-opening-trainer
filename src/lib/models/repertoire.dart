@@ -1,5 +1,19 @@
 import '../repositories/local/database.dart';
 
+/// A single entry describing how a descendant's display name changes when an
+/// ancestor's label is modified.
+class LabelImpactEntry {
+  final int moveId;
+  final String before;
+  final String after;
+
+  const LabelImpactEntry({
+    required this.moveId,
+    required this.before,
+    required this.after,
+  });
+}
+
 /// Eagerly-loaded, indexed view of the full repertoire move tree.
 /// Built from a single getMovesForRepertoire() call.
 /// Provides O(depth) path reconstruction, O(1) lookups by ID and FEN.
@@ -187,5 +201,60 @@ class RepertoireTreeCache {
       }
     }
     return result;
+  }
+
+  /// Returns a list of [LabelImpactEntry] describing how each labeled
+  /// descendant's display name would change if [moveId]'s label were set to
+  /// [newLabel]. Only descendants whose display name actually changes are
+  /// included.
+  List<LabelImpactEntry> getDescendantLabelImpact(
+    int moveId,
+    String? newLabel,
+  ) {
+    final subtree = getSubtree(moveId);
+    final result = <LabelImpactEntry>[];
+
+    for (final descendant in subtree) {
+      // Skip the node itself — only report descendants.
+      if (descendant.id == moveId) continue;
+      // Skip descendants without their own label.
+      if (descendant.label == null) continue;
+
+      final before = getAggregateDisplayName(descendant.id);
+      final after = _previewDescendantDisplayName(
+        descendant.id,
+        moveId,
+        newLabel,
+      );
+
+      if (before != after) {
+        result.add(LabelImpactEntry(
+          moveId: descendant.id,
+          before: before,
+          after: after,
+        ));
+      }
+    }
+
+    return result;
+  }
+
+  /// Computes what the aggregate display name of [descendantMoveId] would be
+  /// if [changedMoveId]'s label were set to [newLabel].
+  String _previewDescendantDisplayName(
+    int descendantMoveId,
+    int changedMoveId,
+    String? newLabel,
+  ) {
+    final line = getLine(descendantMoveId);
+    final labels = <String>[];
+    for (final m in line) {
+      if (m.id == changedMoveId) {
+        if (newLabel != null && newLabel.isNotEmpty) labels.add(newLabel);
+      } else if (m.label != null) {
+        labels.add(m.label!);
+      }
+    }
+    return labels.join(' \u2014 ');
   }
 }

@@ -11,6 +11,7 @@ import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
 import '../widgets/inline_label_editor.dart';
 import '../widgets/move_pills_widget.dart';
+import '../widgets/repertoire_dialogs.dart';
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -365,7 +366,19 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
       descendantLeafCount: cache.countDescendantLeaves(move.id),
       previewDisplayName: (text) =>
           cache.previewAggregateDisplayName(move.id, text),
-      onSave: (label) => _controller.updateLabel(focusedIndex, label),
+      onSave: (label) async {
+        final impact = cache.getDescendantLabelImpact(move.id, label);
+        if (impact.isNotEmpty) {
+          final confirmed = await showLabelImpactWarningDialog(
+            context,
+            affectedEntries: impact,
+          );
+          if (confirmed != true) {
+            throw LabelChangeCancelledException();
+          }
+        }
+        await _controller.updateLabel(focusedIndex, label);
+      },
       onClose: () {
         if (mounted) {
           setState(() => _isLabelEditorVisible = false);

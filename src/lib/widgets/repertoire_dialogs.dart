@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/repertoire_browser_controller.dart';
+import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
 
 // ---------------------------------------------------------------------------
 // Shared dialogs used by RepertoireBrowserScreen.
 // ---------------------------------------------------------------------------
+
+/// Thrown when the user cancels a label change from the impact warning dialog.
+/// Caught by [InlineLabelEditor._confirmEdit] to keep the editor open.
+class LabelChangeCancelledException implements Exception {}
 
 /// Shows a confirmation dialog for deleting a leaf move.
 Future<bool?> showDeleteConfirmationDialog(BuildContext context) {
@@ -117,6 +122,56 @@ Future<void> showCardStatsDialog(
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Shows a warning dialog listing how descendant display names will change
+/// when a label is modified. Returns `true` if the user confirms ("Apply"),
+/// `false` or `null` if the user cancels.
+Future<bool?> showLabelImpactWarningDialog(
+  BuildContext context, {
+  required List<LabelImpactEntry> affectedEntries,
+}) {
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Label affects other names'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 300),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final entry in affectedEntries) ...[
+                Text(
+                  entry.before,
+                  style: TextStyle(
+                    decoration: TextDecoration.lineThrough,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.5),
+                  ),
+                ),
+                Text(entry.after),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Apply'),
         ),
       ],
     ),
