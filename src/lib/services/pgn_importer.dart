@@ -365,22 +365,23 @@ class PgnImporter {
                 ));
               }
 
-              await _repertoireRepo.extendLine(existingMoveId, companions);
+              final insertedIds =
+                  await _repertoireRepo.extendLine(existingMoveId, companions);
 
-              // Add the newly inserted moves to the in-memory index.
-              // extendLine chains parent IDs internally; we need to read them
-              // back. Query the DB for children of the extension point.
+              // Safety guard: extendLine must return one ID per input move.
+              if (insertedIds.length != remainingMoves.length) {
+                throw StateError(
+                  'extendLine returned ${insertedIds.length} IDs '
+                  'but expected ${remainingMoves.length}');
+              }
+
+              // extendLine inserts moves in input order and returns IDs
+              // in that order (see LocalRepertoireRepository.extendLine).
               int? extParentId = existingMoveId;
-              for (final rm in remainingMoves) {
-                final children =
-                    await _repertoireRepo.getChildMoves(extParentId!);
-                final inserted =
-                    children.where((c) => c.san == rm.san).toList();
-                if (inserted.isNotEmpty) {
-                  final insertedId = inserted.first.id;
-                  insertedMoves[(extParentId, rm.san)] = insertedId;
-                  extParentId = insertedId;
-                }
+              for (var i = 0; i < remainingMoves.length; i++) {
+                insertedMoves[(extParentId, remainingMoves[i].san)] =
+                    insertedIds[i];
+                extParentId = insertedIds[i];
               }
 
               isNewLine = true;

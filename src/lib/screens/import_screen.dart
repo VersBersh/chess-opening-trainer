@@ -8,6 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
 import '../services/pgn_importer.dart';
 
+/// Files larger than 10 MB trigger a warning dialog before loading.
+const _largeFileSizeThreshold = 10 * 1024 * 1024; // 10 MB
+
 // ---------------------------------------------------------------------------
 // ImportScreen
 // ---------------------------------------------------------------------------
@@ -83,13 +86,20 @@ class _ImportScreenState extends ConsumerState<ImportScreen>
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pgn'],
-      withData: true,
+      withData: false,
     );
 
     if (result != null && result.files.isNotEmpty) {
       final file = result.files.first;
-      String pgnText;
 
+      // Warn the user before loading large files into memory.
+      if (file.size > _largeFileSizeThreshold) {
+        if (!mounted) return;
+        final proceed = await _showLargeFileWarning(context, file.size);
+        if (proceed != true) return;
+      }
+
+      String pgnText;
       if (file.bytes != null) {
         pgnText = utf8.decode(file.bytes!);
       } else if (file.path != null) {
@@ -109,6 +119,34 @@ class _ImportScreenState extends ConsumerState<ImportScreen>
         _importResult = null;
       });
     }
+  }
+
+  /// Shows a warning dialog when the selected file exceeds the size threshold.
+  ///
+  /// Returns `true` if the user chooses to continue, `false` or `null` if
+  /// they cancel.
+  Future<bool?> _showLargeFileWarning(BuildContext context, int fileSize) {
+    final sizeMb = (fileSize / (1024 * 1024)).toStringAsFixed(1);
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Large file'),
+        content: Text(
+          'This file is $sizeMb MB. Loading large PGN files may be slow '
+          'and use significant memory. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ---- Import -------------------------------------------------------------

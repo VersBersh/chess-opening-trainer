@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:drift/native.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
@@ -36,6 +41,31 @@ Widget buildTestApp(AppDatabase db, int repertoireId) {
       home: ImportScreen(repertoireId: repertoireId),
     ),
   );
+}
+
+// ---------------------------------------------------------------------------
+// FakeFilePicker
+// ---------------------------------------------------------------------------
+
+class FakeFilePicker extends FilePicker with MockPlatformInterfaceMixin {
+  FilePickerResult? result;
+
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async =>
+      result;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +252,103 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(didPop, true);
+    });
+  });
+
+  group('File size warning', () {
+    late FakeFilePicker fakePicker;
+    // Tests provide bytes directly rather than file paths because Flutter's
+    // FakeAsync test zone does not reliably complete real file I/O from
+    // File.readAsString(). The production code checks bytes first (fast path)
+    // then falls back to file.path, so this still exercises the dialog logic.
+    final pgnBytes = Uint8List.fromList(utf8.encode('1. e4 e5 2. Nf3 *'));
+
+    setUp(() {
+      fakePicker = FakeFilePicker();
+      FilePicker.platform = fakePicker;
+    });
+
+    testWidgets('below threshold: no dialog, file loaded', (tester) async {
+      final repId = await createRepertoire(db);
+
+      fakePicker.result = FilePickerResult([
+        PlatformFile(
+          name: 'test.pgn',
+          size: 1024,
+          bytes: pgnBytes,
+        ),
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Select PGN File'));
+      await tester.pumpAndSettle();
+
+      // No warning dialog should appear.
+      expect(find.text('Large file'), findsNothing);
+
+      // File name should be shown (file was loaded).
+      expect(find.text('test.pgn'), findsOneWidget);
+    });
+
+    testWidgets('above threshold, user cancels: dialog shown, file not loaded',
+        (tester) async {
+      final repId = await createRepertoire(db);
+
+      fakePicker.result = FilePickerResult([
+        PlatformFile(
+          name: 'large.pgn',
+          size: 20 * 1024 * 1024, // 20 MB
+          bytes: pgnBytes,
+        ),
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Select PGN File'));
+      await tester.pumpAndSettle();
+
+      // Warning dialog should appear.
+      expect(find.text('Large file'), findsOneWidget);
+      expect(find.textContaining('20.0 MB'), findsOneWidget);
+
+      // Tap Cancel.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // File name should NOT be shown (load was cancelled).
+      expect(find.text('large.pgn'), findsNothing);
+    });
+
+    testWidgets('above threshold, user proceeds: dialog shown, file loaded',
+        (tester) async {
+      final repId = await createRepertoire(db);
+
+      fakePicker.result = FilePickerResult([
+        PlatformFile(
+          name: 'large.pgn',
+          size: 20 * 1024 * 1024, // 20 MB
+          bytes: pgnBytes,
+        ),
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Select PGN File'));
+      await tester.pumpAndSettle();
+
+      // Warning dialog should appear.
+      expect(find.text('Large file'), findsOneWidget);
+
+      // Tap Continue.
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      // File name should be shown (file was loaded).
+      expect(find.text('large.pgn'), findsOneWidget);
     });
   });
 }

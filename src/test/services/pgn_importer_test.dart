@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
+import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/services/pgn_importer.dart';
 
 // ---------------------------------------------------------------------------
@@ -87,6 +88,85 @@ Future<List<RepertoireMove>> getAllMoves(AppDatabase db, int repId) {
 /// Returns all review cards for a repertoire.
 Future<List<ReviewCard>> getAllCards(AppDatabase db, int repId) {
   return LocalReviewRepository(db).getAllCardsForRepertoire(repId);
+}
+
+// ---------------------------------------------------------------------------
+// SpyRepertoireRepository
+// ---------------------------------------------------------------------------
+
+/// A delegating wrapper around [LocalRepertoireRepository] that counts
+/// [getChildMoves] calls, allowing tests to verify the importer no longer
+/// performs redundant queries after using [extendLine]'s return value.
+class SpyRepertoireRepository implements RepertoireRepository {
+  final LocalRepertoireRepository _delegate;
+  int getChildMovesCallCount = 0;
+
+  SpyRepertoireRepository(AppDatabase db)
+      : _delegate = LocalRepertoireRepository(db);
+
+  @override
+  Future<List<RepertoireMove>> getChildMoves(int parentMoveId) {
+    getChildMovesCallCount++;
+    return _delegate.getChildMoves(parentMoveId);
+  }
+
+  // --- Delegated methods (no instrumentation) ---
+
+  @override
+  Future<List<Repertoire>> getAllRepertoires() =>
+      _delegate.getAllRepertoires();
+  @override
+  Future<Repertoire> getRepertoire(int id) => _delegate.getRepertoire(id);
+  @override
+  Future<int> saveRepertoire(RepertoiresCompanion repertoire) =>
+      _delegate.saveRepertoire(repertoire);
+  @override
+  Future<void> deleteRepertoire(int id) => _delegate.deleteRepertoire(id);
+  @override
+  Future<void> renameRepertoire(int id, String newName) =>
+      _delegate.renameRepertoire(id, newName);
+  @override
+  Future<List<RepertoireMove>> getMovesForRepertoire(int repertoireId) =>
+      _delegate.getMovesForRepertoire(repertoireId);
+  @override
+  Future<RepertoireMove?> getMove(int id) => _delegate.getMove(id);
+  @override
+  Future<int> saveMove(RepertoireMovesCompanion move) =>
+      _delegate.saveMove(move);
+  @override
+  Future<void> deleteMove(int id) => _delegate.deleteMove(id);
+  @override
+  Future<void> updateMoveLabel(int moveId, String? label) =>
+      _delegate.updateMoveLabel(moveId, label);
+  @override
+  Future<List<RepertoireMove>> getRootMoves(int repertoireId) =>
+      _delegate.getRootMoves(repertoireId);
+  @override
+  Future<List<RepertoireMove>> getLineForLeaf(int leafMoveId) =>
+      _delegate.getLineForLeaf(leafMoveId);
+  @override
+  Future<bool> isLeafMove(int moveId) => _delegate.isLeafMove(moveId);
+  @override
+  Future<List<RepertoireMove>> getMovesAtPosition(
+          int repertoireId, String fen) =>
+      _delegate.getMovesAtPosition(repertoireId, fen);
+  @override
+  Future<List<int>> extendLine(
+          int oldLeafMoveId, List<RepertoireMovesCompanion> newMoves) =>
+      _delegate.extendLine(oldLeafMoveId, newMoves);
+  @override
+  Future<void> undoExtendLine(
+          int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) =>
+      _delegate.undoExtendLine(oldLeafMoveId, insertedMoveIds, oldCard);
+  @override
+  Future<int> countLeavesInSubtree(int moveId) =>
+      _delegate.countLeavesInSubtree(moveId);
+  @override
+  Future<List<RepertoireMove>> getOrphanedLeaves(int repertoireId) =>
+      _delegate.getOrphanedLeaves(repertoireId);
+  @override
+  Future<void> pruneOrphans(int repertoireId) =>
+      _delegate.pruneOrphans(repertoireId);
 }
 
 // ---------------------------------------------------------------------------
@@ -728,6 +808,90 @@ void main() {
       expect(children.length, 2);
       final childSans = children.map((m) => m.san).toSet();
       expect(childSans, containsAll(['Nf3', 'Bc4']));
+    });
+  });
+
+  group('extendLine return value (no redundant getChildMoves)', () {
+    test('extension without redundant queries', () async {
+      final repId = await createRepertoire(db);
+
+      // Seed existing tree: 1. e4 e5 2. Nf3 (with card on Nf3).
+      await seedMoves(
+        db,
+        repertoireId: repId,
+        sans: ['e4', 'e5', 'Nf3'],
+        createCard: true,
+      );
+
+      final spy = SpyRepertoireRepository(db);
+      final countBefore = spy.getChildMovesCallCount;
+
+      final importer = PgnImporter(
+        repertoireRepo: spy,
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+      final result = await importer.importPgn(
+        '1. e4 e5 2. Nf3 Nc6 3. Bb5 *',
+        repId,
+        ImportColor.both,
+      );
+
+      expect(result.gamesImported, 1);
+      expect(result.linesAdded, 1);
+
+      // getChildMoves should NOT have been called during extension.
+      expect(spy.getChildMovesCallCount, countBefore);
+
+      // Correctness: 5 moves, 1 card on Bb5.
+      final moves = await getAllMoves(db, repId);
+      expect(moves.length, 5);
+
+      final cards = await getAllCards(db, repId);
+      expect(cards.length, 1);
+      final bb5Move = moves.where((m) => m.san == 'Bb5').first;
+      expect(cards.first.leafMoveId, bb5Move.id);
+    });
+
+    test('extension with branching at extension point', () async {
+      final repId = await createRepertoire(db);
+
+      // Seed existing tree: 1. e4 e5 2. Nf3 (with card on Nf3).
+      await seedMoves(
+        db,
+        repertoireId: repId,
+        sans: ['e4', 'e5', 'Nf3'],
+        createCard: true,
+      );
+
+      final spy = SpyRepertoireRepository(db);
+      final countBefore = spy.getChildMovesCallCount;
+
+      final importer = PgnImporter(
+        repertoireRepo: spy,
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
+
+      // Import with branching: 1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4) *
+      final result = await importer.importPgn(
+        '1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4) *',
+        repId,
+        ImportColor.both,
+      );
+
+      expect(result.gamesImported, 1);
+
+      // getChildMoves should NOT have been called during extension.
+      expect(spy.getChildMovesCallCount, countBefore);
+
+      // Correctness: e4, e5, Nf3, Nc6, Bb5, Bc4 = 6 moves.
+      final moves = await getAllMoves(db, repId);
+      expect(moves.length, 6);
+
+      // 2 cards: one on Bb5, one on Bc4.
+      final cards = await getAllCards(db, repId);
+      expect(cards.length, 2);
     });
   });
 }
