@@ -1,9 +1,11 @@
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../controllers/add_line_controller.dart';
 import '../models/repertoire.dart';
+import '../providers.dart';
 import '../repositories/local/database.dart';
 import '../services/line_entry_engine.dart';
 import '../widgets/chessboard_controller.dart';
@@ -18,23 +20,21 @@ import '../widgets/move_pills_widget.dart';
 ///
 /// Always in entry mode: the user plays moves on the board and they appear as
 /// pills. Confirm persists new moves; take-back removes buffered moves.
-class AddLineScreen extends StatefulWidget {
+class AddLineScreen extends ConsumerStatefulWidget {
   const AddLineScreen({
     super.key,
-    required this.db,
     required this.repertoireId,
     this.startingMoveId,
   });
 
-  final AppDatabase db;
   final int repertoireId;
   final int? startingMoveId;
 
   @override
-  State<AddLineScreen> createState() => _AddLineScreenState();
+  ConsumerState<AddLineScreen> createState() => _AddLineScreenState();
 }
 
-class _AddLineScreenState extends State<AddLineScreen> {
+class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   late final AddLineController _controller;
   late final ChessboardController _boardController;
 
@@ -42,7 +42,8 @@ class _AddLineScreenState extends State<AddLineScreen> {
   void initState() {
     super.initState();
     _controller = AddLineController(
-      widget.db,
+      ref.read(repertoireRepositoryProvider),
+      ref.read(reviewRepositoryProvider),
       widget.repertoireId,
       startingMoveId: widget.startingMoveId,
     );

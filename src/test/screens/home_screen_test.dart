@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
+import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
+import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/repositories/review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
@@ -166,17 +168,15 @@ late SharedPreferences _testPrefs;
 Widget buildTestApp({
   required FakeRepertoireRepository repertoireRepo,
   required FakeReviewRepository reviewRepo,
-  AppDatabase? db,
 }) {
-  final testDb = db ?? AppDatabase(NativeDatabase.memory());
   return ProviderScope(
     overrides: [
       repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
       reviewRepositoryProvider.overrideWithValue(reviewRepo),
       sharedPreferencesProvider.overrideWithValue(_testPrefs),
     ],
-    child: MaterialApp(
-      home: HomeScreen(db: testDb),
+    child: const MaterialApp(
+      home: HomeScreen(),
     ),
   );
 }
@@ -684,20 +684,29 @@ void main() {
     testWidgets('tapping Add Line navigates to AddLineScreen',
         (tester) async {
       // Seed the in-memory DB with a matching repertoire so
-      // AddLineController.loadData() can find it.
+      // AddLineController.loadData() can find it via the repository providers.
       final db = AppDatabase(NativeDatabase.memory());
       await db.into(db.repertoires).insert(
             RepertoiresCompanion.insert(name: 'Test'),
           );
 
-      final repertoireRepo = FakeRepertoireRepository();
-      final reviewRepo = FakeReviewRepository(dueCards: []);
-
-      await tester.pumpWidget(buildTestApp(
-        repertoireRepo: repertoireRepo,
-        reviewRepo: reviewRepo,
-        db: db,
-      ));
+      // Use real DB-backed repos so both HomeController and child screens
+      // (which now read from providers) can load data.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            repertoireRepositoryProvider
+                .overrideWithValue(LocalRepertoireRepository(db)),
+            reviewRepositoryProvider
+                .overrideWithValue(LocalReviewRepository(db)),
+            sharedPreferencesProvider.overrideWithValue(_testPrefs),
+          ],
+          child: const MaterialApp(
+            home: HomeScreen(),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(OutlinedButton, 'Add Line'));
@@ -716,14 +725,23 @@ void main() {
             RepertoiresCompanion.insert(name: 'Test'),
           );
 
-      final repertoireRepo = FakeRepertoireRepository();
-      final reviewRepo = FakeReviewRepository(dueCards: []);
-
-      await tester.pumpWidget(buildTestApp(
-        repertoireRepo: repertoireRepo,
-        reviewRepo: reviewRepo,
-        db: db,
-      ));
+      // Use real DB-backed repos so both HomeController and child screens
+      // (which now read from providers) can load data.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            repertoireRepositoryProvider
+                .overrideWithValue(LocalRepertoireRepository(db)),
+            reviewRepositoryProvider
+                .overrideWithValue(LocalReviewRepository(db)),
+            sharedPreferencesProvider.overrideWithValue(_testPrefs),
+          ],
+          child: const MaterialApp(
+            home: HomeScreen(),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Test'));

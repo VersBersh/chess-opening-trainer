@@ -1,12 +1,10 @@
 import 'package:chessground/chessground.dart';
-import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../controllers/repertoire_browser_controller.dart';
 import '../models/repertoire.dart';
-import '../repositories/local/database.dart';
-import '../repositories/local/local_repertoire_repository.dart';
-import '../repositories/local/local_review_repository.dart';
+import '../providers.dart';
 import '../theme/board_theme.dart';
 import 'add_line_screen.dart';
 import 'import_screen.dart';
@@ -15,252 +13,91 @@ import '../widgets/chessboard_widget.dart';
 import '../widgets/move_tree_widget.dart';
 
 // ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
-
-/// Immutable state for the browser screen.
-///
-/// When Riverpod is adopted per the state-management spec, this becomes the
-/// state of an AsyncNotifier. The `copyWith` pattern makes state transitions
-/// explicit and prepares for that migration.
-class RepertoireBrowserState {
-  const RepertoireBrowserState({
-    this.treeCache,
-    this.expandedNodeIds = const {},
-    this.selectedMoveId,
-    this.boardOrientation = Side.white,
-    this.dueCountByMoveId = const {},
-    this.isLoading = true,
-    this.repertoireName = '',
-    this.errorMessage,
-  });
-
-  final RepertoireTreeCache? treeCache;
-  final Set<int> expandedNodeIds;
-  final int? selectedMoveId;
-  final Side boardOrientation;
-  final Map<int, int> dueCountByMoveId;
-  final bool isLoading;
-  final String repertoireName;
-  final String? errorMessage;
-
-  RepertoireBrowserState copyWith({
-    RepertoireTreeCache? treeCache,
-    Set<int>? expandedNodeIds,
-    int? Function()? selectedMoveId,
-    Side? boardOrientation,
-    Map<int, int>? dueCountByMoveId,
-    bool? isLoading,
-    String? repertoireName,
-    String? Function()? errorMessage,
-  }) {
-    return RepertoireBrowserState(
-      treeCache: treeCache ?? this.treeCache,
-      expandedNodeIds: expandedNodeIds ?? this.expandedNodeIds,
-      selectedMoveId:
-          selectedMoveId != null ? selectedMoveId() : this.selectedMoveId,
-      boardOrientation: boardOrientation ?? this.boardOrientation,
-      dueCountByMoveId: dueCountByMoveId ?? this.dueCountByMoveId,
-      isLoading: isLoading ?? this.isLoading,
-      repertoireName: repertoireName ?? this.repertoireName,
-      errorMessage:
-          errorMessage != null ? errorMessage() : this.errorMessage,
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Orphan handling
-// ---------------------------------------------------------------------------
-
-/// User's choice when a parent move becomes childless after deletion.
-enum OrphanChoice { keepShorterLine, removeMove }
-
-// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
 /// The main repertoire browser screen.
 ///
-/// Receives [db] and [repertoireId] as constructor parameters, following the
-/// existing [HomeScreen] pattern.
-class RepertoireBrowserScreen extends StatefulWidget {
+/// Receives [repertoireId] as a constructor parameter. Repositories are
+/// obtained through Riverpod provider injection.
+class RepertoireBrowserScreen extends ConsumerStatefulWidget {
   const RepertoireBrowserScreen({
     super.key,
-    required this.db,
     required this.repertoireId,
   });
 
-  final AppDatabase db;
   final int repertoireId;
 
   @override
-  State<RepertoireBrowserScreen> createState() =>
+  ConsumerState<RepertoireBrowserScreen> createState() =>
       _RepertoireBrowserScreenState();
 }
 
-class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
-  var _state = const RepertoireBrowserState();
+class _RepertoireBrowserScreenState
+    extends ConsumerState<RepertoireBrowserScreen> {
+  late final RepertoireBrowserController _controller;
   late final ChessboardController _boardController;
 
   @override
   void initState() {
     super.initState();
+    _controller = RepertoireBrowserController(
+      ref.read(repertoireRepositoryProvider),
+      ref.read(reviewRepositoryProvider),
+      widget.repertoireId,
+    );
     _boardController = ChessboardController();
-    _loadData();
+    _controller.addListener(_onControllerChanged);
+    _controller.loadData();
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
+    _controller.dispose();
     _boardController.dispose();
     super.dispose();
   }
 
-  // ---- Data loading -------------------------------------------------------
-
-  Future<void> _loadData() async {
-    try {
-      final repRepo = LocalRepertoireRepository(widget.db);
-      final reviewRepo = LocalReviewRepository(widget.db);
-
-      // 1. Load the repertoire name.
-      final repertoire = await repRepo.getRepertoire(widget.repertoireId);
-
-      // 2. Load all moves and build tree cache.
-      final allMoves =
-          await repRepo.getMovesForRepertoire(widget.repertoireId);
-      final cache = RepertoireTreeCache.build(allMoves);
-
-      // 3. Compute initial expand state: expand nodes down to the first level
-      //    of labeled nodes. Walk breadth-first from roots; expand each node
-      //    until a labeled descendant is found, then stop expanding that branch.
-      final expandedIds = _computeInitialExpandState(cache);
-
-      // 4. Load due-card counts for labeled nodes.
-      final dueCountMap = <int, int>{};
-      for (final move in allMoves) {
-        if (move.label != null) {
-          final cards = await reviewRepo.getCardsForSubtree(
-            move.id,
-            dueOnly: true,
-          );
-          if (cards.isNotEmpty) {
-            dueCountMap[move.id] = cards.length;
-          }
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _state = _state.copyWith(
-            repertoireName: repertoire.name,
-            treeCache: cache,
-            expandedNodeIds: expandedIds,
-            dueCountByMoveId: dueCountMap,
-            isLoading: false,
-            errorMessage: () => null,
-          );
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _state = _state.copyWith(
-            isLoading: false,
-            errorMessage: () => '$e',
-          );
-        });
-      }
-    }
-  }
-
-  /// Expand all unlabeled interior nodes, stopping expansion at labeled nodes.
-  Set<int> _computeInitialExpandState(RepertoireTreeCache cache) {
-    final expanded = <int>{};
-
-    void walk(List<RepertoireMove> nodes) {
-      for (final node in nodes) {
-        // If this node has a label, stop expanding this branch.
-        if (node.label != null) continue;
-
-        final children = cache.getChildren(node.id);
-        if (children.isNotEmpty) {
-          expanded.add(node.id);
-          walk(children);
-        }
-      }
-    }
-
-    walk(cache.getRootMoves());
-    return expanded;
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
   }
 
   // ---- Event handlers -----------------------------------------------------
 
   void _onNodeSelected(int moveId) {
-    final move = _state.treeCache!.movesById[moveId];
-    if (move == null) return;
-
-    setState(() {
-      _state = _state.copyWith(selectedMoveId: () => moveId);
-    });
-    _boardController.setPosition(move.fen);
+    final fen = _controller.selectNode(moveId);
+    if (fen != null) {
+      _boardController.setPosition(fen);
+    }
   }
 
   void _onNodeToggleExpand(int moveId) {
-    final current = _state.expandedNodeIds;
-    final updated = current.contains(moveId)
-        ? ({...current}..remove(moveId))
-        : {...current, moveId};
-    setState(() {
-      _state = _state.copyWith(expandedNodeIds: updated);
-    });
+    _controller.toggleExpand(moveId);
   }
 
   void _onFlipBoard() {
-    setState(() {
-      _state = _state.copyWith(
-        boardOrientation: _state.boardOrientation == Side.white
-            ? Side.black
-            : Side.white,
-      );
-    });
+    _controller.flipBoard();
   }
 
   void _onNavigateBack() {
-    final selectedId = _state.selectedMoveId;
-    if (selectedId == null) return;
-
-    final move = _state.treeCache!.movesById[selectedId];
-    if (move == null || move.parentMoveId == null) return;
-
-    _onNodeSelected(move.parentMoveId!);
+    final fen = _controller.navigateBack();
+    if (fen != null) {
+      _boardController.setPosition(fen);
+    }
   }
 
   void _onNavigateForward() {
-    final selectedId = _state.selectedMoveId;
-    if (selectedId == null) return;
-
-    final children = _state.treeCache!.getChildren(selectedId);
-    if (children.isEmpty) return;
-
-    if (children.length == 1) {
-      // Single child -- auto-select it.
-      _onNodeSelected(children.first.id);
-    } else {
-      // Multiple children -- expand the node instead of selecting.
-      setState(() {
-        _state = _state.copyWith(
-          expandedNodeIds: {..._state.expandedNodeIds, selectedId},
-        );
-      });
+    final fen = _controller.navigateForward();
+    if (fen != null) {
+      _boardController.setPosition(fen);
     }
   }
 
   // ---- Label editing -------------------------------------------------------
 
   Future<void> _onEditLabelForMove(int moveId) async {
-    final cache = _state.treeCache;
+    final cache = _controller.state.treeCache;
     if (cache == null) return;
 
     final move = cache.movesById[moveId];
@@ -289,13 +126,11 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
       if (confirmed != true) return;
     }
 
-    final repRepo = LocalRepertoireRepository(widget.db);
-    await repRepo.updateMoveLabel(moveId, labelToSave);
-    await _loadData(); // Rebuild cache
+    await _controller.editLabel(moveId, labelToSave);
   }
 
   Future<void> _onEditLabel() async {
-    final selectedId = _state.selectedMoveId;
+    final selectedId = _controller.state.selectedMoveId;
     if (selectedId == null) return;
     await _onEditLabelForMove(selectedId);
   }
@@ -306,24 +141,22 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     Navigator.of(context)
         .push(MaterialPageRoute(
           builder: (_) => AddLineScreen(
-            db: widget.db,
             repertoireId: widget.repertoireId,
-            startingMoveId: _state.selectedMoveId,
+            startingMoveId: _controller.state.selectedMoveId,
           ),
         ))
         .then((_) {
-          if (mounted) _loadData();
+          if (mounted) _controller.loadData();
         });
   }
 
   // ---- View Card Stats ------------------------------------------------------
 
   Future<void> _onViewCardStats() async {
-    final selectedId = _state.selectedMoveId;
+    final selectedId = _controller.state.selectedMoveId;
     if (selectedId == null) return;
 
-    final reviewRepo = LocalReviewRepository(widget.db);
-    final card = await reviewRepo.getCardForLeaf(selectedId);
+    final card = await _controller.getCardForLeaf(selectedId);
 
     if (!mounted) return;
 
@@ -463,105 +296,52 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
 
   // ---- Deletion handlers --------------------------------------------------
 
-  /// Deletes a move (and all descendants via CASCADE) and returns the parent ID.
-  Future<int?> _deleteMoveAndGetParent(int moveId) async {
-    final repRepo = LocalRepertoireRepository(widget.db);
-    final move = await repRepo.getMove(moveId);
-    if (move == null) return null;
-    final parentId = move.parentMoveId;
-    await repRepo.deleteMove(moveId); // CASCADE handles descendants + cards
-    return parentId;
-  }
-
   Future<void> _onDeleteLeaf() async {
-    final selectedId = _state.selectedMoveId;
+    final selectedId = _controller.state.selectedMoveId;
     if (selectedId == null) return;
 
     final confirmed = await _showDeleteConfirmationDialog();
     if (!mounted || confirmed != true) return;
 
-    final parentId = await _deleteMoveAndGetParent(selectedId);
+    final parentId = await _controller.deleteMoveAndGetParent(selectedId);
     if (!mounted) return;
 
     if (parentId != null) {
-      await _handleOrphans(parentId);
+      await _controller.handleOrphans(parentId, _showOrphanPrompt);
       if (!mounted) return;
     }
 
-    await _loadData();
+    await _controller.loadData();
     if (!mounted) return;
 
-    setState(() {
-      _state = _state.copyWith(selectedMoveId: () => null);
-    });
+    _controller.clearSelection();
   }
 
   Future<void> _onDeleteBranch() async {
-    final selectedId = _state.selectedMoveId;
+    final selectedId = _controller.state.selectedMoveId;
     if (selectedId == null) return;
 
-    final repRepo = LocalRepertoireRepository(widget.db);
-    final reviewRepo = LocalReviewRepository(widget.db);
-
-    final lineCount = await repRepo.countLeavesInSubtree(selectedId);
-    final cards = await reviewRepo.getCardsForSubtree(selectedId);
+    final info = await _controller.getBranchDeleteInfo(selectedId);
     if (!mounted) return;
 
     final confirmed = await _showBranchDeleteConfirmationDialog(
-      lineCount: lineCount,
-      cardCount: cards.length,
+      lineCount: info.lineCount,
+      cardCount: info.cardCount,
     );
     if (!mounted || confirmed != true) return;
 
-    final parentId = await _deleteMoveAndGetParent(selectedId);
+    final parentId = await _controller.deleteMoveAndGetParent(selectedId);
     if (!mounted) return;
 
     if (parentId != null) {
-      await _handleOrphans(parentId);
+      await _controller.handleOrphans(parentId, _showOrphanPrompt);
       if (!mounted) return;
     }
 
-    await _loadData();
+    await _controller.loadData();
     if (!mounted) return;
 
-    setState(() {
-      _state = _state.copyWith(selectedMoveId: () => null);
-    });
-  }
-
-  Future<void> _handleOrphans(int? parentMoveId) async {
-    final repRepo = LocalRepertoireRepository(widget.db);
-    int? currentId = parentMoveId;
-
-    while (currentId != null) {
-      final children = await repRepo.getChildMoves(currentId);
-      if (children.isNotEmpty) break; // not an orphan
-
-      if (!mounted) return;
-
-      final choice = await _showOrphanPrompt(currentId);
-      if (!mounted) return;
-
-      if (choice == null) {
-        break; // Dialog dismissed — abort orphan handling
-      } else if (choice == OrphanChoice.keepShorterLine) {
-        final move = await repRepo.getMove(currentId);
-        if (move == null) break;
-        final reviewRepo = LocalReviewRepository(widget.db);
-        await reviewRepo.saveReview(ReviewCardsCompanion.insert(
-          repertoireId: move.repertoireId,
-          leafMoveId: currentId,
-          nextReviewDate: DateTime.now(),
-        ));
-        break;
-      } else {
-        // Remove move -- delete and check its parent
-        final move = await repRepo.getMove(currentId);
-        final nextParent = move?.parentMoveId;
-        await repRepo.deleteMove(currentId);
-        currentId = nextParent;
-      }
-    }
+    _controller.clearSelection();
   }
 
   Future<bool?> _showDeleteConfirmationDialog() {
@@ -615,13 +395,12 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   }
 
   Future<OrphanChoice?> _showOrphanPrompt(int moveId) async {
-    final repRepo = LocalRepertoireRepository(widget.db);
-    final move = await repRepo.getMove(moveId);
+    final move = await _controller.getMoveForOrphanPrompt(moveId);
     if (move == null) return null;
 
     if (!mounted) return null;
 
-    final cache = _state.treeCache;
+    final cache = _controller.state.treeCache;
     final notation = cache != null && cache.movesById.containsKey(moveId)
         ? cache.getMoveNotation(moveId)
         : move.san;
@@ -653,12 +432,14 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final state = _controller.state;
+
     return Scaffold(
         appBar: AppBar(
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_state.repertoireName),
+              Text(state.repertoireName),
               Text(
                 'Repertoire Manager',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -670,15 +451,16 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
             ],
           ),
         ),
-        body: _state.isLoading
+        body: state.isLoading
             ? const Center(child: CircularProgressIndicator())
-            : _state.errorMessage != null
+            : state.errorMessage != null
                 ? _buildErrorView(context)
                 : _buildContent(context),
     );
   }
 
   Widget _buildErrorView(BuildContext context) {
+    final state = _controller.state;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -698,7 +480,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Text(
-              _state.errorMessage ?? '',
+              state.errorMessage ?? '',
               style: Theme.of(context).textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
@@ -706,11 +488,8 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           const SizedBox(height: 24),
           FilledButton(
             onPressed: () {
-              setState(() {
-                _state = _state.copyWith(
-                    isLoading: true, errorMessage: () => null);
-              });
-              _loadData();
+              _controller.setLoading();
+              _controller.loadData();
             },
             child: const Text('Retry'),
           ),
@@ -725,7 +504,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   }
 
   Widget _buildContent(BuildContext context) {
-    final cache = _state.treeCache!;
+    final cache = _controller.state.treeCache!;
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= 600;
 
@@ -743,13 +522,11 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   ) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-    // Board takes up to 40% of screen height, capped at width for 1:1 ratio.
     final maxBoardSize = (screenHeight * 0.4).clamp(0.0, screenWidth);
 
     return Column(
       children: [
         _buildDisplayNameHeader(context, cache),
-        // Chessboard
         ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxBoardSize),
           child: AspectRatio(
@@ -757,11 +534,8 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
             child: _buildChessboard(),
           ),
         ),
-        // Board controls
         _buildBoardControls(cache),
-        // Action bar
         _buildActionBar(context, cache, compact: false),
-        // Move tree
         Expanded(child: _buildMoveTree(cache)),
       ],
     );
@@ -778,13 +552,11 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Left: Board sized as a square, capped to avoid overflow.
             SizedBox(
               width: boardSize,
               height: boardSize,
               child: _buildChessboard(),
             ),
-            // Right: display name + controls + action bar + tree
             Expanded(
               child: Column(
                 children: [
@@ -807,7 +579,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     BuildContext context,
     RepertoireTreeCache cache,
   ) {
-    final selectedId = _state.selectedMoveId;
+    final selectedId = _controller.state.selectedMoveId;
     final displayName = selectedId != null
         ? cache.getAggregateDisplayName(selectedId)
         : '';
@@ -838,7 +610,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
         final boardTheme = ref.watch(boardThemeProvider);
         return ChessboardWidget(
           controller: _boardController,
-          orientation: _state.boardOrientation,
+          orientation: _controller.state.boardOrientation,
           playerSide: PlayerSide.none,
           settings: boardTheme.toSettings(),
         );
@@ -847,7 +619,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   }
 
   Widget _buildBoardControls(RepertoireTreeCache cache) {
-    final selectedId = _state.selectedMoveId;
+    final selectedId = _controller.state.selectedMoveId;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -882,9 +654,9 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   Widget _buildMoveTree(RepertoireTreeCache cache) {
     return MoveTreeWidget(
       treeCache: cache,
-      expandedNodeIds: _state.expandedNodeIds,
-      selectedMoveId: _state.selectedMoveId,
-      dueCountByMoveId: _state.dueCountByMoveId,
+      expandedNodeIds: _controller.state.expandedNodeIds,
+      selectedMoveId: _controller.state.selectedMoveId,
+      dueCountByMoveId: _controller.state.dueCountByMoveId,
       onNodeSelected: _onNodeSelected,
       onNodeToggleExpand: _onNodeToggleExpand,
       onEditLabel: _onEditLabelForMove,
@@ -904,11 +676,10 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     RepertoireTreeCache cache, {
     required bool compact,
   }) {
-    final selectedId = _state.selectedMoveId;
+    final selectedId = _controller.state.selectedMoveId;
     final isLeaf = selectedId != null && cache.isLeaf(selectedId);
 
     if (compact) {
-      // Icon-only buttons with tooltips for wide layout
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
@@ -923,11 +694,10 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
               onPressed: () async {
                 await Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => ImportScreen(
-                    db: widget.db,
                     repertoireId: widget.repertoireId,
                   ),
                 ));
-                await _loadData();
+                await _controller.loadData();
               },
               icon: const Icon(Icons.file_upload),
               tooltip: 'Import',
@@ -965,7 +735,6 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Add Line button
           Flexible(
             child: TextButton.icon(
               onPressed: _onAddLine,
@@ -973,25 +742,20 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
               label: const Text('Add Line'),
             ),
           ),
-
-          // Import button
           Flexible(
             child: TextButton.icon(
               onPressed: () async {
                 await Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => ImportScreen(
-                    db: widget.db,
                     repertoireId: widget.repertoireId,
                   ),
                 ));
-                await _loadData(); // Rebuild tree cache
+                await _controller.loadData();
               },
               icon: const Icon(Icons.file_upload, size: 18),
               label: const Text('Import'),
             ),
           ),
-
-          // Label button
           Flexible(
             child: TextButton.icon(
               onPressed: selectedId != null ? _onEditLabel : null,
@@ -999,8 +763,6 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
               label: const Text('Label'),
             ),
           ),
-
-          // Stats button
           Flexible(
             child: TextButton.icon(
               onPressed: isLeaf ? _onViewCardStats : null,
@@ -1008,8 +770,6 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
               label: const Text('Stats'),
             ),
           ),
-
-          // Delete button
           Flexible(
             child: TextButton.icon(
               onPressed: selectedId != null

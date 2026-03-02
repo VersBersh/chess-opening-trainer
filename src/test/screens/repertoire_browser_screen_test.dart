@@ -115,12 +115,16 @@ late SharedPreferences _testPrefs;
 Widget buildTestApp(AppDatabase db, int repertoireId) {
   return ProviderScope(
     overrides: [
+      repertoireRepositoryProvider
+          .overrideWithValue(LocalRepertoireRepository(db)),
+      reviewRepositoryProvider.overrideWithValue(LocalReviewRepository(db)),
+      databaseProvider.overrideWithValue(db),
       sharedPreferencesProvider.overrideWithValue(_testPrefs),
     ],
     child: MaterialApp(
       home: MediaQuery(
         data: const MediaQueryData(size: Size(400, 800)),
-        child: RepertoireBrowserScreen(db: db, repertoireId: repertoireId),
+        child: RepertoireBrowserScreen(repertoireId: repertoireId),
       ),
     ),
   );

@@ -1,8 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'repositories/local/database.dart';
 import 'repositories/repertoire_repository.dart';
 import 'repositories/review_repository.dart';
+
+// ---------------------------------------------------------------------------
+// Database provider
+// ---------------------------------------------------------------------------
+
+final databaseProvider = Provider<AppDatabase>((ref) {
+  throw UnimplementedError('Must be overridden in ProviderScope');
+});
 
 // ---------------------------------------------------------------------------
 // Repository providers

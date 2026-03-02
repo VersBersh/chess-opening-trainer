@@ -107,7 +107,11 @@ void main() {
   group('Single game, no existing tree', () {
     test('imports 5 moves and creates 1 leaf card', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final result = await importer.importPgn(
         '1. e4 e5 2. Nf3 Nc6 3. Bb5 *',
@@ -133,7 +137,11 @@ void main() {
   group('Single game with RAV', () {
     test('imports mainline and variation, deduplicating shared root', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // 1. e4 e5 (1...c5 2. Nf3) 2. Nf3 *
       // Lines: e4 e5 Nf3 and e4 c5 Nf3
@@ -160,7 +168,11 @@ void main() {
   group('Multi-game PGN', () {
     test('two games sharing opening moves deduplicate correctly', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final pgn = '''
 [Event "Game 1"]
@@ -194,7 +206,11 @@ void main() {
       // Seed existing tree: 1. e4 e5 2. Nf3
       await seedMoves(db, repertoireId: repId, sans: ['e4', 'e5', 'Nf3']);
 
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
       final result = await importer.importPgn(
         '1. e4 e5 2. Nf3 Nc6 3. Bb5 *',
         repId,
@@ -227,7 +243,11 @@ void main() {
         createCard: true,
       );
 
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
       final result = await importer.importPgn(
         '1. e4 e5 2. Nf3 *',
         repId,
@@ -262,7 +282,11 @@ void main() {
       expect(cardsBefore.length, 1);
       expect(cardsBefore.first.leafMoveId, moveIds.last);
 
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
       final result = await importer.importPgn(
         '1. e4 e5 2. Nf3 Nc6 3. Bb5 *',
         repId,
@@ -285,7 +309,11 @@ void main() {
   group('Illegal move skips entire game', () {
     test('Nxe5 is illegal from initial Ruy Lopez position', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // Nxe5 is illegal because there is no knight that can capture on e5
       // after 1. e4 e5.
@@ -309,7 +337,11 @@ void main() {
   group('Multi-game with one bad game', () {
     test('valid game imported, invalid game skipped', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final pgn = '''
 [Event "Good"]
@@ -336,7 +368,11 @@ void main() {
   group('RAV shared prefix within a game', () {
     test('e4 is inserted once despite appearing in two lines', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // 1. e4 e5 (1...c5) *
       // Lines: e4 e5 and e4 c5
@@ -364,7 +400,11 @@ void main() {
   group('Color filter -- White (game-level)', () {
     test('game ending on even ply is skipped when importing White', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // 1. e4 e5 -- 2-ply line (even = black line).
       final result = await importer.importPgn(
@@ -387,7 +427,11 @@ void main() {
   group('Color filter -- Both', () {
     test('lines of both colors are imported', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final pgn = '''
 [Event "White line"]
@@ -410,7 +454,11 @@ void main() {
   group('Color filter -- mixed parity game', () {
     test('game with mixed parity lines is skipped for White', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // Mainline: 1. e4 e5 2. Nf3 (3-ply, odd = white)
       // Variation: 1. e4 e5 (2-ply, even = black)
@@ -432,7 +480,11 @@ void main() {
   group('Empty PGN', () {
     test('importing empty string results in 0 games', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final result = await importer.importPgn('', repId, ImportColor.both);
 
@@ -445,7 +497,11 @@ void main() {
   group('Comments and NAGs ignored', () {
     test('moves with comments and NAGs are imported correctly', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final result = await importer.importPgn(
         '1. e4 {Best move!} e5 \$1 2. Nf3 {developing} *',
@@ -465,7 +521,11 @@ void main() {
   group('Deeply nested RAV', () {
     test('3+ levels of nested variations are all imported', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // 1. e4 e5 (1...c5 (1...d5 2. exd5) 2. Nf3) 2. Nf3 *
       // Lines:
@@ -494,7 +554,11 @@ void main() {
   group('Game termination markers', () {
     test('games with 1-0, 0-1, 1/2-1/2, * all import correctly', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final pgn = '''
 [Event "Game 1"]
@@ -537,7 +601,11 @@ void main() {
         createCard: true,
       );
 
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final pgn = '''
 [Event "Game 1 - extends existing"]
@@ -567,7 +635,11 @@ void main() {
   group('Color filter -- Black', () {
     test('game ending on odd ply is skipped when importing Black', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // 1. e4 e5 2. Nf3 -- 3-ply (odd = white line).
       final result = await importer.importPgn(
@@ -584,7 +656,11 @@ void main() {
 
     test('game ending on even ply is imported when importing Black', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // 1. e4 e5 -- 2-ply (even = black line).
       final result = await importer.importPgn(
@@ -602,7 +678,11 @@ void main() {
   group('White color filter passes odd-ply games', () {
     test('3-ply game imports with White filter', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       final result = await importer.importPgn(
         '1. e4 e5 2. Nf3 *',
@@ -619,7 +699,11 @@ void main() {
   group('Multiple lines in a single game share parent correctly', () {
     test('branching at move 2 creates correct tree structure', () async {
       final repId = await createRepertoire(db);
-      final importer = PgnImporter(db: db);
+      final importer = PgnImporter(
+        repertoireRepo: LocalRepertoireRepository(db),
+        reviewRepo: LocalReviewRepository(db),
+        db: db,
+      );
 
       // 1. e4 e5 2. Nf3 (2. Bc4) *
       // Lines: e4 e5 Nf3 and e4 e5 Bc4

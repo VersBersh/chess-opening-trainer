@@ -29,11 +29,12 @@ Future<void> main() async {
   runApp(
     ProviderScope(
       overrides: [
+        databaseProvider.overrideWithValue(db),
         repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
         reviewRepositoryProvider.overrideWithValue(reviewRepo),
         sharedPreferencesProvider.overrideWithValue(prefs),
       ],
-      child: ChessTrainerApp(home: HomeScreen(db: db)),
+      child: const ChessTrainerApp(home: HomeScreen()),
     ),
   );
 }

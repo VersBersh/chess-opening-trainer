@@ -147,7 +147,7 @@ void main() {
   group('Initial state', () {
     test('after loadData with empty tree, pills list is empty', () async {
       final repId = await seedRepertoire(db);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       await controller.loadData();
 
       expect(controller.state.isLoading, false);
@@ -170,7 +170,7 @@ void main() {
       // Get the move ID for Nf3.
       final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
 
-      final controller = AddLineController(db, repId, startingMoveId: nf3Id);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId, startingMoveId: nf3Id);
       await controller.loadData();
 
       // Existing path: e4, e5, Nf3 => 3 pills, all saved.
@@ -193,7 +193,7 @@ void main() {
   group('Accept move flow', () {
     test('play 3 moves, verify pills list and preMoveFen updates', () async {
       final repId = await seedRepertoire(db);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -228,7 +228,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5', 'Nf3'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -259,7 +259,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -287,7 +287,7 @@ void main() {
   group('Take-back', () {
     test('buffer 2 moves, take back 1, verify pills shrink by 1', () async {
       final repId = await seedRepertoire(db);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -323,7 +323,7 @@ void main() {
   group('Pill tap navigation', () {
     test('play 5 moves, tap pill at index 2, verify state', () async {
       final repId = await seedRepertoire(db);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -357,7 +357,7 @@ void main() {
   group('Flip board', () {
     test('toggles boardOrientation', () async {
       final repId = await seedRepertoire(db);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       await controller.loadData();
 
       expect(controller.state.boardOrientation, Side.white);
@@ -380,7 +380,7 @@ void main() {
         ],
         labelsOnSan: {'e4': 'King Pawn'},
       );
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -406,7 +406,7 @@ void main() {
         ],
         createCards: true,
       );
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -458,7 +458,7 @@ void main() {
         ],
         createCards: true,
       );
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -495,7 +495,7 @@ void main() {
   group('Parity validation', () {
     test('mismatch is detected correctly', () async {
       final repId = await seedRepertoire(db);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -531,7 +531,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -575,7 +575,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5', 'Nf3'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -626,7 +626,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -664,7 +664,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -695,7 +695,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -722,7 +722,7 @@ void main() {
   group('canBranchFromFocusedPill', () {
     test('returns false when no pill is focused', () async {
       final repId = await seedRepertoire(db);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       await controller.loadData();
 
       expect(controller.canBranchFromFocusedPill(), false);
@@ -735,7 +735,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5', 'Nf3'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 
@@ -764,7 +764,7 @@ void main() {
       final repId = await seedRepertoire(db, lines: [
         ['e4'],
       ]);
-      final controller = AddLineController(db, repId);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
       final boardController = ChessboardController();
       await controller.loadData();
 

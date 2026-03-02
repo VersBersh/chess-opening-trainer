@@ -1,8 +1,12 @@
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
+import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
+import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/import_screen.dart';
 import 'package:chess_trainer/services/pgn_importer.dart';
 
@@ -21,8 +25,16 @@ Future<int> createRepertoire(AppDatabase db, {String name = 'Test'}) async {
 }
 
 Widget buildTestApp(AppDatabase db, int repertoireId) {
-  return MaterialApp(
-    home: ImportScreen(db: db, repertoireId: repertoireId),
+  return ProviderScope(
+    overrides: [
+      databaseProvider.overrideWithValue(db),
+      repertoireRepositoryProvider
+          .overrideWithValue(LocalRepertoireRepository(db)),
+      reviewRepositoryProvider.overrideWithValue(LocalReviewRepository(db)),
+    ],
+    child: MaterialApp(
+      home: ImportScreen(repertoireId: repertoireId),
+    ),
   );
 }
 
@@ -162,20 +174,28 @@ void main() {
       // Wrap in a Navigator to detect pop.
       bool didPop = false;
       await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (context) => Scaffold(
-              body: FilledButton(
-                onPressed: () async {
-                  await Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ImportScreen(
-                      db: db,
-                      repertoireId: repId,
-                    ),
-                  ));
-                  didPop = true;
-                },
-                child: const Text('Open Import'),
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            repertoireRepositoryProvider
+                .overrideWithValue(LocalRepertoireRepository(db)),
+            reviewRepositoryProvider
+                .overrideWithValue(LocalReviewRepository(db)),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: FilledButton(
+                  onPressed: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ImportScreen(
+                        repertoireId: repId,
+                      ),
+                    ));
+                    didPop = true;
+                  },
+                  child: const Text('Open Import'),
+                ),
               ),
             ),
           ),

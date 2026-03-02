@@ -3,10 +3,13 @@ import 'package:dartchess/dartchess.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
+import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/widgets/move_pills_widget.dart';
 
@@ -112,11 +115,17 @@ Widget buildTestApp(
   int repertoireId, {
   int? startingMoveId,
 }) {
-  return MaterialApp(
-    home: AddLineScreen(
-      db: db,
-      repertoireId: repertoireId,
-      startingMoveId: startingMoveId,
+  return ProviderScope(
+    overrides: [
+      repertoireRepositoryProvider
+          .overrideWithValue(LocalRepertoireRepository(db)),
+      reviewRepositoryProvider.overrideWithValue(LocalReviewRepository(db)),
+    ],
+    child: MaterialApp(
+      home: AddLineScreen(
+        repertoireId: repertoireId,
+        startingMoveId: startingMoveId,
+      ),
     ),
   );
 }
@@ -543,22 +552,29 @@ void main() {
       final repId = await seedRepertoire(db);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (context) => Scaffold(
-              body: Center(
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => AddLineScreen(
-                          db: db,
-                          repertoireId: repId,
+        ProviderScope(
+          overrides: [
+            repertoireRepositoryProvider
+                .overrideWithValue(LocalRepertoireRepository(db)),
+            reviewRepositoryProvider
+                .overrideWithValue(LocalReviewRepository(db)),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AddLineScreen(
+                            repertoireId: repId,
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                  child: const Text('Go'),
+                      );
+                    },
+                    child: const Text('Go'),
+                  ),
                 ),
               ),
             ),

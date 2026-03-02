@@ -3,8 +3,8 @@ import 'package:drift/drift.dart';
 
 import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
-import '../repositories/local/local_repertoire_repository.dart';
-import '../repositories/local/local_review_repository.dart';
+import '../repositories/repertoire_repository.dart';
+import '../repositories/review_repository.dart';
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -58,12 +58,20 @@ class _MergeResult {
 /// resulting move trees into an existing repertoire, creates review cards
 /// for new leaf nodes, and produces an import summary.
 ///
-/// Receives [AppDatabase] directly (not repository interfaces) to enable
-/// per-game transactions.
+/// Receives repository interfaces for data access and [AppDatabase] for
+/// per-game transaction scoping.
 class PgnImporter {
+  final RepertoireRepository _repertoireRepo;
+  final ReviewRepository _reviewRepo;
   final AppDatabase _db;
 
-  PgnImporter({required AppDatabase db}) : _db = db;
+  PgnImporter({
+    required RepertoireRepository repertoireRepo,
+    required ReviewRepository reviewRepo,
+    required AppDatabase db,
+  })  : _repertoireRepo = repertoireRepo,
+        _reviewRepo = reviewRepo,
+        _db = db;
 
   /// Import PGN text into the given repertoire.
   ///
@@ -99,8 +107,7 @@ class PgnImporter {
     final errors = <GameError>[];
 
     // Load initial tree cache.
-    final repertoireRepo = LocalRepertoireRepository(_db);
-    var allMoves = await repertoireRepo.getMovesForRepertoire(repertoireId);
+    var allMoves = await _repertoireRepo.getMovesForRepertoire(repertoireId);
     var treeCache = RepertoireTreeCache.build(allMoves);
 
     for (var i = 0; i < games.length; i++) {
@@ -174,7 +181,7 @@ class PgnImporter {
 
       // Rebuild tree cache between games so the next game sees newly
       // inserted moves.
-      allMoves = await repertoireRepo.getMovesForRepertoire(repertoireId);
+      allMoves = await _repertoireRepo.getMovesForRepertoire(repertoireId);
       treeCache = RepertoireTreeCache.build(allMoves);
     }
 
@@ -308,9 +315,6 @@ class PgnImporter {
     RepertoireTreeCache treeCache,
   ) async {
     return _db.transaction(() async {
-      final repertoireRepo = LocalRepertoireRepository(_db);
-      final reviewRepo = LocalReviewRepository(_db);
-
       int linesAdded = 0;
       int movesMerged = 0;
 
@@ -361,7 +365,7 @@ class PgnImporter {
                 ));
               }
 
-              await repertoireRepo.extendLine(existingMoveId, companions);
+              await _repertoireRepo.extendLine(existingMoveId, companions);
 
               // Add the newly inserted moves to the in-memory index.
               // extendLine chains parent IDs internally; we need to read them
@@ -369,7 +373,7 @@ class PgnImporter {
               int? extParentId = existingMoveId;
               for (final rm in remainingMoves) {
                 final children =
-                    await repertoireRepo.getChildMoves(extParentId!);
+                    await _repertoireRepo.getChildMoves(extParentId!);
                 final inserted =
                     children.where((c) => c.san == rm.san).toList();
                 if (inserted.isNotEmpty) {
@@ -414,7 +418,7 @@ class PgnImporter {
                 ? companion.copyWith(parentMoveId: Value(parentMoveId))
                 : companion;
 
-            final newId = await repertoireRepo.saveMove(withParent);
+            final newId = await _repertoireRepo.saveMove(withParent);
 
             // Update the in-memory index.
             insertedMoves[(parentMoveId, san)] = newId;
@@ -429,7 +433,7 @@ class PgnImporter {
         if (parentMoveId != null) {
           // Check if the leaf already has a card.
           final existingCard =
-              await reviewRepo.getCardForLeaf(parentMoveId);
+              await _reviewRepo.getCardForLeaf(parentMoveId);
           if (existingCard == null) {
             // Check if the leaf is truly a leaf (no children in cache or
             // in-memory index).
@@ -438,7 +442,7 @@ class PgnImporter {
                 .any((key) => key.$1 == parentMoveId);
 
             if (isLeafInCache && !hasInMemoryChildren && isNewLine) {
-              await reviewRepo.saveReview(ReviewCardsCompanion.insert(
+              await _reviewRepo.saveReview(ReviewCardsCompanion.insert(
                 repertoireId: repertoireId,
                 leafMoveId: parentMoveId,
                 nextReviewDate: DateTime.now(),

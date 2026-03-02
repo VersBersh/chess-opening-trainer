@@ -100,9 +100,7 @@ class HomeController extends AutoDisposeAsyncNotifier<HomeState> {
 // ---------------------------------------------------------------------------
 
 class HomeScreen extends ConsumerStatefulWidget {
-  final AppDatabase db;
-
-  const HomeScreen({super.key, required this.db});
+  const HomeScreen({super.key});
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -140,7 +138,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Navigator.of(context)
         .push(MaterialPageRoute(
           builder: (_) => AddLineScreen(
-            db: widget.db,
             repertoireId: repertoireId,
           ),
         ))
@@ -151,7 +148,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Navigator.of(context)
         .push(MaterialPageRoute(
           builder: (_) => RepertoireBrowserScreen(
-            db: widget.db,
             repertoireId: repertoireId,
           ),
         ))
@@ -357,7 +353,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       Navigator.of(context)
           .push(MaterialPageRoute(
             builder: (_) => RepertoireBrowserScreen(
-              db: widget.db,
               repertoireId: id,
             ),
           ))

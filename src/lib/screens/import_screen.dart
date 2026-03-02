@@ -3,8 +3,9 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../repositories/local/database.dart';
+import '../providers.dart';
 import '../services/pgn_importer.dart';
 
 // ---------------------------------------------------------------------------
@@ -15,21 +16,19 @@ import '../services/pgn_importer.dart';
 ///
 /// Provides two input methods (file picker and paste text), a color selection
 /// prompt, and displays import progress and results.
-class ImportScreen extends StatefulWidget {
-  final AppDatabase db;
+class ImportScreen extends ConsumerStatefulWidget {
   final int repertoireId;
 
   const ImportScreen({
     super.key,
-    required this.db,
     required this.repertoireId,
   });
 
   @override
-  State<ImportScreen> createState() => _ImportScreenState();
+  ConsumerState<ImportScreen> createState() => _ImportScreenState();
 }
 
-class _ImportScreenState extends State<ImportScreen>
+class _ImportScreenState extends ConsumerState<ImportScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final TextEditingController _textController = TextEditingController();
@@ -124,7 +123,11 @@ class _ImportScreenState extends State<ImportScreen>
     });
 
     try {
-      final importer = PgnImporter(db: widget.db);
+      final importer = PgnImporter(
+        repertoireRepo: ref.read(repertoireRepositoryProvider),
+        reviewRepo: ref.read(reviewRepositoryProvider),
+        db: ref.read(databaseProvider),
+      );
       final result = await importer.importPgn(
         pgnText,
         widget.repertoireId,

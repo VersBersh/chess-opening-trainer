@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
-import '../repositories/local/local_repertoire_repository.dart';
-import '../repositories/local/local_review_repository.dart';
+import '../repositories/repertoire_repository.dart';
+import '../repositories/review_repository.dart';
 import '../services/line_entry_engine.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/move_pills_widget.dart';
@@ -101,12 +101,14 @@ class ConfirmNoNewMoves extends ConfirmResult {
 /// Translates user actions into engine calls and state updates.
 class AddLineController extends ChangeNotifier {
   AddLineController(
-    this._db,
+    this._repertoireRepo,
+    this._reviewRepo,
     this._repertoireId, {
     int? startingMoveId,
   }) : _startingMoveId = startingMoveId;
 
-  final AppDatabase _db;
+  final RepertoireRepository _repertoireRepo;
+  final ReviewRepository _reviewRepo;
   final int _repertoireId;
   final int? _startingMoveId;
 
@@ -125,13 +127,11 @@ class AddLineController extends ChangeNotifier {
 
   /// Loads repertoire data, builds the tree cache, and creates the engine.
   Future<void> loadData() async {
-    final repRepo = LocalRepertoireRepository(_db);
-
     // 1. Load the repertoire name.
-    final repertoire = await repRepo.getRepertoire(_repertoireId);
+    final repertoire = await _repertoireRepo.getRepertoire(_repertoireId);
 
     // 2. Load all moves and build tree cache.
-    final allMoves = await repRepo.getMovesForRepertoire(_repertoireId);
+    final allMoves = await _repertoireRepo.getMovesForRepertoire(_repertoireId);
     final cache = RepertoireTreeCache.build(allMoves);
 
     // 3. Create the LineEntryEngine.
@@ -484,13 +484,11 @@ class AddLineController extends ChangeNotifier {
 
   Future<ConfirmResult> _persistMoves(LineEntryEngine engine) async {
     final confirmData = engine.getConfirmData();
-    final repRepo = LocalRepertoireRepository(_db);
-    final reviewRepo = LocalReviewRepository(_db);
 
     if (confirmData.isExtension) {
       // Path A: Extension -- use atomic extendLine.
       final oldLeafMoveId = confirmData.parentMoveId!;
-      final oldCard = await reviewRepo.getCardForLeaf(oldLeafMoveId);
+      final oldCard = await _reviewRepo.getCardForLeaf(oldLeafMoveId);
 
       final companions = <RepertoireMovesCompanion>[];
       for (var i = 0; i < confirmData.newMoves.length; i++) {
@@ -503,7 +501,7 @@ class AddLineController extends ChangeNotifier {
         ));
       }
       final insertedMoveIds =
-          await repRepo.extendLine(oldLeafMoveId, companions);
+          await _repertoireRepo.extendLine(oldLeafMoveId, companions);
 
       // Rebuild tree cache and reset engine.
       await loadData();
@@ -529,11 +527,11 @@ class AddLineController extends ChangeNotifier {
         final withParent = parentId != null
             ? companion.copyWith(parentMoveId: Value(parentId))
             : companion;
-        parentId = await repRepo.saveMove(withParent);
+        parentId = await _repertoireRepo.saveMove(withParent);
         insertedIds.add(parentId);
       }
       // Create card for the last inserted move (the new leaf).
-      await reviewRepo.saveReview(ReviewCardsCompanion.insert(
+      await _reviewRepo.saveReview(ReviewCardsCompanion.insert(
         repertoireId: confirmData.repertoireId,
         leafMoveId: parentId!,
         nextReviewDate: DateTime.now(),
@@ -560,8 +558,7 @@ class AddLineController extends ChangeNotifier {
   ) async {
     if (capturedGeneration != _undoGeneration) return;
 
-    final repRepo = LocalRepertoireRepository(_db);
-    await repRepo.undoExtendLine(oldLeafMoveId, insertedMoveIds, oldCard);
+    await _repertoireRepo.undoExtendLine(oldLeafMoveId, insertedMoveIds, oldCard);
     await loadData();
   }
 
@@ -572,8 +569,7 @@ class AddLineController extends ChangeNotifier {
     final moveId = getMoveIdAtPillIndex(pillIndex);
     if (moveId == null) return;
 
-    final repRepo = LocalRepertoireRepository(_db);
-    await repRepo.updateMoveLabel(moveId, newLabel);
+    await _repertoireRepo.updateMoveLabel(moveId, newLabel);
     await loadData();
   }
 
