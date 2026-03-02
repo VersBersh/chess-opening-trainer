@@ -5,7 +5,6 @@ import '../providers.dart';
 import '../repositories/local/database.dart';
 import 'add_line_screen.dart';
 import 'drill_screen.dart';
-import 'free_practice_setup_screen.dart';
 import 'repertoire_browser_screen.dart';
 import 'settings_screen.dart';
 
@@ -126,8 +125,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Navigator.of(context)
         .push(
           MaterialPageRoute(
-            builder: (_) => FreePracticeSetupScreen(
-                repertoireId: repertoireId),
+            builder: (_) => DrillScreen(
+              config: DrillConfig(
+                repertoireId: repertoireId,
+                isExtraPractice: true,
+              ),
+            ),
           ),
         )
         .then((_) => ref.read(homeControllerProvider.notifier).refresh());

@@ -180,9 +180,16 @@ class DrillController
     _reviewRepo = ref.read(reviewRepositoryProvider);
 
     final cards = config.preloadedCards ??
-        await _reviewRepo.getDueCardsForRepertoire(config.repertoireId);
+        (config.isExtraPractice
+            ? await _reviewRepo.getAllCardsForRepertoire(config.repertoireId)
+            : await _reviewRepo.getDueCardsForRepertoire(config.repertoireId));
 
-    if (cards.isEmpty) {
+    var cardList = List.of(cards);
+    if (config.isExtraPractice) {
+      cardList.shuffle();
+    }
+
+    if (cardList.isEmpty) {
       return DrillSessionComplete(
         summary: SessionSummary(
           totalCards: 0,
@@ -203,7 +210,7 @@ class DrillController
     final treeCache = RepertoireTreeCache.build(allMoves);
 
     _engine = DrillEngine(
-      cards: cards,
+      cards: cardList,
       treeCache: treeCache,
       isExtraPractice: config.isExtraPractice,
     );
@@ -456,11 +463,11 @@ class DrillScreen extends ConsumerWidget {
 
     return asyncState.when(
       loading: () => Scaffold(
-        appBar: AppBar(title: const Text('Drill')),
+        appBar: AppBar(title: Text(config.isExtraPractice ? 'Free Practice' : 'Drill')),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (error, stack) => Scaffold(
-        appBar: AppBar(title: const Text('Drill')),
+        appBar: AppBar(title: Text(config.isExtraPractice ? 'Free Practice' : 'Drill')),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -513,7 +520,7 @@ class DrillScreen extends ConsumerWidget {
     switch (drillState) {
       case DrillLoading():
         return Scaffold(
-          appBar: AppBar(title: const Text('Drill')),
+          appBar: AppBar(title: Text(config.isExtraPractice ? 'Free Practice' : 'Drill')),
           body: const Center(child: CircularProgressIndicator()),
         );
 
@@ -525,7 +532,9 @@ class DrillScreen extends ConsumerWidget {
           context,
           ref,
           drillState: drillState,
-          title: 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
+          title: config.isExtraPractice
+              ? 'Free Practice \u2014 ${drillState.currentCardNumber}/${drillState.totalCards}'
+              : 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
           userColor: drillState.userColor,
           lineLabel: drillState.lineLabel,
           playerSide: PlayerSide.none,
@@ -537,7 +546,9 @@ class DrillScreen extends ConsumerWidget {
           context,
           ref,
           drillState: drillState,
-          title: 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
+          title: config.isExtraPractice
+              ? 'Free Practice \u2014 ${drillState.currentCardNumber}/${drillState.totalCards}'
+              : 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
           userColor: drillState.userColor,
           lineLabel: drillState.lineLabel,
           playerSide: drillState.userColor == Side.white
@@ -551,7 +562,9 @@ class DrillScreen extends ConsumerWidget {
           context,
           ref,
           drillState: drillState,
-          title: 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
+          title: config.isExtraPractice
+              ? 'Free Practice \u2014 ${drillState.currentCardNumber}/${drillState.totalCards}'
+              : 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
           userColor: drillState.userColor,
           lineLabel: drillState.lineLabel,
           playerSide: PlayerSide.none,

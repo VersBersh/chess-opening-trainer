@@ -1,0 +1,15 @@
+- **Verdict** — Approved
+- **Progress**
+  - [x] Step 1 — Update `DrillController.build()` to auto-load all cards in free practice mode (done)
+  - [x] Step 2 — Shuffle cards for free practice mode (done)
+  - [x] Step 3 — Update `_startFreePractice` to navigate directly to `DrillScreen` (done)
+  - [x] Step 4 — Remove `free_practice_setup_screen.dart` import from home screen (done)
+  - [x] Step 5 — Add visual "Free Practice" indicator across drill screen AppBar states (done)
+  - [x] Step 6 — Delete `src/lib/screens/free_practice_setup_screen.dart` (done)
+  - [x] Step 7 — Delete `src/test/screens/free_practice_setup_screen_test.dart` (done)
+  - [x] Step 8 — Update home screen tests for direct drill navigation (done)
+  - [x] Step 9 — Extend `FakeReviewRepository` in drill screen tests with separate due/all lists (done)
+  - [x] Step 10 — Add test proving free practice without `preloadedCards` loads all cards (done)
+  - [x] Step 11 — Add test for free practice AppBar indicator (done)
+- **Issues**
+  1. None. No correctness, completeness, regression, or unplanned-change issues were identified from code inspection of the full `git diff HEAD` and full contents of all modified files.

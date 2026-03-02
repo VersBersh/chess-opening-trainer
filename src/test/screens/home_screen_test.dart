@@ -12,7 +12,6 @@ import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/repositories/review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/screens/drill_screen.dart';
-import 'package:chess_trainer/screens/free_practice_setup_screen.dart';
 import 'package:chess_trainer/screens/home_screen.dart';
 import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
 
@@ -498,7 +497,7 @@ void main() {
       expect(find.text('Free Practice'), findsNothing);
     });
 
-    testWidgets('tapping Free Practice navigates to setup screen',
+    testWidgets('tapping Free Practice navigates to drill screen',
         (tester) async {
       final allCards = [
         ReviewCard(
@@ -524,7 +523,7 @@ void main() {
       await tester.tap(find.text('Free Practice'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(FreePracticeSetupScreen), findsOneWidget);
+      expect(find.byType(DrillScreen), findsOneWidget);
     });
   });
 

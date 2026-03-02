@@ -158,10 +158,12 @@ class FakeRepertoireRepository implements RepertoireRepository {
 
 class FakeReviewRepository implements ReviewRepository {
   final List<ReviewCard> _dueCards;
+  final List<ReviewCard> _allCards;
   final List<ReviewCardsCompanion> savedReviews = [];
 
-  FakeReviewRepository({List<ReviewCard>? dueCards})
-      : _dueCards = dueCards ?? [];
+  FakeReviewRepository({List<ReviewCard>? dueCards, List<ReviewCard>? allCards})
+      : _dueCards = dueCards ?? [],
+        _allCards = allCards ?? dueCards ?? [];
 
   @override
   Future<List<ReviewCard>> getDueCards({DateTime? asOf}) async => _dueCards;
@@ -191,7 +193,7 @@ class FakeReviewRepository implements ReviewRepository {
 
   @override
   Future<List<ReviewCard>> getAllCardsForRepertoire(int repertoireId) async =>
-      _dueCards.where((c) => c.repertoireId == repertoireId).toList();
+      _allCards.where((c) => c.repertoireId == repertoireId).toList();
 }
 
 // ---------------------------------------------------------------------------
@@ -1217,6 +1219,54 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 2));
 
       expect(find.textContaining('Next review:'), findsNothing);
+    });
+
+    testWidgets('free practice without preloadedCards loads all cards',
+        (tester) async {
+      final allCard = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        isExtraPractice: true,
+        // No preloadedCards — controller must fetch them itself
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      // dueCards is empty, allCards has a card — proves getAllCardsForRepertoire is called
+      final reviewRepo =
+          FakeReviewRepository(dueCards: [], allCards: [allCard]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Should have loaded the card and be showing a drill state, not session-complete
+      expect(find.textContaining('Free Practice'), findsOneWidget);
+      // Verify we did NOT get the empty-session outcome
+      expect(find.text('Practice Complete'), findsNothing);
+    });
+
+    testWidgets('free practice shows "Free Practice" in AppBar title',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // AppBar should say "Free Practice — 1/1"
+      expect(find.text('Free Practice \u2014 1/1'), findsOneWidget);
     });
   });
 }
