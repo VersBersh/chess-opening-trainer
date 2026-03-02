@@ -13,6 +13,7 @@ import 'package:chess_trainer/repositories/local/local_repertoire_repository.dar
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
+import 'package:chess_trainer/widgets/browser_action_bar.dart';
 import 'package:chess_trainer/widgets/inline_label_editor.dart';
 import 'package:chess_trainer/widgets/move_tree_widget.dart';
 
@@ -130,6 +131,16 @@ Widget buildTestApp(AppDatabase db, int repertoireId,
       ),
     ),
   );
+}
+
+/// Opens the overflow menu in the browser action bar and taps the item with
+/// the given [label]. Use this for actions that moved into the overflow menu
+/// in narrow (full-width) layout: Import, Stats, Delete, Delete Branch.
+Future<void> tapOverflowAction(WidgetTester tester, String label) async {
+  await tester.tap(find.byKey(browserOverflowMenuKey));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
 }
 
 // ---------------------------------------------------------------------------
@@ -369,33 +380,52 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Add Line button should always be enabled
+      // Add Line button should always be enabled (primary action, visible)
       final addLineButton = tester.widget<TextButton>(
         find.widgetWithText(TextButton, 'Add Line'),
       );
       expect(addLineButton.onPressed, isNotNull);
 
-      // Stats button should be disabled (no leaf selected)
-      final statsButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Stats'),
+      // Stats should be disabled in overflow menu (no leaf selected)
+      await tester.tap(find.byKey(browserOverflowMenuKey));
+      await tester.pumpAndSettle();
+      final statsItem = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Stats'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
       );
-      expect(statsButton.onPressed, isNull);
+      expect(statsItem.enabled, isFalse);
+      // Dismiss the menu
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
 
       // Select e4 (labeled, has children so NOT a leaf).
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
 
-      // Delete Branch button should be enabled (non-leaf node)
-      final deleteBranchButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Delete Branch'),
+      // Delete Branch should be enabled in overflow menu (non-leaf node)
+      await tester.tap(find.byKey(browserOverflowMenuKey));
+      await tester.pumpAndSettle();
+      final deleteBranchItem = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Delete Branch'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
       );
-      expect(deleteBranchButton.onPressed, isNotNull);
+      expect(deleteBranchItem.enabled, isTrue);
 
       // Stats should still be disabled (non-leaf)
-      final statsButton2 = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Stats'),
+      final statsItem2 = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Stats'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
       );
-      expect(statsButton2.onPressed, isNull);
+      expect(statsItem2.enabled, isFalse);
+      // Dismiss the menu
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
 
       // Now expand and select the leaf node (Nf3)
       await tester.tap(find.byIcon(Icons.chevron_right).first);
@@ -408,17 +438,28 @@ void main() {
       await tester.tap(find.text('2. Nf3'));
       await tester.pump();
 
-      // Delete should be enabled (leaf)
-      final deleteButton2 = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Delete'),
+      // Delete should be enabled in overflow menu (leaf)
+      await tester.tap(find.byKey(browserOverflowMenuKey));
+      await tester.pumpAndSettle();
+      final deleteItem2 = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Delete'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
       );
-      expect(deleteButton2.onPressed, isNotNull);
+      expect(deleteItem2.enabled, isTrue);
 
       // Stats should be enabled (leaf)
-      final statsButton3 = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Stats'),
+      final statsItem3 = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Stats'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
       );
-      expect(statsButton3.onPressed, isNotNull);
+      expect(statsItem3.enabled, isTrue);
+      // Dismiss the menu
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
     });
 
     testWidgets('empty repertoire shows empty state', (tester) async {
@@ -1177,12 +1218,11 @@ void main() {
 
       expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Delete Nf3. Tap the Delete button.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-      await tester.pumpAndSettle();
+      // Delete Nf3 via overflow menu.
+      await tapOverflowAction(tester, 'Delete');
 
       // Confirm deletion.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
       // Editor should be dismissed (node no longer exists in tree cache).
@@ -1216,15 +1256,14 @@ void main() {
       await tester.tap(find.text('2. Nf3'));
       await tester.pump();
 
-      // Tap Delete button.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-      await tester.pumpAndSettle();
+      // Tap Delete via overflow menu.
+      await tapOverflowAction(tester, 'Delete');
 
       // Confirmation dialog should appear.
       expect(find.text('Delete this move and its review card?'), findsOneWidget);
 
       // Confirm deletion.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
       // No orphan prompt -- e5 still has sibling child Bc4.
@@ -1262,13 +1301,12 @@ void main() {
       await tester.tap(find.text('1...e5'));
       await tester.pump();
 
-      // Tap Delete.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-      await tester.pumpAndSettle();
+      // Tap Delete via overflow menu.
+      await tapOverflowAction(tester, 'Delete');
 
       // Confirm deletion.
       expect(find.text('Delete this move and its review card?'), findsOneWidget);
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
       // Orphan prompt should appear for e4 (now childless).
@@ -1289,12 +1327,11 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (leaf), delete, confirm.
+      // Select e5 (leaf), delete via overflow menu, confirm.
       await tester.tap(find.text('1...e5'));
       await tester.pump();
+      await tapOverflowAction(tester, 'Delete');
       await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
       await tester.pumpAndSettle();
 
       // Orphan prompt for e4. Choose "Keep shorter line."
@@ -1329,12 +1366,11 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (leaf), delete, confirm.
+      // Select e5 (leaf), delete via overflow menu, confirm.
       await tester.tap(find.text('1...e5'));
       await tester.pump();
+      await tapOverflowAction(tester, 'Delete');
       await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
       await tester.pumpAndSettle();
 
       // Orphan prompt for e4. Choose "Remove move."
@@ -1374,12 +1410,11 @@ void main() {
       await tester.tap(find.text('1...e5'));
       await tester.pump();
 
-      // Tap Delete.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-      await tester.pumpAndSettle();
+      // Tap Delete via overflow menu.
+      await tapOverflowAction(tester, 'Delete');
 
       // Confirm deletion.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
       // No orphan prompt -- e4 still has child c5.
@@ -1410,9 +1445,8 @@ void main() {
       await tester.tap(find.text('1...e5'));
       await tester.pump();
 
-      // Tap "Delete Branch".
-      await tester.tap(find.widgetWithText(TextButton, 'Delete Branch'));
-      await tester.pumpAndSettle();
+      // Tap "Delete Branch" via overflow menu.
+      await tapOverflowAction(tester, 'Delete Branch');
 
       // Confirmation dialog should show correct counts.
       expect(find.text('This will delete 2 lines and 2 review cards. Continue?'),
@@ -1437,10 +1471,9 @@ void main() {
       await tester.tap(find.text('1...e5'));
       await tester.pump();
 
-      // Tap "Delete Branch", confirm.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete Branch'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      // Tap "Delete Branch" via overflow menu, confirm.
+      await tapOverflowAction(tester, 'Delete Branch');
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
       // e4 becomes childless -- orphan prompt appears.
@@ -1481,10 +1514,9 @@ void main() {
       await tester.tap(find.text('1...e5'));
       await tester.pump();
 
-      // Tap "Delete Branch", confirm.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete Branch'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      // Tap "Delete Branch" via overflow menu, confirm.
+      await tapOverflowAction(tester, 'Delete Branch');
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
       // e4 becomes childless. Verify orphan prompt appears.
@@ -1510,10 +1542,9 @@ void main() {
       await tester.tap(find.text('1. e4'));
       await tester.pump();
 
-      // Tap "Delete Branch", confirm.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete Branch'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      // Tap "Delete Branch" via overflow menu, confirm.
+      await tapOverflowAction(tester, 'Delete Branch');
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
       // No orphan prompt since e4 was a root (no parent).
@@ -1546,13 +1577,12 @@ void main() {
       await tester.tap(find.text('1...e5'));
       await tester.pump();
 
-      // Tap Delete.
-      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-      await tester.pumpAndSettle();
+      // Tap Delete via overflow menu.
+      await tapOverflowAction(tester, 'Delete');
 
       // Confirm deletion.
       expect(find.text('Delete this move and its review card?'), findsOneWidget);
-      await tester.tap(find.widgetWithText(TextButton, 'Delete').last);
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
       await tester.pumpAndSettle();
 
       // Orphan prompt should appear for e4 (now childless).
@@ -1665,20 +1695,34 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // No selection -- Stats should be disabled
-      final statsButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Stats'),
+      // No selection -- Stats should be disabled in overflow menu
+      await tester.tap(find.byKey(browserOverflowMenuKey));
+      await tester.pumpAndSettle();
+      final statsItem = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Stats'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
       );
-      expect(statsButton.onPressed, isNull);
+      expect(statsItem.enabled, isFalse);
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
 
       // Select e4 (non-leaf) -- Stats should still be disabled
       await tester.tap(find.text('1. e4'));
       await tester.pump();
 
-      final statsButton2 = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Stats'),
+      await tester.tap(find.byKey(browserOverflowMenuKey));
+      await tester.pumpAndSettle();
+      final statsItem2 = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Stats'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
       );
-      expect(statsButton2.onPressed, isNull);
+      expect(statsItem2.enabled, isFalse);
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
     });
 
     testWidgets('Stats button enabled on leaf; dialog shows card data',
@@ -1698,15 +1742,22 @@ void main() {
       await tester.tap(find.text('1...e5'));
       await tester.pump();
 
-      // Stats button should be enabled
-      final statsButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Stats'),
-      );
-      expect(statsButton.onPressed, isNotNull);
-
-      // Tap Stats
-      await tester.tap(find.widgetWithText(TextButton, 'Stats'));
+      // Stats should be enabled in overflow menu (leaf selected)
+      await tester.tap(find.byKey(browserOverflowMenuKey));
       await tester.pumpAndSettle();
+      final statsItem = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text('Stats'),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
+      );
+      expect(statsItem.enabled, isTrue);
+      // Dismiss the menu before tapping via helper
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+
+      // Tap Stats via overflow menu
+      await tapOverflowAction(tester, 'Stats');
 
       // Dialog should show card stats
       expect(find.text('Card Stats'), findsOneWidget);
@@ -1742,9 +1793,8 @@ void main() {
       await tester.tap(find.text('1...e5'));
       await tester.pump();
 
-      // Tap Stats
-      await tester.tap(find.widgetWithText(TextButton, 'Stats'));
-      await tester.pumpAndSettle();
+      // Tap Stats via overflow menu
+      await tapOverflowAction(tester, 'Stats');
 
       // Should show snackbar with message
       expect(find.text('No review card for this move.'), findsOneWidget);
