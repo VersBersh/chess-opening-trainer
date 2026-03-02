@@ -11,9 +11,10 @@ The Add Line screen uses the same line entry mechanics as [line-management.md](l
 ## Layout
 
 - **"Add Line" header** displayed above the board, making the screen's purpose clear.
+- **Banner gap:** There must be visible vertical spacing between the header banner and the chessboard. The board must not sit flush against the banner. See [design/ui-guidelines.md](../design/ui-guidelines.md).
 - The **chessboard** is the main interaction area — the user plays moves to build a line.
 - **Move pills** are displayed below the board (see Move Pills section).
-- **Action buttons** (confirm, take-back, flip board) appear below the move pills.
+- **Action buttons** (confirm, take-back, flip board) appear below the move pills, grouped tightly together (not spread across the full width).
 - **No Tree Explorer** — this screen is purely about playing moves on the board.
 - **No Edit mode toggle** — the screen is always in entry mode. Editing happens inline via the move pills.
 
@@ -27,6 +28,8 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 - As the user makes moves on the board, new pills are appended to the row.
 - If a pill's move exists in the database and has a **label**, the label is shown beneath the pill. The label text may be vertically angled/slanted to fit the compact horizontal layout.
 - Pills for moves that already exist in the database are visually distinct from new (unsaved) pills (e.g., different background color or border).
+- **Styling:** Pills use a blue fill, modest border radius (not full stadium shape), per [design/ui-guidelines.md](../design/ui-guidelines.md).
+- **Wrapping:** The pill row wraps onto multiple lines when moves exceed the available width. Pills must never scroll off-screen invisibly.
 
 ### Navigation (Tap)
 
@@ -41,8 +44,10 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 
 ### Editing Labels
 
-- When a pill is focused (tapped), the user can **add or edit the label** for that position directly from the pill.
+- The Label button is **enabled** in Add Line mode. The user can add or edit a label at any time, not only after confirming.
+- When a pill is focused (tapped), the user can **add or edit the label** for that position directly from the pill or via the Label action button.
 - This follows the same labeling rules as [line-management.md](line-management.md) — labels are short local segments, the aggregate display name is computed by walking root-to-leaf.
+- **Multi-line impact warning:** If adding or editing a label would affect multiple existing lines (e.g., labeling a shared ancestor node), a confirmation dialog is shown before applying the change.
 
 ### Branching
 

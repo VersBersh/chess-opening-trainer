@@ -12,6 +12,10 @@ Uses **Repertoire**, **RepertoireMove**, **RepertoireTreeCache**, and **ReviewCa
 
 The browser relies heavily on `RepertoireTreeCache` for fast, in-memory navigation of the move tree. The cache is built from a single `getMovesForRepertoire()` call on entry and provides O(1) lookups by ID and FEN, plus O(depth) path reconstruction.
 
+## Layout
+
+- **Banner gap:** There must be visible vertical spacing between the top app bar and the screen content (board, tree, list). See [design/ui-guidelines.md](../design/ui-guidelines.md).
+
 ## Tree Visualization
 
 The repertoire is displayed as an interactive tree structure. The primary view shows moves as a navigable hierarchy.
@@ -75,7 +79,7 @@ The board is **read-only** in the repertoire manager. The user cannot play moves
 
 ## Actions from Browser
 
-From a selected node, the user can perform several actions via a context menu or action bar:
+Actions are accessed via inline row affordances and the context menu — not via separate Edit / Focus buttons. The previous Edit button (which only showed a read-only tree with a Discard action) and the non-functional Focus button are removed.
 
 ### Add a Line
 
@@ -89,9 +93,10 @@ From a selected node, the user can perform several actions via a context menu or
 - Follows the deletion rules in [line-management.md](line-management.md), including orphan handling when the deletion leaves a parent node childless.
 - Requires confirmation before deletion.
 
-### Edit Label
+### Edit Label (Inline)
 
-- Opens an inline editor or dialog to set or change the node's label.
+- A **label icon** is shown inline on each row in the line list view, allowing the user to tap it to add or edit the label for that node.
+- In the tree view, selecting a node and tapping the label action in the action bar opens the same editor.
 - Follows the labeling rules from [line-management.md](line-management.md) — shows the aggregate display name preview, warns if descendant labels are impacted.
 - Clearing the label removes it (the node becomes unlabeled).
 
@@ -117,7 +122,8 @@ Each line displays a small color indicator (white or black dot/icon) showing the
 
 ### Interaction
 
-- Tapping a line selects it in the tree view and syncs the board to the leaf position.
+- **Tapping a line row** is the primary interaction — it selects the line in the tree view and syncs the board to the leaf position.
+- A **label icon/button** appears inline on each row, allowing the user to add or edit the label for that line directly without entering a separate mode.
 - The user can switch between tree view and line list view via a toggle (e.g., tab bar or segmented control).
 
 ### Scalability
