@@ -5,10 +5,24 @@ import '../repositories/local/database.dart';
 import '../repositories/repertoire_repository.dart';
 import '../repositories/review_repository.dart';
 
+const _devSeedRepertoireName = 'Dev Openings';
+
 /// Seeds the database with sample repertoire data for development and manual
-/// testing. Only runs on an empty database (no existing repertoires).
-///
-/// Creates a "Dev Openings" repertoire with a branching tree from 1. e4:
+/// testing. On a fresh database, creates the seed repertoire and review cards.
+/// On subsequent launches, ensures at least some seed cards are due today so
+/// drill mode is always available during development.
+Future<void> seedDevData(
+  RepertoireRepository repertoireRepo,
+  ReviewRepository reviewRepo,
+) async {
+  final existing = await repertoireRepo.getAllRepertoires();
+  if (existing.isEmpty) {
+    await _createSeedRepertoire(repertoireRepo, reviewRepo);
+  }
+  await _ensureCardsDueToday(repertoireRepo, reviewRepo);
+}
+
+/// Creates the "Dev Openings" repertoire with a branching tree from 1. e4:
 ///
 /// ```
 /// e4
@@ -19,16 +33,13 @@ import '../repositories/review_repository.dart';
 /// ```
 ///
 /// All leaf nodes get review cards with nextReviewDate = today (all due).
-Future<void> seedDevData(
+Future<void> _createSeedRepertoire(
   RepertoireRepository repertoireRepo,
   ReviewRepository reviewRepo,
 ) async {
-  final existing = await repertoireRepo.getAllRepertoires();
-  if (existing.isNotEmpty) return;
-
   // Create the repertoire
   final repertoireId = await repertoireRepo.saveRepertoire(
-    RepertoiresCompanion.insert(name: 'Dev Openings'),
+    RepertoiresCompanion.insert(name: _devSeedRepertoireName),
   );
 
   final today = DateTime.now();
@@ -216,4 +227,40 @@ Future<void> seedDevData(
     sortOrder: 0,
   );
   await insertReviewCard(repertoireId, g3Id);
+}
+
+/// Ensures at least some seed cards are due today so drill mode is always
+/// available during development. Only touches cards in the "Dev Openings"
+/// repertoire; other repertoires are left untouched.
+Future<void> _ensureCardsDueToday(
+  RepertoireRepository repertoireRepo,
+  ReviewRepository reviewRepo,
+) async {
+  final repertoires = await repertoireRepo.getAllRepertoires();
+  final seedRepertoire = repertoires
+      .where((r) => r.name == _devSeedRepertoireName)
+      .firstOrNull;
+  if (seedRepertoire == null) return;
+
+  final dueCards = await reviewRepo.getDueCardsForRepertoire(
+    seedRepertoire.id,
+  );
+  if (dueCards.isNotEmpty) return;
+
+  final allSeedCards = await reviewRepo.getAllCardsForRepertoire(
+    seedRepertoire.id,
+  );
+  if (allSeedCards.isEmpty) return;
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final cardsToMakeDue = allSeedCards.take(4).toList();
+  for (final card in cardsToMakeDue) {
+    await reviewRepo.saveReview(
+      card.toCompanion(true).copyWith(
+        id: Value(card.id),
+        nextReviewDate: Value(today),
+      ),
+    );
+  }
 }
