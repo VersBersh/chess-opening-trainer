@@ -159,11 +159,16 @@ class FakeRepertoireRepository implements RepertoireRepository {
 class FakeReviewRepository implements ReviewRepository {
   final List<ReviewCard> _dueCards;
   final List<ReviewCard> _allCards;
+  final Map<int, List<ReviewCard>> _subtreeCards;
   final List<ReviewCardsCompanion> savedReviews = [];
 
-  FakeReviewRepository({List<ReviewCard>? dueCards, List<ReviewCard>? allCards})
-      : _dueCards = dueCards ?? [],
-        _allCards = allCards ?? dueCards ?? [];
+  FakeReviewRepository({
+    List<ReviewCard>? dueCards,
+    List<ReviewCard>? allCards,
+    Map<int, List<ReviewCard>>? subtreeCards,
+  })  : _dueCards = dueCards ?? [],
+        _allCards = allCards ?? dueCards ?? [],
+        _subtreeCards = subtreeCards ?? {};
 
   @override
   Future<List<ReviewCard>> getDueCards({DateTime? asOf}) async => _dueCards;
@@ -189,7 +194,7 @@ class FakeReviewRepository implements ReviewRepository {
   @override
   Future<List<ReviewCard>> getCardsForSubtree(int moveId,
           {bool dueOnly = false, DateTime? asOf}) async =>
-      [];
+      _subtreeCards[moveId] ?? [];
 
   @override
   Future<List<ReviewCard>> getAllCardsForRepertoire(int repertoireId) async =>
@@ -1627,6 +1632,235 @@ void main() {
       expect(find.text('Practice Complete'), findsNWidgets(2));
       // 2 cards reviewed across both passes (1 card completed per pass x 2 passes)
       expect(find.text('2 cards reviewed'), findsOneWidget);
+    });
+  });
+
+  group('DrillScreen -- line label in free practice', () {
+    testWidgets('shows line label above board in Free Practice mode',
+        (tester) async {
+      // Build a labeled line: label 'Sicilian' on the second move (e5)
+      final line = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3],
+        line[4],
+        line[5],
+        line[6],
+        line[7],
+        line[8],
+      ];
+      final card = buildReviewCard(labeledLine);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: labeledLine);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(find.text('Sicilian'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
+    });
+
+    testWidgets('hides line label when line has no labels in Free Practice',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      expect(find.byKey(const ValueKey('drill-line-label')), findsNothing);
+    });
+
+    testWidgets('line label updates after Keep Going in Free Practice',
+        (tester) async {
+      // Build a labeled line for a single-card free practice session
+      final line = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine = [
+        line[0],
+        line[1].copyWith(label: const Value('Sicilian')),
+        line[2],
+        line[3],
+        line[4],
+        line[5],
+        line[6],
+        line[7],
+        line[8],
+      ];
+      final card = buildReviewCard(labeledLine);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: labeledLine);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Verify label is shown initially
+      expect(find.text('Sicilian'), findsOneWidget);
+
+      // Complete the card
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should be at DrillPassComplete
+      expect(find.text('Pass Complete'), findsOneWidget);
+
+      // Tap "Keep Going" to start a new pass
+      await tester.tap(find.text('Keep Going'));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // After reshuffling and starting the same card again, label should
+      // still be present (same card, same label)
+      expect(find.text('Sicilian'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
+    });
+
+    testWidgets('line label updates after filter change in Free Practice',
+        (tester) async {
+      // Build two lines with different labels, branching after Ba4 (id 7).
+      //
+      // Line 1: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O
+      //   Label 'Sicilian' on e5 (id 2)
+      //
+      // Line 2: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 b5 5. Bb3
+      //   Label 'French' on b5 (id 50)
+      final line1 = buildLine(
+          ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);
+      final labeledLine1 = [
+        line1[0],
+        line1[1].copyWith(label: const Value('Sicilian')),
+        line1[2],
+        line1[3],
+        line1[4],
+        line1[5],
+        line1[6],
+        line1[7],
+        line1[8],
+      ];
+
+      Position pos = Chess.initial;
+      for (final san in ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4']) {
+        pos = pos.play(pos.parseSan(san)!);
+      }
+      final posAfterB5 = pos.play(pos.parseSan('b5')!);
+      final posAfterBb3 = posAfterB5.play(posAfterB5.parseSan('Bb3')!);
+
+      final b5Move = RepertoireMove(
+        id: 50,
+        repertoireId: 1,
+        parentMoveId: 7, // Ba4
+        fen: posAfterB5.fen,
+        san: 'b5',
+        sortOrder: 1,
+        label: 'French',
+      );
+      final bb3Move = RepertoireMove(
+        id: 51,
+        repertoireId: 1,
+        parentMoveId: 50,
+        fen: posAfterBb3.fen,
+        san: 'Bb3',
+        sortOrder: 0,
+      );
+
+      final line2 = [...labeledLine1.sublist(0, 7), b5Move, bb3Move];
+      final allMoves = [...labeledLine1, b5Move, bb3Move];
+
+      final card1 = buildReviewCard(labeledLine1, cardId: 1);
+      final card2 = buildReviewCard(line2, cardId: 2);
+
+      // Start with both cards loaded
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card1, card2],
+        isExtraPractice: true,
+      );
+
+      // Configure getCardsForSubtree: move 2 (e5, label 'Sicilian') subtree
+      // contains card1; move 50 (b5, label 'French') subtree contains card2.
+      final repertoireRepo = FakeRepertoireRepository(moves: allMoves);
+      final reviewRepo = FakeReviewRepository(
+        dueCards: [card1, card2],
+        subtreeCards: {
+          2: [card1],
+          50: [card2],
+        },
+      );
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      // Apply filter to show only 'French' labeled cards
+      await notifier.applyFilter({'French'});
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // After filtering to 'French', the label should show the aggregate
+      // name for line2's deepest label. Line2 has 'Sicilian' on e5 and
+      // 'French' on b5, so the aggregate is 'Sicilian — French'.
+      expect(find.text('Sicilian \u2014 French'), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
     });
   });
 }
