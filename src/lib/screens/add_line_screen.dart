@@ -41,6 +41,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   late final ChessboardController _boardController;
   late final bool _ownsController;
   bool _isLabelEditorVisible = false;
+  ParityMismatch? _parityWarning;
 
   @override
   void initState() {
@@ -100,6 +101,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
           duration: Duration(seconds: 3),
         ),
       );
+    } else {
+      setState(() => _parityWarning = null);
     }
   }
 
@@ -117,13 +120,19 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
       return;
     }
 
-    // Different pill tapped: dismiss editor and navigate.
-    setState(() => _isLabelEditorVisible = false);
+    // Different pill tapped: dismiss editor and warning, navigate.
+    setState(() {
+      _isLabelEditorVisible = false;
+      _parityWarning = null;
+    });
     _controller.onPillTapped(index, _boardController);
   }
 
   void _onTakeBack() {
-    setState(() => _isLabelEditorVisible = false);
+    setState(() {
+      _isLabelEditorVisible = false;
+      _parityWarning = null;
+    });
     _controller.onTakeBack(_boardController);
   }
 
@@ -135,13 +144,9 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
 
     switch (result) {
       case ConfirmParityMismatch(:final mismatch):
-        final shouldFlipAndConfirm = await _showParityWarningDialog(mismatch);
-        if (shouldFlipAndConfirm == true) {
-          final flipResult = await _controller.flipAndConfirm();
-          if (mounted && flipResult is ConfirmSuccess) {
-            _handleConfirmSuccess(flipResult);
-          }
-        }
+        setState(() {
+          _parityWarning = mismatch;
+        });
 
       case ConfirmSuccess():
         _handleConfirmSuccess(result);
@@ -211,7 +216,20 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   }
 
   void _onFlipBoard() {
+    setState(() => _parityWarning = null);
     _controller.flipBoard();
+  }
+
+  Future<void> _onFlipAndConfirm() async {
+    setState(() => _parityWarning = null);
+    final result = await _controller.flipAndConfirm();
+    if (mounted && result is ConfirmSuccess) {
+      _handleConfirmSuccess(result);
+    }
+  }
+
+  void _onDismissParityWarning() {
+    setState(() => _parityWarning = null);
   }
 
   Future<void> _handlePopWithUnsavedMoves(
@@ -225,35 +243,6 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   }
 
   // ---- Dialogs ------------------------------------------------------------
-
-  Future<bool?> _showParityWarningDialog(ParityMismatch mismatch) {
-    final expectedSide =
-        mismatch.expectedOrientation == Side.white ? 'White' : 'Black';
-    final currentSide =
-        _controller.state.boardOrientation == Side.white ? 'White' : 'Black';
-
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Line parity mismatch'),
-        content: Text(
-          'You are entering a line from $currentSide\'s perspective, '
-          'but the line ends on $expectedSide\'s move. '
-          'Do you want to flip the board and confirm as a $expectedSide line?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Flip and confirm'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<bool?> _showDiscardDialog(BuildContext context) {
     return showDialog<bool>(
@@ -349,6 +338,9 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
           // Inline label editor
           if (_isLabelEditorVisible) _buildInlineLabelEditor(state),
 
+          // Inline parity warning
+          if (_parityWarning != null) _buildParityWarning(_parityWarning!),
+
           // Action bar
           _buildActionBar(context, state),
         ],
@@ -379,6 +371,67 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
           setState(() => _isLabelEditorVisible = false);
         }
       },
+    );
+  }
+
+  Widget _buildParityWarning(ParityMismatch mismatch) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final expectedSide =
+        mismatch.expectedOrientation == Side.white ? 'White' : 'Black';
+    final currentSide =
+        _controller.state.boardOrientation == Side.white ? 'White' : 'Black';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  size: 20, color: colorScheme.onErrorContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Line parity mismatch',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onErrorContainer,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: _onDismissParityWarning,
+                icon: Icon(Icons.close,
+                    size: 18, color: colorScheme.onErrorContainer),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Dismiss',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'You are entering a line from $currentSide\'s perspective, '
+            'but the line ends on $expectedSide\'s move.',
+            style: TextStyle(color: colorScheme.onErrorContainer),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _onFlipAndConfirm,
+            style: TextButton.styleFrom(
+              foregroundColor: colorScheme.onErrorContainer,
+            ),
+            child: Text('Flip and confirm as $expectedSide'),
+          ),
+        ],
+      ),
     );
   }
 

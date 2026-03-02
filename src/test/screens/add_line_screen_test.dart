@@ -120,6 +120,22 @@ NormalMove sanToNormalMove(String fen, String san) {
   return move as NormalMove;
 }
 
+/// Plays e4 then e5 and taps Confirm to trigger a parity mismatch warning.
+/// Board is White (default) with 2 ply (even = Black expected) -> mismatch.
+/// Returns after pumpAndSettle so the inline warning is visible.
+Future<void> triggerParityMismatchWarning(WidgetTester tester) async {
+  var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+  chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+  await tester.pumpAndSettle();
+
+  chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+  chessboard.game!.onMove(NormalMove(from: Square.e7, to: Square.e5));
+  await tester.pumpAndSettle();
+
+  await tester.tap(find.text('Confirm'));
+  await tester.pumpAndSettle();
+}
+
 Widget buildTestApp(
   AppDatabase db,
   int repertoireId, {
@@ -787,6 +803,145 @@ void main() {
         find.widgetWithText(TextButton, 'Take Back'),
       );
       expect(takeBackAfter.onPressed, isNull);
+    });
+
+    // ---- Inline parity warning tests ----------------------------------------
+
+    testWidgets('parity mismatch shows inline warning, not a dialog',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await triggerParityMismatchWarning(tester);
+
+      // Inline warning should appear (not a dialog).
+      expect(find.text('Line parity mismatch'), findsOneWidget);
+      expect(find.textContaining('Flip and confirm as Black'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('flip and confirm from inline warning persists the line',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await triggerParityMismatchWarning(tester);
+      expect(find.text('Line parity mismatch'), findsOneWidget);
+
+      // Tap "Flip and confirm as Black".
+      await tester.tap(find.textContaining('Flip and confirm as Black'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Line parity mismatch'), findsNothing);
+
+      // Moves should be persisted.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.length, 2);
+      expect(moves.any((m) => m.san == 'e4'), isTrue);
+      expect(moves.any((m) => m.san == 'e5'), isTrue);
+    });
+
+    testWidgets('inline warning is dismissible via close button',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await triggerParityMismatchWarning(tester);
+      expect(find.text('Line parity mismatch'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Line parity mismatch'), findsNothing);
+
+      // Moves should NOT be persisted (just dismissed, not confirmed).
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.length, 0);
+    });
+
+    testWidgets('warning auto-dismisses when user plays a new move',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await triggerParityMismatchWarning(tester);
+      expect(find.text('Line parity mismatch'), findsOneWidget);
+
+      // Play another move (Nf3) to auto-dismiss the warning.
+      final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.g1, to: Square.f3));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Line parity mismatch'), findsNothing);
+    });
+
+    testWidgets('no warning when parity matches -- confirm saves immediately',
+        (tester) async {
+      // Seed empty tree. Play e4: 1 ply = odd = White expected.
+      // Board is White (default) -> parity matches.
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Play e4.
+      final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // No parity warning should appear.
+      expect(find.text('Line parity mismatch'), findsNothing);
+
+      // Move should be persisted directly.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.length, 1);
+      expect(moves.first.san, 'e4');
+    });
+
+    testWidgets('manual board flip clears the inline warning',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await triggerParityMismatchWarning(tester);
+      expect(find.text('Line parity mismatch'), findsOneWidget);
+
+      // Scroll to make flip board button visible (warning pushes it off-screen).
+      await tester.ensureVisible(find.byIcon(Icons.swap_vert));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Line parity mismatch'), findsNothing);
+    });
+
+    testWidgets('pill tap clears the inline warning', (tester) async {
+      final repId = await seedRepertoire(db);
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      await triggerParityMismatchWarning(tester);
+      expect(find.text('Line parity mismatch'), findsOneWidget);
+
+      // Tap the first pill (e4) to navigate to that position.
+      await tester.tap(find.text('e4').first);
+      await tester.pumpAndSettle();
+
+      // Warning should be dismissed (position context changed).
+      expect(find.text('Line parity mismatch'), findsNothing);
     });
 
     testWidgets('PopScope warns on unsaved moves when navigating back',
