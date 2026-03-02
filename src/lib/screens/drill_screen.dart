@@ -10,6 +10,7 @@ import '../repositories/local/database.dart' show ReviewCard;
 import '../repositories/review_repository.dart';
 import '../services/chess_utils.dart';
 import '../services/drill_engine.dart';
+import '../theme/board_theme.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
 
@@ -461,9 +462,42 @@ class DrillScreen extends ConsumerWidget {
       error: (error, stack) => Scaffold(
         appBar: AppBar(title: const Text('Drill')),
         body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text('Error: $error'),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.error),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  'Something went wrong',
+                  style: Theme.of(context).textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  '$error',
+                  style: Theme.of(context).textTheme.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () =>
+                    ref.invalidate(drillControllerProvider(config)),
+                child: const Text('Retry'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Go Back'),
+              ),
+            ],
           ),
         ),
       ),
@@ -542,6 +576,42 @@ class DrillScreen extends ConsumerWidget {
   }) {
     final notifier =
         ref.read(drillControllerProvider(config).notifier);
+    final boardTheme = ref.watch(boardThemeProvider);
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 600;
+
+    final lineLabelWidget = lineLabel.isNotEmpty
+        ? Container(
+            key: const ValueKey('drill-line-label'),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Text(
+              lineLabel,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          )
+        : null;
+
+    final boardWidget = ChessboardWidget(
+      controller: notifier.boardController,
+      orientation: userColor,
+      playerSide: playerSide,
+      onMove: (move) => notifier.processUserMove(move),
+      shapes: shapes,
+      annotations: annotations,
+      settings: boardTheme.toSettings(),
+    );
+
+    final statusWidget = Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: _buildStatusText(context, drillState),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -555,39 +625,38 @@ class DrillScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          if (lineLabel.isNotEmpty)
-            Container(
-              key: const ValueKey('drill-line-label'),
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              child: Text(
-                lineLabel,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      body: isWide
+          ? LayoutBuilder(
+              builder: (context, constraints) {
+                final boardSize =
+                    constraints.maxHeight.clamp(0.0, constraints.maxWidth * 0.6);
+                return Row(
+                  children: [
+                    SizedBox(
+                      width: boardSize,
+                      height: boardSize,
+                      child: boardWidget,
                     ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ?lineLabelWidget,
+                          Center(child: statusWidget),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            )
+          : Column(
+              children: [
+                ?lineLabelWidget,
+                Expanded(child: boardWidget),
+                statusWidget,
+              ],
             ),
-          Expanded(
-            child: ChessboardWidget(
-              controller: notifier.boardController,
-              orientation: userColor,
-              playerSide: playerSide,
-              onMove: (move) => notifier.processUserMove(move),
-              shapes: shapes,
-              annotations: annotations,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: _buildStatusText(context, drillState),
-          ),
-        ],
-      ),
     );
   }
 
@@ -599,12 +668,15 @@ class DrillScreen extends ConsumerWidget {
       case DrillUserTurn():
         return Text('Your turn', style: style);
       case DrillMistakeFeedback(:final isSiblingCorrection):
+        final colorScheme = Theme.of(context).colorScheme;
         return Text(
           isSiblingCorrection
               ? 'That move belongs to a different line'
               : 'Incorrect move',
           style: style?.copyWith(
-            color: isSiblingCorrection ? Colors.orange : Colors.red,
+            color: isSiblingCorrection
+                ? colorScheme.tertiary
+                : colorScheme.error,
           ),
         );
       default:
@@ -703,16 +775,20 @@ class DrillScreen extends ConsumerWidget {
                 if (summary.completedCards > 0) ...[
                   const SizedBox(height: 24),
                   _buildBreakdownRow(
-                      context, 'Perfect', summary.perfectCount, Colors.green),
+                      context, 'Perfect', summary.perfectCount,
+                      const Color(0xFF4CAF50)), // semantic: success green
                   const SizedBox(height: 8),
                   _buildBreakdownRow(context, 'Hesitation',
-                      summary.hesitationCount, Colors.lightGreen),
+                      summary.hesitationCount,
+                      const Color(0xFF8BC34A)), // semantic: light green
                   const SizedBox(height: 8),
                   _buildBreakdownRow(context, 'Struggled',
-                      summary.struggledCount, Colors.orange),
+                      summary.struggledCount,
+                      Theme.of(context).colorScheme.tertiary),
                   const SizedBox(height: 8),
                   _buildBreakdownRow(
-                      context, 'Failed', summary.failedCount, Colors.red),
+                      context, 'Failed', summary.failedCount,
+                      Theme.of(context).colorScheme.error),
                 ],
                 if (!summary.isFreePractice && summary.earliestNextDue != null) ...[
                   const SizedBox(height: 24),

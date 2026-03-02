@@ -156,7 +156,6 @@ class _ImportScreenState extends State<ImportScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Import PGN'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

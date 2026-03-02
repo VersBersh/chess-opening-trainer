@@ -3,8 +3,11 @@ import 'package:dartchess/dartchess.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
@@ -105,9 +108,19 @@ Future<int> seedRepertoire(
   return repId;
 }
 
+late SharedPreferences _testPrefs;
+
 Widget buildTestApp(AppDatabase db, int repertoireId) {
-  return MaterialApp(
-    home: RepertoireBrowserScreen(db: db, repertoireId: repertoireId),
+  return ProviderScope(
+    overrides: [
+      sharedPreferencesProvider.overrideWithValue(_testPrefs),
+    ],
+    child: MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(size: Size(400, 800)),
+        child: RepertoireBrowserScreen(db: db, repertoireId: repertoireId),
+      ),
+    ),
   );
 }
 
@@ -118,7 +131,9 @@ Widget buildTestApp(AppDatabase db, int repertoireId) {
 void main() {
   late AppDatabase db;
 
-  setUp(() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _testPrefs = await SharedPreferences.getInstance();
     db = createTestDatabase();
   });
 

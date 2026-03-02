@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
@@ -199,6 +200,9 @@ class FakeReviewRepository implements ReviewRepository {
 
 const _defaultConfig = DrillConfig(repertoireId: 1);
 
+late SharedPreferences _testPrefs;
+
+
 Widget buildTestApp({
   required FakeRepertoireRepository repertoireRepo,
   required FakeReviewRepository reviewRepo,
@@ -208,6 +212,7 @@ Widget buildTestApp({
     overrides: [
       repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
       reviewRepositoryProvider.overrideWithValue(reviewRepo),
+      sharedPreferencesProvider.overrideWithValue(_testPrefs),
     ],
     child: MaterialApp(
       home: DrillScreen(config: config),
@@ -220,6 +225,11 @@ Widget buildTestApp({
 // ---------------------------------------------------------------------------
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _testPrefs = await SharedPreferences.getInstance();
+  });
+
   // A reusable white line (9 plies, odd = white):
   // 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O
   final whiteLine9 = buildLine(

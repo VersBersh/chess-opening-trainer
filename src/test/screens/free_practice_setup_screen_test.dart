@@ -2,6 +2,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
@@ -190,6 +191,8 @@ class FakeReviewRepository implements ReviewRepository {
 // Widget builder helper
 // ---------------------------------------------------------------------------
 
+late SharedPreferences _testPrefs;
+
 Widget buildTestApp({
   required FakeRepertoireRepository repertoireRepo,
   required FakeReviewRepository reviewRepo,
@@ -199,6 +202,7 @@ Widget buildTestApp({
     overrides: [
       repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
       reviewRepositoryProvider.overrideWithValue(reviewRepo),
+      sharedPreferencesProvider.overrideWithValue(_testPrefs),
     ],
     child: MaterialApp(
       home: FreePracticeSetupScreen(repertoireId: repertoireId),
@@ -211,6 +215,11 @@ Widget buildTestApp({
 // ---------------------------------------------------------------------------
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _testPrefs = await SharedPreferences.getInstance();
+  });
+
   // Line: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O (9 plies)
   final whiteLine9 = buildLine(
       ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O']);

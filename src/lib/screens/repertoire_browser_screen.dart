@@ -2,12 +2,14 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
 import '../repositories/local/local_repertoire_repository.dart';
 import '../repositories/local/local_review_repository.dart';
 import '../services/line_entry_engine.dart';
+import '../theme/board_theme.dart';
 import 'import_screen.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
@@ -34,6 +36,7 @@ class RepertoireBrowserState {
     this.isEditMode = false,
     this.lineEntryEngine,
     this.currentFen,
+    this.errorMessage,
   });
 
   final RepertoireTreeCache? treeCache;
@@ -46,6 +49,7 @@ class RepertoireBrowserState {
   final bool isEditMode;
   final LineEntryEngine? lineEntryEngine;
   final String? currentFen;
+  final String? errorMessage;
 
   RepertoireBrowserState copyWith({
     RepertoireTreeCache? treeCache,
@@ -58,6 +62,7 @@ class RepertoireBrowserState {
     bool? isEditMode,
     LineEntryEngine? Function()? lineEntryEngine,
     String? Function()? currentFen,
+    String? Function()? errorMessage,
   }) {
     return RepertoireBrowserState(
       treeCache: treeCache ?? this.treeCache,
@@ -73,6 +78,8 @@ class RepertoireBrowserState {
           ? lineEntryEngine()
           : this.lineEntryEngine,
       currentFen: currentFen != null ? currentFen() : this.currentFen,
+      errorMessage:
+          errorMessage != null ? errorMessage() : this.errorMessage,
     );
   }
 }
@@ -137,46 +144,58 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   // ---- Data loading -------------------------------------------------------
 
   Future<void> _loadData() async {
-    final repRepo = LocalRepertoireRepository(widget.db);
-    final reviewRepo = LocalReviewRepository(widget.db);
+    try {
+      final repRepo = LocalRepertoireRepository(widget.db);
+      final reviewRepo = LocalReviewRepository(widget.db);
 
-    // 1. Load the repertoire name.
-    final repertoire = await repRepo.getRepertoire(widget.repertoireId);
+      // 1. Load the repertoire name.
+      final repertoire = await repRepo.getRepertoire(widget.repertoireId);
 
-    // 2. Load all moves and build tree cache.
-    final allMoves =
-        await repRepo.getMovesForRepertoire(widget.repertoireId);
-    final cache = RepertoireTreeCache.build(allMoves);
+      // 2. Load all moves and build tree cache.
+      final allMoves =
+          await repRepo.getMovesForRepertoire(widget.repertoireId);
+      final cache = RepertoireTreeCache.build(allMoves);
 
-    // 3. Compute initial expand state: expand nodes down to the first level
-    //    of labeled nodes. Walk breadth-first from roots; expand each node
-    //    until a labeled descendant is found, then stop expanding that branch.
-    final expandedIds = _computeInitialExpandState(cache);
+      // 3. Compute initial expand state: expand nodes down to the first level
+      //    of labeled nodes. Walk breadth-first from roots; expand each node
+      //    until a labeled descendant is found, then stop expanding that branch.
+      final expandedIds = _computeInitialExpandState(cache);
 
-    // 4. Load due-card counts for labeled nodes.
-    final dueCountMap = <int, int>{};
-    for (final move in allMoves) {
-      if (move.label != null) {
-        final cards = await reviewRepo.getCardsForSubtree(
-          move.id,
-          dueOnly: true,
-        );
-        if (cards.isNotEmpty) {
-          dueCountMap[move.id] = cards.length;
+      // 4. Load due-card counts for labeled nodes.
+      final dueCountMap = <int, int>{};
+      for (final move in allMoves) {
+        if (move.label != null) {
+          final cards = await reviewRepo.getCardsForSubtree(
+            move.id,
+            dueOnly: true,
+          );
+          if (cards.isNotEmpty) {
+            dueCountMap[move.id] = cards.length;
+          }
         }
       }
-    }
 
-    if (mounted) {
-      setState(() {
-        _state = _state.copyWith(
-          repertoireName: repertoire.name,
-          treeCache: cache,
-          expandedNodeIds: expandedIds,
-          dueCountByMoveId: dueCountMap,
-          isLoading: false,
-        );
-      });
+      if (mounted) {
+        setState(() {
+          _state = _state.copyWith(
+            repertoireName: repertoire.name,
+            treeCache: cache,
+            expandedNodeIds: expandedIds,
+            dueCountByMoveId: dueCountMap,
+            isLoading: false,
+            errorMessage: () => null,
+          );
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _state = _state.copyWith(
+            isLoading: false,
+            errorMessage: () => '$e',
+          );
+        });
+      }
     }
   }
 
@@ -445,7 +464,6 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
       SnackBar(
         content: const Text('Line extended'),
         duration: const Duration(seconds: 8),
-        behavior: SnackBarBehavior.floating,
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {
@@ -851,22 +869,149 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(_state.repertoireName),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         ),
         body: _state.isLoading
             ? const Center(child: CircularProgressIndicator())
-            : _buildContent(context),
+            : _state.errorMessage != null
+                ? _buildErrorView(context)
+                : _buildContent(context),
+      ),
+    );
+  }
+
+  Widget _buildErrorView(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline,
+              size: 48, color: Theme.of(context).colorScheme.error),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              'Something went wrong',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              _state.errorMessage ?? '',
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: () {
+              setState(() {
+                _state = _state.copyWith(
+                    isLoading: true, errorMessage: () => null);
+              });
+              _loadData();
+            },
+            child: const Text('Retry'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Go Back'),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildContent(BuildContext context) {
     final cache = _state.treeCache!;
-    final selectedId = _state.selectedMoveId;
     final isEditing = _state.isEditMode;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 600;
 
-    // Compute aggregate display name: during edit mode, use the engine's
-    // current display name; in browse mode, use the selected node.
+    if (isWide) {
+      return _buildWideContent(context, cache, isEditing);
+    }
+    return _buildNarrowContent(context, cache, isEditing);
+  }
+
+  Widget _buildNarrowContent(
+    BuildContext context,
+    RepertoireTreeCache cache,
+    bool isEditing,
+  ) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Board takes up to 40% of screen height, capped at width for 1:1 ratio.
+    final maxBoardSize = (screenHeight * 0.4).clamp(0.0, screenWidth);
+
+    return Column(
+      children: [
+        _buildDisplayNameHeader(context, cache, isEditing),
+        // Chessboard
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxBoardSize),
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: _buildChessboard(isEditing),
+          ),
+        ),
+        // Board controls
+        if (!isEditing) _buildBoardControls(cache),
+        // Action bar
+        _buildActionBar(context, cache, compact: false),
+        // Move tree
+        Expanded(child: _buildMoveTree(cache, isEditing)),
+      ],
+    );
+  }
+
+  Widget _buildWideContent(
+    BuildContext context,
+    RepertoireTreeCache cache,
+    bool isEditing,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boardSize =
+            constraints.maxHeight.clamp(0.0, constraints.maxWidth * 0.5);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Left: Board sized as a square, capped to avoid overflow.
+            SizedBox(
+              width: boardSize,
+              height: boardSize,
+              child: _buildChessboard(isEditing),
+            ),
+            // Right: display name + controls + action bar + tree
+            Expanded(
+              child: Column(
+                children: [
+                  _buildDisplayNameHeader(context, cache, isEditing),
+                  if (!isEditing) _buildBoardControls(cache),
+                  _buildActionBar(context, cache, compact: true),
+                  Expanded(child: _buildMoveTree(cache, isEditing)),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ---- Shared widget builders -----------------------------------------------
+
+  Widget _buildDisplayNameHeader(
+    BuildContext context,
+    RepertoireTreeCache cache,
+    bool isEditing,
+  ) {
+    final selectedId = _state.selectedMoveId;
+
     final String displayName;
     if (isEditing && _state.lineEntryEngine != null) {
       displayName = _state.lineEntryEngine!.getCurrentDisplayName();
@@ -876,99 +1021,99 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           : '';
     }
 
-    return Column(
-      children: [
-        // Aggregate display name header / breadcrumb
-        if (displayName.isNotEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Text(
-              displayName,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+    if (displayName.isEmpty) return const SizedBox.shrink();
 
-        // Chessboard
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 300),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: ChessboardWidget(
-              controller: _boardController,
-              orientation: _state.boardOrientation,
-              playerSide: isEditing ? PlayerSide.both : PlayerSide.none,
-              onMove: isEditing ? _onEditModeMove : null,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 8,
+      ),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Text(
+        displayName,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-          ),
-        ),
-
-        // Board controls (flip, back, forward) -- disabled during edit mode
-        if (!isEditing)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  onPressed: selectedId != null &&
-                          cache.movesById[selectedId]?.parentMoveId != null
-                      ? _onNavigateBack
-                      : null,
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back',
-                ),
-                IconButton(
-                  onPressed: _onFlipBoard,
-                  icon: const Icon(Icons.swap_vert),
-                  tooltip: 'Flip board',
-                ),
-                IconButton(
-                  onPressed: selectedId != null &&
-                          cache.getChildren(selectedId).isNotEmpty
-                      ? _onNavigateForward
-                      : null,
-                  icon: const Icon(Icons.arrow_forward),
-                  tooltip: 'Forward',
-                ),
-              ],
-            ),
-          ),
-
-        // Action bar
-        _buildActionBar(context, cache),
-
-        // Move tree
-        Expanded(
-          child: MoveTreeWidget(
-            treeCache: cache,
-            expandedNodeIds: _state.expandedNodeIds,
-            selectedMoveId: isEditing ? null : selectedId,
-            dueCountByMoveId: _state.dueCountByMoveId,
-            onNodeSelected: isEditing ? (_) {} : _onNodeSelected,
-            onNodeToggleExpand: _onNodeToggleExpand,
-          ),
-        ),
-      ],
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
     );
   }
 
-  Widget _buildActionBar(BuildContext context, RepertoireTreeCache cache) {
-    if (_state.isEditMode) {
-      return _buildEditModeActionBar(context);
-    }
-    return _buildBrowseModeActionBar(context, cache);
+  Widget _buildChessboard(bool isEditing) {
+    return Consumer(
+      builder: (context, ref, _) {
+        final boardTheme = ref.watch(boardThemeProvider);
+        return ChessboardWidget(
+          controller: _boardController,
+          orientation: _state.boardOrientation,
+          playerSide: isEditing ? PlayerSide.both : PlayerSide.none,
+          onMove: isEditing ? _onEditModeMove : null,
+          settings: boardTheme.toSettings(),
+        );
+      },
+    );
   }
 
-  Widget _buildEditModeActionBar(BuildContext context) {
+  Widget _buildBoardControls(RepertoireTreeCache cache) {
+    final selectedId = _state.selectedMoveId;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            onPressed: selectedId != null &&
+                    cache.movesById[selectedId]?.parentMoveId != null
+                ? _onNavigateBack
+                : null,
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back',
+          ),
+          IconButton(
+            onPressed: _onFlipBoard,
+            icon: const Icon(Icons.swap_vert),
+            tooltip: 'Flip board',
+          ),
+          IconButton(
+            onPressed: selectedId != null &&
+                    cache.getChildren(selectedId).isNotEmpty
+                ? _onNavigateForward
+                : null,
+            icon: const Icon(Icons.arrow_forward),
+            tooltip: 'Forward',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoveTree(RepertoireTreeCache cache, bool isEditing) {
+    final selectedId = _state.selectedMoveId;
+    return MoveTreeWidget(
+      treeCache: cache,
+      expandedNodeIds: _state.expandedNodeIds,
+      selectedMoveId: isEditing ? null : selectedId,
+      dueCountByMoveId: _state.dueCountByMoveId,
+      onNodeSelected: isEditing ? (_) {} : _onNodeSelected,
+      onNodeToggleExpand: _onNodeToggleExpand,
+    );
+  }
+
+  Widget _buildActionBar(
+    BuildContext context,
+    RepertoireTreeCache cache, {
+    required bool compact,
+  }) {
+    if (_state.isEditMode) {
+      return _buildEditModeActionBar(context, compact: compact);
+    }
+    return _buildBrowseModeActionBar(context, cache, compact: compact);
+  }
+
+  Widget _buildEditModeActionBar(BuildContext context,
+      {required bool compact}) {
     final engine = _state.lineEntryEngine;
 
     return Padding(
@@ -984,20 +1129,36 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           ),
 
           // Take back
-          TextButton.icon(
-            onPressed:
-                engine != null && engine.canTakeBack() ? _onTakeBack : null,
-            icon: const Icon(Icons.undo, size: 18),
-            label: const Text('Take Back'),
-          ),
+          if (compact)
+            IconButton(
+              onPressed:
+                  engine != null && engine.canTakeBack() ? _onTakeBack : null,
+              icon: const Icon(Icons.undo),
+              tooltip: 'Take Back',
+            )
+          else
+            TextButton.icon(
+              onPressed:
+                  engine != null && engine.canTakeBack() ? _onTakeBack : null,
+              icon: const Icon(Icons.undo, size: 18),
+              label: const Text('Take Back'),
+            ),
 
           // Confirm line
-          TextButton.icon(
-            onPressed:
-                engine != null && engine.hasNewMoves ? _onConfirmLine : null,
-            icon: const Icon(Icons.check, size: 18),
-            label: const Text('Confirm'),
-          ),
+          if (compact)
+            IconButton(
+              onPressed:
+                  engine != null && engine.hasNewMoves ? _onConfirmLine : null,
+              icon: const Icon(Icons.check),
+              tooltip: 'Confirm',
+            )
+          else
+            TextButton.icon(
+              onPressed:
+                  engine != null && engine.hasNewMoves ? _onConfirmLine : null,
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Confirm'),
+            ),
 
           // Discard
           IconButton(
@@ -1011,12 +1172,72 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   }
 
   Widget _buildBrowseModeActionBar(
-      BuildContext context, RepertoireTreeCache cache) {
+    BuildContext context,
+    RepertoireTreeCache cache, {
+    required bool compact,
+  }) {
     final selectedId = _state.selectedMoveId;
     final selectedMove =
         selectedId != null ? cache.movesById[selectedId] : null;
     final hasLabel = selectedMove?.label != null;
     final isLeaf = selectedId != null && cache.isLeaf(selectedId);
+
+    if (compact) {
+      // Icon-only buttons with tooltips for wide layout
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              onPressed: _onEnterEditMode,
+              icon: const Icon(Icons.edit),
+              tooltip: 'Edit',
+            ),
+            IconButton(
+              onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ImportScreen(
+                    db: widget.db,
+                    repertoireId: widget.repertoireId,
+                  ),
+                ));
+                await _loadData();
+              },
+              icon: const Icon(Icons.file_upload),
+              tooltip: 'Import',
+            ),
+            IconButton(
+              onPressed: selectedId != null ? _onEditLabel : null,
+              icon: const Icon(Icons.label),
+              tooltip: 'Label',
+            ),
+            IconButton(
+              onPressed: hasLabel
+                  ? () {
+                      // Stub -- wired in CT-4
+                    }
+                  : null,
+              icon: const Icon(Icons.center_focus_strong),
+              tooltip: 'Focus',
+            ),
+            IconButton(
+              onPressed: selectedId != null
+                  ? () {
+                      if (isLeaf) {
+                        _onDeleteLeaf();
+                      } else {
+                        _onDeleteBranch();
+                      }
+                    }
+                  : null,
+              icon: const Icon(Icons.delete),
+              tooltip: isLeaf ? 'Delete' : 'Delete Branch',
+            ),
+          ],
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

@@ -43,6 +43,7 @@ dependencies:
   path: ^1.9.1
   flutter_riverpod: ^2.6.1
   file_picker: ^8.0.0
+  shared_preferences: ^2.2.0
 
 dev_dependencies:
   flutter_test:

@@ -6,6 +6,7 @@ import '../repositories/local/database.dart';
 import 'drill_screen.dart';
 import 'free_practice_setup_screen.dart';
 import 'repertoire_browser_screen.dart';
+import 'settings_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Home screen state
@@ -146,14 +147,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       loading: () => Scaffold(
         appBar: AppBar(
           title: const Text('Chess Trainer'),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         ),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (error, stack) => Scaffold(
         appBar: AppBar(
           title: const Text('Chess Trainer'),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         ),
         body: Center(
           child: Column(
@@ -182,7 +181,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chess Trainer'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
       ),
       body: Center(
         child: Column(

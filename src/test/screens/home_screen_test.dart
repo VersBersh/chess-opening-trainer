@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
@@ -154,6 +155,8 @@ class _SlowRepertoireRepository extends FakeRepertoireRepository {
 // Widget builder helper
 // ---------------------------------------------------------------------------
 
+late SharedPreferences _testPrefs;
+
 Widget buildTestApp({
   required FakeRepertoireRepository repertoireRepo,
   required FakeReviewRepository reviewRepo,
@@ -164,6 +167,7 @@ Widget buildTestApp({
     overrides: [
       repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
       reviewRepositoryProvider.overrideWithValue(reviewRepo),
+      sharedPreferencesProvider.overrideWithValue(_testPrefs),
     ],
     child: MaterialApp(
       home: HomeScreen(db: testDb),
@@ -176,6 +180,11 @@ Widget buildTestApp({
 // ---------------------------------------------------------------------------
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _testPrefs = await SharedPreferences.getInstance();
+  });
+
   group('HomeScreen - due count display', () {
     testWidgets('shows due count on initial load', (tester) async {
       final reviewCards = [
