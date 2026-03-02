@@ -16,7 +16,12 @@ import 'settings_screen.dart';
 class RepertoireSummary {
   final Repertoire repertoire;
   final int dueCount;
-  const RepertoireSummary({required this.repertoire, required this.dueCount});
+  final int totalCardCount;
+  const RepertoireSummary({
+    required this.repertoire,
+    required this.dueCount,
+    required this.totalCardCount,
+  });
 }
 
 class HomeState {
@@ -54,9 +59,12 @@ class HomeController extends AutoDisposeAsyncNotifier<HomeState> {
     for (final repertoire in repertoires) {
       final dueCards =
           await reviewRepo.getDueCardsForRepertoire(repertoire.id);
+      final allCards =
+          await reviewRepo.getAllCardsForRepertoire(repertoire.id);
       summaries.add(RepertoireSummary(
         repertoire: repertoire,
         dueCount: dueCards.length,
+        totalCardCount: allCards.length,
       ));
       totalDue += dueCards.length;
     }
@@ -125,34 +133,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         .then((_) => ref.read(homeControllerProvider.notifier).refresh());
   }
 
-  Future<void> _onAddLineTap() async {
-    final id =
-        await ref.read(homeControllerProvider.notifier).openRepertoire();
-    if (mounted) {
-      Navigator.of(context)
-          .push(MaterialPageRoute(
-            builder: (_) => AddLineScreen(
-              db: widget.db,
-              repertoireId: id,
-            ),
-          ))
-          .then((_) => ref.read(homeControllerProvider.notifier).refresh());
-    }
+  void _onAddLineTap(int repertoireId) {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => AddLineScreen(
+            db: widget.db,
+            repertoireId: repertoireId,
+          ),
+        ))
+        .then((_) => ref.read(homeControllerProvider.notifier).refresh());
   }
 
-  Future<void> _onRepertoireTap() async {
-    final id =
-        await ref.read(homeControllerProvider.notifier).openRepertoire();
-    if (mounted) {
-      Navigator.of(context)
-          .push(MaterialPageRoute(
-            builder: (_) => RepertoireBrowserScreen(
-              db: widget.db,
-              repertoireId: id,
-            ),
-          ))
-          .then((_) => ref.read(homeControllerProvider.notifier).refresh());
-    }
+  void _onRepertoireTap(int repertoireId) {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => RepertoireBrowserScreen(
+            db: widget.db,
+            repertoireId: repertoireId,
+          ),
+        ))
+        .then((_) => ref.read(homeControllerProvider.notifier).refresh());
   }
 
   @override
@@ -189,11 +189,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildData(BuildContext context, HomeState homeState) {
-    // Use the first repertoire's ID for the drill button, if available.
-    final repertoireId = homeState.repertoires.isNotEmpty
-        ? homeState.repertoires.first.repertoire.id
-        : null;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chess Trainer'),
@@ -207,51 +202,163 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      body: Center(
+      body: homeState.repertoires.isEmpty
+          ? _buildEmptyState(context)
+          : _buildRepertoireList(context, homeState),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Per-repertoire card list
+  // -------------------------------------------------------------------------
+
+  Widget _buildRepertoireList(BuildContext context, HomeState homeState) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${homeState.totalDueCount} cards due',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 16),
+          for (final summary in homeState.repertoires)
+            _buildRepertoireCard(context, summary),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRepertoireCard(BuildContext context, RepertoireSummary summary) {
+    final theme = Theme.of(context);
+    final hasDueCards = summary.dueCount > 0;
+    final hasCards = summary.totalCardCount > 0;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.school,
-              size: 80,
-              color: Theme.of(context).colorScheme.primary,
+            // Header row: repertoire name + due badge
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () =>
+                        _onRepertoireTap(summary.repertoire.id),
+                    child: Text(
+                      summary.repertoire.name,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ),
+                ),
+                if (summary.dueCount > 0)
+                  Badge(
+                    label: Text('${summary.dueCount} due'),
+                  ),
+              ],
             ),
-            const SizedBox(height: 24),
-            Text(
-              '${homeState.totalDueCount} cards due',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 48),
-            FilledButton.icon(
-              onPressed: homeState.totalDueCount > 0 && repertoireId != null
-                  ? () => _startDrill(repertoireId)
-                  : null,
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Start Drill'),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: repertoireId != null
-                  ? () => _startFreePractice(repertoireId)
-                  : null,
-              icon: const Icon(Icons.fitness_center),
-              label: const Text('Free Practice'),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: _onRepertoireTap,
-              icon: const Icon(Icons.library_books),
-              label: const Text('Repertoire'),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: _onAddLineTap,
-              icon: const Icon(Icons.add),
-              label: const Text('Add Line'),
+            const SizedBox(height: 12),
+            // Action row
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () {
+                    if (hasDueCards) {
+                      _startDrill(summary.repertoire.id);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                              'No cards due for review. Come back later!'),
+                        ),
+                      );
+                    }
+                  },
+                  style: hasDueCards
+                      ? null
+                      : FilledButton.styleFrom(
+                          backgroundColor: theme
+                              .colorScheme.primary
+                              .withValues(alpha: 0.38),
+                        ),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start Drill'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: hasCards
+                      ? () => _startFreePractice(summary.repertoire.id)
+                      : null,
+                  icon: const Icon(Icons.fitness_center),
+                  label: const Text('Free Practice'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      _onAddLineTap(summary.repertoire.id),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Line'),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Empty state (no repertoires)
+  // -------------------------------------------------------------------------
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.school,
+            size: 80,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              'Build your opening repertoire and practice it with '
+              'spaced repetition.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ),
+          const SizedBox(height: 32),
+          // TODO(CT-next): Replace with name-entry dialog per spec (Repertoire CRUD section)
+          FilledButton.icon(
+            onPressed: _onCreateFirstRepertoire,
+            icon: const Icon(Icons.add),
+            label: const Text('Create your first repertoire'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onCreateFirstRepertoire() async {
+    final id =
+        await ref.read(homeControllerProvider.notifier).openRepertoire();
+    if (mounted) {
+      Navigator.of(context)
+          .push(MaterialPageRoute(
+            builder: (_) => RepertoireBrowserScreen(
+              db: widget.db,
+              repertoireId: id,
+            ),
+          ))
+          .then((_) => ref.read(homeControllerProvider.notifier).refresh());
+    }
   }
 }

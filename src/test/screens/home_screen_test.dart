@@ -10,8 +10,11 @@ import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/repositories/review_repository.dart';
+import 'package:chess_trainer/screens/add_line_screen.dart';
+import 'package:chess_trainer/screens/drill_screen.dart';
 import 'package:chess_trainer/screens/free_practice_setup_screen.dart';
 import 'package:chess_trainer/screens/home_screen.dart';
+import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Fake repositories
@@ -103,10 +106,14 @@ class FakeRepertoireRepository implements RepertoireRepository {
 
 class FakeReviewRepository implements ReviewRepository {
   List<ReviewCard> dueCards;
+  List<ReviewCard> allCards;
   final List<ReviewCardsCompanion> savedReviews = [];
 
-  FakeReviewRepository({List<ReviewCard>? dueCards})
-      : dueCards = dueCards ?? [];
+  FakeReviewRepository({
+    List<ReviewCard>? dueCards,
+    List<ReviewCard>? allCards,
+  })  : dueCards = dueCards ?? [],
+        allCards = allCards ?? dueCards ?? [];
 
   @override
   Future<List<ReviewCard>> getDueCards({DateTime? asOf}) async => dueCards;
@@ -136,7 +143,7 @@ class FakeReviewRepository implements ReviewRepository {
 
   @override
   Future<List<ReviewCard>> getAllCardsForRepertoire(int repertoireId) async =>
-      dueCards.where((c) => c.repertoireId == repertoireId).toList();
+      allCards.where((c) => c.repertoireId == repertoireId).toList();
 }
 
 /// A repertoire repository that blocks [getAllRepertoires] on a completer so
@@ -242,7 +249,8 @@ void main() {
       expect(find.text('0 cards due'), findsOneWidget);
     });
 
-    testWidgets('disables Start Drill button when no cards due',
+    testWidgets(
+        'Start Drill shows snackbar when no cards due',
         (tester) async {
       final repertoireRepo = FakeRepertoireRepository();
       final reviewRepo = FakeReviewRepository(dueCards: []);
@@ -253,11 +261,21 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
+      // Start Drill is still tappable (onPressed is not null)
       final button = tester.widget<FilledButton>(find.widgetWithText(
         FilledButton,
         'Start Drill',
       ));
-      expect(button.onPressed, isNull);
+      expect(button.onPressed, isNotNull);
+
+      // Tapping shows a snackbar instead of navigating
+      await tester.tap(find.widgetWithText(FilledButton, 'Start Drill'));
+      await tester.pump();
+
+      expect(
+        find.text('No cards due for review. Come back later!'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('enables Start Drill button when cards are due',
@@ -400,21 +418,6 @@ void main() {
     });
   });
 
-  group('HomeScreen - repertoire button', () {
-    testWidgets('shows Repertoire button', (tester) async {
-      final repertoireRepo = FakeRepertoireRepository();
-      final reviewRepo = FakeReviewRepository(dueCards: []);
-
-      await tester.pumpWidget(buildTestApp(
-        repertoireRepo: repertoireRepo,
-        reviewRepo: reviewRepo,
-      ));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Repertoire'), findsOneWidget);
-    });
-  });
-
   group('HomeScreen -- Free Practice button', () {
     testWidgets('shows Free Practice button', (tester) async {
       final repertoireRepo = FakeRepertoireRepository();
@@ -429,10 +432,23 @@ void main() {
       expect(find.text('Free Practice'), findsOneWidget);
     });
 
-    testWidgets('Free Practice button is enabled when repertoire exists',
+    testWidgets(
+        'Free Practice is enabled when repertoire has cards',
         (tester) async {
+      final allCards = [
+        ReviewCard(
+          id: 1,
+          repertoireId: 1,
+          leafMoveId: 10,
+          easeFactor: 2.5,
+          intervalDays: 1,
+          repetitions: 0,
+          nextReviewDate: DateTime(2026, 1, 1),
+        ),
+      ];
       final repertoireRepo = FakeRepertoireRepository();
-      final reviewRepo = FakeReviewRepository(dueCards: []);
+      final reviewRepo =
+          FakeReviewRepository(dueCards: [], allCards: allCards);
 
       await tester.pumpWidget(buildTestApp(
         repertoireRepo: repertoireRepo,
@@ -445,10 +461,12 @@ void main() {
       expect(button.onPressed, isNotNull);
     });
 
-    testWidgets('Free Practice button is disabled when no repertoire exists',
+    testWidgets(
+        'Free Practice is disabled when repertoire has no cards',
         (tester) async {
-      final repertoireRepo = FakeRepertoireRepository(repertoires: []);
-      final reviewRepo = FakeReviewRepository(dueCards: []);
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo =
+          FakeReviewRepository(dueCards: [], allCards: []);
 
       await tester.pumpWidget(buildTestApp(
         repertoireRepo: repertoireRepo,
@@ -461,10 +479,41 @@ void main() {
       expect(button.onPressed, isNull);
     });
 
+    testWidgets(
+        'empty state shows Create your first repertoire button '
+        'when no repertoires exist',
+        (tester) async {
+      final repertoireRepo = FakeRepertoireRepository(repertoires: []);
+      final reviewRepo = FakeReviewRepository(dueCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.text('Create your first repertoire'), findsOneWidget);
+      // No Free Practice button in empty state
+      expect(find.text('Free Practice'), findsNothing);
+    });
+
     testWidgets('tapping Free Practice navigates to setup screen',
         (tester) async {
+      final allCards = [
+        ReviewCard(
+          id: 1,
+          repertoireId: 1,
+          leafMoveId: 10,
+          easeFactor: 2.5,
+          intervalDays: 1,
+          repetitions: 0,
+          nextReviewDate: DateTime(2026, 1, 1),
+        ),
+      ];
       final repertoireRepo = FakeRepertoireRepository();
-      final reviewRepo = FakeReviewRepository(dueCards: []);
+      final reviewRepo =
+          FakeReviewRepository(dueCards: [], allCards: allCards);
 
       await tester.pumpWidget(buildTestApp(
         repertoireRepo: repertoireRepo,
@@ -476,6 +525,234 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(FreePracticeSetupScreen), findsOneWidget);
+    });
+  });
+
+  group('HomeScreen -- per-repertoire card layout', () {
+    testWidgets('each repertoire card shows Start Drill, Free Practice, '
+        'and Add Line buttons', (tester) async {
+      final repertoireRepo = FakeRepertoireRepository(repertoires: const [
+        Repertoire(id: 1, name: 'White Openings'),
+        Repertoire(id: 2, name: 'Black Openings'),
+      ]);
+      final allCards = [
+        ReviewCard(
+          id: 1,
+          repertoireId: 1,
+          leafMoveId: 10,
+          easeFactor: 2.5,
+          intervalDays: 1,
+          repetitions: 0,
+          nextReviewDate: DateTime(2026, 1, 1),
+        ),
+        ReviewCard(
+          id: 2,
+          repertoireId: 2,
+          leafMoveId: 20,
+          easeFactor: 2.5,
+          intervalDays: 1,
+          repetitions: 0,
+          nextReviewDate: DateTime(2026, 1, 1),
+        ),
+      ];
+      final reviewRepo = FakeReviewRepository(
+        dueCards: allCards,
+        allCards: allCards,
+      );
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      // Two repertoire names
+      expect(find.text('White Openings'), findsOneWidget);
+      expect(find.text('Black Openings'), findsOneWidget);
+
+      // Two of each button (one per card)
+      expect(find.text('Start Drill'), findsNWidgets(2));
+      expect(find.text('Free Practice'), findsNWidgets(2));
+      expect(find.text('Add Line'), findsNWidgets(2));
+    });
+
+    testWidgets('Start Drill shows snackbar when dueCount == 0',
+        (tester) async {
+      final allCards = [
+        ReviewCard(
+          id: 1,
+          repertoireId: 1,
+          leafMoveId: 10,
+          easeFactor: 2.5,
+          intervalDays: 1,
+          repetitions: 0,
+          nextReviewDate: DateTime(2026, 1, 1),
+        ),
+      ];
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo =
+          FakeReviewRepository(dueCards: [], allCards: allCards);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Start Drill'));
+      await tester.pump();
+
+      expect(
+        find.text('No cards due for review. Come back later!'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Start Drill navigates to DrillScreen when dueCount > 0',
+        (tester) async {
+      final dueCards = [
+        ReviewCard(
+          id: 1,
+          repertoireId: 1,
+          leafMoveId: 10,
+          easeFactor: 2.5,
+          intervalDays: 1,
+          repetitions: 0,
+          nextReviewDate: DateTime(2026, 1, 1),
+        ),
+      ];
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo = FakeReviewRepository(dueCards: dueCards);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Start Drill'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DrillScreen), findsOneWidget);
+    });
+
+    testWidgets(
+        'Free Practice is enabled when repertoire has cards but none due',
+        (tester) async {
+      final allCards = [
+        ReviewCard(
+          id: 1,
+          repertoireId: 1,
+          leafMoveId: 10,
+          easeFactor: 2.5,
+          intervalDays: 1,
+          repetitions: 0,
+          nextReviewDate: DateTime(2026, 1, 1),
+        ),
+      ];
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo =
+          FakeReviewRepository(dueCards: [], allCards: allCards);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<OutlinedButton>(
+          find.widgetWithText(OutlinedButton, 'Free Practice'));
+      expect(button.onPressed, isNotNull);
+    });
+
+    testWidgets('Free Practice is disabled when repertoire has no cards',
+        (tester) async {
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo =
+          FakeReviewRepository(dueCards: [], allCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<OutlinedButton>(
+          find.widgetWithText(OutlinedButton, 'Free Practice'));
+      expect(button.onPressed, isNull);
+    });
+
+    testWidgets('tapping Add Line navigates to AddLineScreen',
+        (tester) async {
+      // Seed the in-memory DB with a matching repertoire so
+      // AddLineController.loadData() can find it.
+      final db = AppDatabase(NativeDatabase.memory());
+      await db.into(db.repertoires).insert(
+            RepertoiresCompanion.insert(name: 'Test'),
+          );
+
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo = FakeReviewRepository(dueCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        db: db,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Add Line'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AddLineScreen), findsOneWidget);
+
+      await db.close();
+    });
+
+    testWidgets('tapping repertoire name navigates to RepertoireBrowserScreen',
+        (tester) async {
+      // Seed the in-memory DB so RepertoireBrowserScreen can initialise.
+      final db = AppDatabase(NativeDatabase.memory());
+      await db.into(db.repertoires).insert(
+            RepertoiresCompanion.insert(name: 'Test'),
+          );
+
+      final repertoireRepo = FakeRepertoireRepository();
+      final reviewRepo = FakeReviewRepository(dueCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        db: db,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Test'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RepertoireBrowserScreen), findsOneWidget);
+
+      await db.close();
+    });
+
+    testWidgets(
+        'empty state shows Create your first repertoire button '
+        'and no repertoire cards', (tester) async {
+      final repertoireRepo = FakeRepertoireRepository(repertoires: []);
+      final reviewRepo = FakeReviewRepository(dueCards: []);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.text('Create your first repertoire'), findsOneWidget);
+      expect(find.byType(Card), findsNothing);
+      expect(find.text('Start Drill'), findsNothing);
+      expect(find.text('Free Practice'), findsNothing);
+      expect(find.text('Add Line'), findsNothing);
     });
   });
 }
