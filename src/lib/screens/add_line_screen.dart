@@ -25,10 +25,12 @@ class AddLineScreen extends ConsumerStatefulWidget {
     super.key,
     required this.repertoireId,
     this.startingMoveId,
+    @visibleForTesting this.controllerOverride,
   });
 
   final int repertoireId;
   final int? startingMoveId;
+  final AddLineController? controllerOverride;
 
   @override
   ConsumerState<AddLineScreen> createState() => _AddLineScreenState();
@@ -37,16 +39,23 @@ class AddLineScreen extends ConsumerStatefulWidget {
 class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   late final AddLineController _controller;
   late final ChessboardController _boardController;
+  late final bool _ownsController;
 
   @override
   void initState() {
     super.initState();
-    _controller = AddLineController(
-      ref.read(repertoireRepositoryProvider),
-      ref.read(reviewRepositoryProvider),
-      widget.repertoireId,
-      startingMoveId: widget.startingMoveId,
-    );
+    if (widget.controllerOverride != null) {
+      _controller = widget.controllerOverride!;
+      _ownsController = false;
+    } else {
+      _controller = AddLineController(
+        ref.read(repertoireRepositoryProvider),
+        ref.read(reviewRepositoryProvider),
+        widget.repertoireId,
+        startingMoveId: widget.startingMoveId,
+      );
+      _ownsController = true;
+    }
     _boardController = ChessboardController();
     _controller.addListener(_onControllerChanged);
     _initAsync();
@@ -66,7 +75,9 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
-    _controller.dispose();
+    if (_ownsController) {
+      _controller.dispose();
+    }
     _boardController.dispose();
     super.dispose();
   }

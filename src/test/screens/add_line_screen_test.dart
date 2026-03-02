@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:chess_trainer/controllers/add_line_controller.dart';
 import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
+import 'package:chess_trainer/widgets/chessboard_controller.dart';
 import 'package:chess_trainer/widgets/move_pills_widget.dart';
 
 // ---------------------------------------------------------------------------
@@ -110,10 +112,18 @@ Future<int?> getMoveIdBySan(AppDatabase db, int repId, String san) async {
   return null;
 }
 
+/// Helper to create a NormalMove from SAN + position FEN.
+NormalMove sanToNormalMove(String fen, String san) {
+  final position = Chess.fromSetup(Setup.parseFen(fen));
+  final move = position.parseSan(san);
+  return move as NormalMove;
+}
+
 Widget buildTestApp(
   AppDatabase db,
   int repertoireId, {
   int? startingMoveId,
+  AddLineController? controller,
 }) {
   return ProviderScope(
     overrides: [
@@ -125,9 +135,55 @@ Widget buildTestApp(
       home: AddLineScreen(
         repertoireId: repertoireId,
         startingMoveId: startingMoveId,
+        controllerOverride: controller,
       ),
     ),
   );
+}
+
+/// Pumps AddLineScreen, plays an extending move after settle, and returns
+/// the pieces needed for snackbar assertions. Registers teardown for the
+/// injected controller and test board controller automatically.
+///
+/// After calling this, the Confirm button is enabled. The caller should
+/// `await tester.tap(find.text('Confirm'))` and `pumpAndSettle()`.
+Future<({AddLineController controller, ChessboardController testBoard, int repId})>
+    pumpWithExtendingMove(WidgetTester tester, AppDatabase db) async {
+  final repId = await seedRepertoire(db, lines: [['e4']], createCards: true);
+  final e4Id = await getMoveIdBySan(db, repId, 'e4');
+
+  final repRepo = LocalRepertoireRepository(db);
+  final reviewRepo = LocalReviewRepository(db);
+  final controller =
+      AddLineController(repRepo, reviewRepo, repId, startingMoveId: e4Id);
+
+  await tester.pumpWidget(
+    buildTestApp(db, repId, startingMoveId: e4Id, controller: controller),
+  );
+  await tester.pumpAndSettle(); // completes loadData()
+
+  // Now play extending move e5 using a test-local board controller.
+  final testBoard = ChessboardController();
+  // Advance testBoard to the e4 position so it matches the engine state.
+  final e4Fen = controller.state.currentFen;
+  testBoard.setPosition(e4Fen);
+  final e5NormalMove = sanToNormalMove(e4Fen, 'e5');
+  testBoard.playMove(e5NormalMove);
+  controller.onBoardMove(e5NormalMove, testBoard);
+
+  // Flip board for parity (2-ply = even = black expected).
+  controller.flipBoard();
+
+  // Register teardown so callers don't need to remember disposal.
+  addTearDown(() {
+    controller.dispose();
+    testBoard.dispose();
+  });
+
+  // Rebuild widget with updated controller state.
+  await tester.pump();
+
+  return (controller: controller, testBoard: testBoard, repId: repId);
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +601,92 @@ void main() {
       final moves = await repRepo.getMovesForRepertoire(repId);
       final nf3Move = moves.firstWhere((m) => m.san == 'Nf3');
       expect(nf3Move.label, 'Flipped Label');
+    });
+
+    testWidgets('extension undo snackbar appears after confirming extension',
+        (tester) async {
+      await pumpWithExtendingMove(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Snackbar should appear with "Line extended" and "Undo".
+      expect(find.text('Line extended'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+    });
+
+    testWidgets(
+        'undo action on extension snackbar rolls back the extension',
+        (tester) async {
+      final result = await pumpWithExtendingMove(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Snackbar should appear.
+      expect(find.text('Line extended'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+
+      // Verify DB state after confirm: e4 + e5 moves, card on e5 leaf.
+      final reviewRepo = LocalReviewRepository(db);
+      final repRepo = LocalRepertoireRepository(db);
+      var cards = await reviewRepo.getAllCardsForRepertoire(result.repId);
+      expect(cards.length, 1);
+      var moves = await repRepo.getMovesForRepertoire(result.repId);
+      expect(moves.length, 2);
+      final e5Move = moves.firstWhere((m) => m.san == 'e5');
+      expect(cards.first.leafMoveId, e5Move.id);
+
+      // Tap Undo on the snackbar.
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      // Verify DB state after undo: e5 removed, card restored to e4.
+      moves = await repRepo.getMovesForRepertoire(result.repId);
+      expect(moves.length, 1);
+      expect(moves.first.san, 'e4');
+
+      cards = await reviewRepo.getAllCardsForRepertoire(result.repId);
+      expect(cards.length, 1);
+      expect(cards.first.leafMoveId, moves.first.id);
+    });
+
+    testWidgets('extension persists after snackbar dismissed without undo',
+        (tester) async {
+      final result = await pumpWithExtendingMove(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Snackbar should appear with 8-second auto-dismiss duration.
+      expect(find.text('Line extended'), findsOneWidget);
+      final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(snackBar.duration, const Duration(seconds: 8));
+
+      // Dismiss the snackbar without tapping Undo (the auto-dismiss Timer
+      // is created in the root zone due to Drift async I/O, so we trigger
+      // it manually via ScaffoldMessenger).
+      final scaffoldContext =
+          tester.element(find.byType(AddLineScreen));
+      ScaffoldMessenger.of(scaffoldContext).hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+
+      // Snackbar should be gone.
+      expect(find.text('Line extended'), findsNothing);
+
+      // Verify extension persists: e4 + e5 moves, card on e5 leaf.
+      final reviewRepo = LocalReviewRepository(db);
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(result.repId);
+      expect(moves.length, 2);
+      final e5Move = moves.firstWhere((m) => m.san == 'e5');
+
+      final cards = await reviewRepo.getAllCardsForRepertoire(result.repId);
+      expect(cards.length, 1);
+      expect(cards.first.leafMoveId, e5Move.id);
     });
 
     testWidgets('PopScope warns on unsaved moves when navigating back',
