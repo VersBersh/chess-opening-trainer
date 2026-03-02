@@ -36,15 +36,13 @@ Future<void> main() async {
         reviewRepositoryProvider.overrideWithValue(reviewRepo),
         sharedPreferencesProvider.overrideWithValue(prefs),
       ],
-      child: const ChessTrainerApp(home: HomeScreen()),
+      child: const ChessTrainerApp(),
     ),
   );
 }
 
 class ChessTrainerApp extends ConsumerWidget {
-  final Widget home;
-
-  const ChessTrainerApp({super.key, required this.home});
+  const ChessTrainerApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -93,7 +91,7 @@ class ChessTrainerApp extends ConsumerWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: themeMode,
-      home: home,
+      home: const HomeScreen(),
     );
   }
 }
