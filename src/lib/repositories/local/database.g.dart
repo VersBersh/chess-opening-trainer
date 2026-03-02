@@ -774,7 +774,7 @@ class $ReviewCardsTable extends ReviewCards
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    defaultValue: const Constant(1),
+    defaultValue: const Constant(0),
   );
   static const VerificationMeta _repetitionsMeta = const VerificationMeta(
     'repetitions',

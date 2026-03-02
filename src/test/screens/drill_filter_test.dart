@@ -66,7 +66,7 @@ ReviewCard buildReviewCard(List<RepertoireMove> lineMoves, {int cardId = 1}) {
     repertoireId: lineMoves.first.repertoireId,
     leafMoveId: lineMoves.last.id,
     easeFactor: 2.5,
-    intervalDays: 1,
+    intervalDays: 0,
     repetitions: 0,
     nextReviewDate: DateTime(2026, 1, 1),
   );

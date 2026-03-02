@@ -33,7 +33,7 @@ class ReviewCards extends Table {
   IntColumn get leafMoveId =>
       integer().references(RepertoireMoves, #id, onDelete: KeyAction.cascade)();
   RealColumn get easeFactor => real().withDefault(const Constant(2.5))();
-  IntColumn get intervalDays => integer().withDefault(const Constant(1))();
+  IntColumn get intervalDays => integer().withDefault(const Constant(0))();
   IntColumn get repetitions => integer().withDefault(const Constant(0))();
   DateTimeColumn get nextReviewDate => dateTime()();
   IntColumn get lastQuality => integer().nullable()();
@@ -47,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.defaults() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -65,15 +65,7 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             'CREATE INDEX idx_moves_fen ON repertoire_moves(repertoire_id, fen)',
           );
-          await customStatement(
-            'CREATE INDEX idx_cards_due ON review_cards(next_review_date)',
-          );
-          await customStatement(
-            'CREATE INDEX idx_cards_repertoire ON review_cards(repertoire_id)',
-          );
-          await customStatement(
-            'CREATE UNIQUE INDEX idx_cards_leaf ON review_cards(leaf_move_id)',
-          );
+          await _createReviewCardIndexes();
           await customStatement(
             'CREATE UNIQUE INDEX idx_moves_unique_sibling '
             'ON repertoire_moves(parent_move_id, san) '
@@ -85,7 +77,40 @@ class AppDatabase extends _$AppDatabase {
             'WHERE parent_move_id IS NULL',
           );
         },
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            // Rebuild the table so the physical DEFAULT changes from 1 to 0.
+            await m.alterTable(TableMigration(reviewCards));
+
+            // Recreate review_cards indexes dropped during the table rebuild.
+            await _createReviewCardIndexes();
+
+            // Backfill: set interval_days = 0 on fresh cards that got the old
+            // default. Use last_quality IS NULL to distinguish truly fresh cards
+            // from failed-reviewed cards (SM-2 fail also sets repetitions=0,
+            // interval=1, but always writes a non-null lastQuality value).
+            await customStatement(
+              'UPDATE review_cards SET interval_days = 0 '
+              'WHERE repetitions = 0 AND interval_days = 1 '
+              'AND last_quality IS NULL',
+            );
+          }
+        },
       );
+
+  /// Creates the indexes on the review_cards table. Called from both
+  /// [onCreate] (fresh install) and [onUpgrade] (after alterTable rebuild).
+  Future<void> _createReviewCardIndexes() async {
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_cards_due ON review_cards(next_review_date)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_cards_repertoire ON review_cards(repertoire_id)',
+    );
+    await customStatement(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_leaf ON review_cards(leaf_move_id)',
+    );
+  }
 }
 
 LazyDatabase _openConnection() {
