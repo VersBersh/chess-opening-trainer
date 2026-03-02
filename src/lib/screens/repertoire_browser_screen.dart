@@ -10,6 +10,7 @@ import '../widgets/browser_content.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/error_retry_view.dart';
 import '../widgets/inline_label_editor.dart';
+import '../widgets/label_conflict_dialog.dart';
 import '../widgets/repertoire_dialogs.dart';
 
 // ---------------------------------------------------------------------------
@@ -249,6 +250,12 @@ class _RepertoireBrowserScreenState
           setState(() => _labelEditorMoveId = null);
         }
       },
+      onCheckConflicts: (newLabel) => checkLabelConflicts(
+        context: context,
+        cache: cache,
+        moveId: moveId,
+        newLabel: newLabel,
+      ),
     );
   }
 

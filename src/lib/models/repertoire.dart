@@ -166,6 +166,33 @@ class RepertoireTreeCache {
     return '$moveNumber. ${movesById[moveId]!.san}';
   }
 
+  /// Returns moves at the same position that have a different label
+  /// than [newLabel]. Excludes the move [moveId] itself.
+  /// Uses the normalized position key (ignoring halfmove/fullmove clocks)
+  /// so that transpositions with different move orders are detected.
+  /// Returns an empty list when [newLabel] is null (label removal is not
+  /// a conflict).
+  List<RepertoireMove> findLabelConflicts(int moveId, String? newLabel) {
+    if (newLabel == null) return [];
+    final move = movesById[moveId];
+    if (move == null) return [];
+    final positionKey = normalizePositionKey(move.fen);
+    final siblings = movesByPositionKey[positionKey] ?? [];
+    return siblings
+        .where((m) => m.id != moveId && m.label != null && m.label != newLabel)
+        .toList();
+  }
+
+  /// Returns a human-readable path string for a move, e.g. "1. e4 1...c5 2. Nf3".
+  String getPathDescription(int moveId) {
+    final line = getLine(moveId);
+    final parts = <String>[];
+    for (var i = 0; i < line.length; i++) {
+      parts.add(getMoveNotation(line[i].id, plyCount: i + 1));
+    }
+    return parts.join(' ');
+  }
+
   /// Returns all distinct non-null labels across the tree, sorted alphabetically.
   List<String> getDistinctLabels() {
     final labels = <String>{};

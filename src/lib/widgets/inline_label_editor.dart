@@ -17,6 +17,7 @@ class InlineLabelEditor extends StatefulWidget {
     required this.previewDisplayName,
     required this.onSave,
     required this.onClose,
+    this.onCheckConflicts,
   });
 
   /// The existing label, or null if none.
@@ -36,6 +37,10 @@ class InlineLabelEditor extends StatefulWidget {
 
   /// Callback when editing is dismissed (after save or cancel).
   final VoidCallback onClose;
+
+  /// Optional callback to check for label conflicts before saving.
+  /// Returns `true` to proceed with the save, `false` to cancel.
+  final Future<bool> Function(String? newLabel)? onCheckConflicts;
 
   @override
   State<InlineLabelEditor> createState() => _InlineLabelEditorState();
@@ -95,6 +100,15 @@ class _InlineLabelEditorState extends State<InlineLabelEditor> {
     setState(() => _isSaving = true);
 
     try {
+      if (labelToSave != null && widget.onCheckConflicts != null) {
+        final proceed = await widget.onCheckConflicts!(labelToSave);
+        if (!proceed) {
+          // User cancelled — keep editor open.
+          if (mounted) setState(() => _isSaving = false);
+          return;
+        }
+      }
+
       await widget.onSave(labelToSave);
       if (mounted) {
         widget.onClose();

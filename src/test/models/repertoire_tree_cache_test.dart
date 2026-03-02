@@ -398,6 +398,139 @@ void main() {
     });
   });
 
+  group('findLabelConflicts', () {
+    test('returns empty list when no other moves share the FEN', () {
+      // 1. e4 e5 2. Nf3 -- all different FENs, no transpositions
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.findLabelConflicts(3, 'Some Label'), isEmpty);
+    });
+
+    test('returns empty list when other moves at same FEN have the same label',
+        () {
+      // Two lines reaching the same position with the same label.
+      // 1. d4 Nf6 2. c4 e6 and 1. c4 e6 2. d4 Nf6 reach the same position.
+      // Neither endpoint creates en-passant, so the normalized position keys match.
+      final line1 =
+          buildLine(['d4', 'Nf6', 'c4', 'e6'], labels: {3: 'Same'});
+      final line2 = buildLine(['c4', 'e6', 'd4', 'Nf6'],
+          startId: 100, labels: {3: 'Same'});
+      final cache = RepertoireTreeCache.build([...line1, ...line2]);
+
+      // e6 (id=4) and Nf6 (id=104) reach the same position; both labeled "Same"
+      expect(cache.findLabelConflicts(4, 'Same'), isEmpty);
+    });
+
+    test('returns empty list when other moves at same FEN have null labels',
+        () {
+      // Two lines reaching the same position; the other has no label.
+      final line1 = buildLine(['d4', 'Nf6', 'c4', 'e6']);
+      final line2 =
+          buildLine(['c4', 'e6', 'd4', 'Nf6'], startId: 100);
+      final cache = RepertoireTreeCache.build([...line1, ...line2]);
+
+      // e6 (id=4) and Nf6 (id=104) reach the same position; Nf6 has null label
+      expect(cache.findLabelConflicts(4, 'New Label'), isEmpty);
+    });
+
+    test('detects conflict when another move at same FEN has a different label',
+        () {
+      // Two lines reaching the same position with different labels.
+      final line1 = buildLine(['d4', 'Nf6', 'c4', 'e6'],
+          labels: {3: 'QGD'});
+      final line2 = buildLine(['c4', 'e6', 'd4', 'Nf6'],
+          startId: 100, labels: {3: 'English'});
+      final cache = RepertoireTreeCache.build([...line1, ...line2]);
+
+      // From line1's e6 (id=4), wanting label "QGD"
+      // line2's Nf6 (id=103) has label "English" at same position -> conflict
+      final conflicts = cache.findLabelConflicts(4, 'QGD');
+      expect(conflicts, hasLength(1));
+      expect(conflicts.first.id, 103);
+      expect(conflicts.first.label, 'English');
+    });
+
+    test('excludes the move itself from results', () {
+      // A move should not conflict with itself.
+      final line1 = buildLine(['d4', 'Nf6', 'c4', 'e6'],
+          labels: {3: 'QGD'});
+      final line2 = buildLine(['c4', 'e6', 'd4', 'Nf6'],
+          startId: 100, labels: {3: 'English'});
+      final cache = RepertoireTreeCache.build([...line1, ...line2]);
+
+      // From line1's e6 (id=4), wanting label "Different"
+      final conflicts = cache.findLabelConflicts(4, 'Different');
+      // Only line2's Nf6 (id=103) should appear, not e6 (id=4) itself
+      expect(conflicts, hasLength(1));
+      expect(conflicts.first.id, 103);
+    });
+
+    test('returns multiple conflicts when multiple moves at same FEN have different labels',
+        () {
+      // Three lines reaching the same position, each with a different label.
+      final line1 = buildLine(['d4', 'Nf6', 'c4', 'e6'],
+          labels: {3: 'Label A'});
+      final line2 = buildLine(['c4', 'e6', 'd4', 'Nf6'],
+          startId: 100, labels: {3: 'Label B'});
+      // Third line via different move order reaching same position:
+      // 1. c4 Nf6 2. d4 e6
+      final line3 = buildLine(['c4', 'Nf6', 'd4', 'e6'],
+          startId: 200, labels: {3: 'Label C'});
+      final cache =
+          RepertoireTreeCache.build([...line1, ...line2, ...line3]);
+
+      // From line1's e6 (id=4), wanting label "New"
+      // line2's Nf6 (id=103, label "Label B") and line3's e6 (id=203, label "Label C")
+      // are at the same position with different labels
+      final conflicts = cache.findLabelConflicts(4, 'New');
+      expect(conflicts, hasLength(2));
+      final conflictIds = conflicts.map((c) => c.id).toSet();
+      expect(conflictIds, containsAll([103, 203]));
+    });
+
+    test('returns empty list when newLabel is null', () {
+      // Clearing a label should never be treated as a conflict.
+      final line1 = buildLine(['d4', 'Nf6', 'c4', 'e6'],
+          labels: {3: 'QGD'});
+      final line2 = buildLine(['c4', 'e6', 'd4', 'Nf6'],
+          startId: 100, labels: {3: 'English'});
+      final cache = RepertoireTreeCache.build([...line1, ...line2]);
+
+      expect(cache.findLabelConflicts(4, null), isEmpty);
+    });
+
+    test('returns empty list for unknown moveId', () {
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.findLabelConflicts(999, 'Label'), isEmpty);
+    });
+  });
+
+  group('getPathDescription', () {
+    test('returns notation for a single move', () {
+      final line = buildLine(['e4']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.getPathDescription(1), '1. e4');
+    });
+
+    test('returns full path for a deep move', () {
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.getPathDescription(3), '1. e4 1...e5 2. Nf3');
+    });
+
+    test('returns correct notation for black moves', () {
+      final line = buildLine(['e4', 'c5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.getPathDescription(2), '1. e4 1...c5');
+    });
+  });
+
   group('countDescendantLeaves', () {
     test('a leaf node returns 1 (itself)', () {
       // 1. e4 e5 2. Nf3  -- Nf3 (id=3) is a leaf

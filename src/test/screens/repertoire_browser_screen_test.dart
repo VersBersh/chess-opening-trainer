@@ -1940,4 +1940,216 @@ void main() {
       expect(chessboard.fen, isNot(kInitialFEN));
     });
   });
+
+  group('Transposition conflict warnings', () {
+    testWidgets(
+        'label save proceeds without dialog when no conflicts exist',
+        (tester) async {
+      // Single line, no transpositions
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // Open label editor
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Enter label and submit
+      await tester.enterText(find.byType(TextField), 'No Conflict');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // No dialog should appear
+      expect(find.text('Label conflict'), findsNothing);
+
+      // Label should be saved
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'No Conflict');
+    });
+
+    testWidgets(
+        'dialog shown when conflicts exist; user confirms -> label saved',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3', 'Nc6'],
+        ['Nf3', 'Nc6', 'e4', 'e5'],
+      ]);
+
+      final moves = await LocalRepertoireRepository(db)
+          .getMovesForRepertoire(repId);
+      final nc6Line1 =
+          moves.firstWhere((m) => m.san == 'Nc6' && m.parentMoveId == 3);
+      await (db.update(db.repertoireMoves)
+            ..where((t) => t.id.equals(nc6Line1.id)))
+          .write(const RepertoireMovesCompanion(label: Value('Italian')));
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Navigate to e5 in line 2. All nodes are auto-expanded (no labels
+      // on the Nf3 branch that would cause collapsing).
+      // Line 2 tree: 1. Nf3 -> 1...Nc6 -> 2. e4 -> 2...e5
+      // Find and tap "2...e5" (the transposition endpoint in line 2).
+      await tester.ensureVisible(find.text('2...e5'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2...e5'));
+      await tester.pump();
+
+      // Open label editor
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Enter a different label
+      await tester.enterText(find.byType(TextField), 'Ruy Lopez');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Conflict dialog should appear
+      expect(find.text('Label conflict'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('Italian'),
+        ),
+        findsOneWidget,
+      );
+
+      // Tap "Apply anyway"
+      await tester.tap(find.text('Apply anyway'));
+      await tester.pumpAndSettle();
+
+      // Label should be saved
+      final repRepo = LocalRepertoireRepository(db);
+      final updatedMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Line2 =
+          moves.firstWhere((m) => m.san == 'e4' && m.parentMoveId == 6);
+      final savedE5 = updatedMoves.firstWhere(
+          (m) => m.san == 'e5' && m.parentMoveId == e4Line2.id);
+      expect(savedE5.label, 'Ruy Lopez');
+    });
+
+    testWidgets(
+        'dialog shown when conflicts exist; user cancels -> label not saved',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3', 'Nc6'],
+        ['Nf3', 'Nc6', 'e4', 'e5'],
+      ]);
+
+      final moves = await LocalRepertoireRepository(db)
+          .getMovesForRepertoire(repId);
+      final nc6Line1 =
+          moves.firstWhere((m) => m.san == 'Nc6' && m.parentMoveId == 3);
+      await (db.update(db.repertoireMoves)
+            ..where((t) => t.id.equals(nc6Line1.id)))
+          .write(const RepertoireMovesCompanion(label: Value('Italian')));
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 in line 2
+      await tester.ensureVisible(find.text('2...e5'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2...e5'));
+      await tester.pump();
+
+      // Open label editor
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Enter a conflicting label
+      await tester.enterText(find.byType(TextField), 'Ruy Lopez');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Conflict dialog should appear
+      expect(find.text('Label conflict'), findsOneWidget);
+
+      // Tap "Cancel"
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Editor should still be open
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Label should NOT be saved
+      final repRepo = LocalRepertoireRepository(db);
+      final updatedMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Line2 =
+          moves.firstWhere((m) => m.san == 'e4' && m.parentMoveId == 6);
+      final savedE5 = updatedMoves.firstWhere(
+          (m) => m.san == 'e5' && m.parentMoveId == e4Line2.id);
+      expect(savedE5.label, isNull);
+    });
+
+    testWidgets(
+        'clearing a label does NOT show the dialog even when transpositions have labels',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3', 'Nc6'],
+        ['Nf3', 'Nc6', 'e4', 'e5'],
+      ]);
+
+      final moves = await LocalRepertoireRepository(db)
+          .getMovesForRepertoire(repId);
+      final nc6Line1 =
+          moves.firstWhere((m) => m.san == 'Nc6' && m.parentMoveId == 3);
+      await (db.update(db.repertoireMoves)
+            ..where((t) => t.id.equals(nc6Line1.id)))
+          .write(const RepertoireMovesCompanion(label: Value('Italian')));
+
+      // Give e5 in line 2 a label first so clearing is a change
+      final e4Line2 =
+          moves.firstWhere((m) => m.san == 'e4' && m.parentMoveId == 6);
+      final e5Line2 = moves
+          .firstWhere((m) => m.san == 'e5' && m.parentMoveId == e4Line2.id);
+      await (db.update(db.repertoireMoves)
+            ..where((t) => t.id.equals(e5Line2.id)))
+          .write(const RepertoireMovesCompanion(label: Value('Existing')));
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 in line 2. With the label "Existing" on it, it may be shown
+      // with a label suffix. Find by text containing "2...e5".
+      await tester.ensureVisible(find.textContaining('2...e5'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('2...e5'));
+      await tester.pump();
+
+      // Open label editor
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Clear the text to remove the label
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // No conflict dialog should appear
+      expect(find.text('Label conflict'), findsNothing);
+
+      // Label should be cleared
+      final repRepo = LocalRepertoireRepository(db);
+      final updatedMoves = await repRepo.getMovesForRepertoire(repId);
+      final savedE5 =
+          updatedMoves.firstWhere((m) => m.id == e5Line2.id);
+      expect(savedE5.label, isNull);
+    });
+  });
 }
