@@ -1,0 +1,8 @@
+- **Verdict** — `Approved with Notes`
+- **Issues**
+  1. **Minor — Clean Code (File size / SRP):** The modified files are all well over 300 lines, which makes responsibilities harder to scan and evolve: [add_line_controller.dart](/C:/code/misc/chess-trainer-4/src/lib/controllers/add_line_controller.dart:1) (~612 lines), [add_line_controller_test.dart](/C:/code/misc/chess-trainer-4/src/test/controllers/add_line_controller_test.dart:1) (~896 lines), and [add_line_screen_test.dart](/C:/code/misc/chess-trainer-4/src/test/screens/add_line_screen_test.dart:1) (~842 lines). This increases cognitive load and raises regression risk when touching local behavior (like take-back flow).  
+     **Suggested fix:** Split by behavior slices (for example, move handling vs persistence in controller; separate test files for take-back, branching, labels, confirm flow).
+  2. **Minor — Clean Code (DRY in tests):** The newly added tests repeat the same move-seeding/play loops and controller setup patterns (for example [add_line_controller_test.dart](/C:/code/misc/chess-trainer-4/src/test/controllers/add_line_controller_test.dart:351) and [add_line_controller_test.dart](/C:/code/misc/chess-trainer-4/src/test/controllers/add_line_controller_test.dart:396)). This duplication is meaningful enough to slow future updates to move-flow assumptions.  
+     **Suggested fix:** Extract shared helpers for “play SAN sequence”, “create loaded controller+board”, and “assert state after take-back”.
+
+Overall, the `onTakeBack` design change is pragmatic and defensively implemented (undo-first with FEN guard fallback), and the added tests materially improve confidence in the behavior.

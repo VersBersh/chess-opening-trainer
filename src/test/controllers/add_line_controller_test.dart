@@ -318,6 +318,111 @@ void main() {
       controller.dispose();
       boardController.dispose();
     });
+
+    test('take back first move on empty tree returns to initial position', () async {
+      final repId = await seedRepertoire(db); // empty repertoire
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play one move (e4) -- buffered since tree is empty.
+      final normalMove = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(normalMove);
+      controller.onBoardMove(normalMove, boardController);
+
+      expect(controller.state.pills.length, 1);
+      expect(controller.canTakeBack, true);
+
+      // Take back.
+      controller.onTakeBack(boardController);
+
+      expect(controller.state.pills, isEmpty);
+      expect(controller.canTakeBack, false);
+      expect(controller.state.currentFen, kInitialFEN);
+      expect(controller.state.preMoveFen, kInitialFEN);
+      // Board should be at initial position.
+      expect(boardController.fen, kInitialFEN);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('take back multiple moves returns to previous positions with last-move highlight', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play 3 moves.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      expect(controller.state.pills.length, 3);
+
+      // Take back Nf3 -- undo() path, should show e5 highlight.
+      controller.onTakeBack(boardController);
+      expect(controller.state.pills.length, 2);
+      final fensAfterE5 = computeFens(['e4', 'e5']);
+      expect(controller.state.currentFen, fensAfterE5[1]);
+      expect(boardController.lastMove, isNotNull,
+          reason: 'After undo(), lastMove should highlight the previous move (e5)');
+
+      // Take back e5 -- undo() path, should show e4 highlight.
+      controller.onTakeBack(boardController);
+      expect(controller.state.pills.length, 1);
+      final fensAfterE4 = computeFens(['e4']);
+      expect(controller.state.currentFen, fensAfterE4[0]);
+      expect(boardController.lastMove, isNotNull,
+          reason: 'After undo(), lastMove should highlight the previous move (e4)');
+
+      // Take back e4 -- undo() path, back to initial, lastMove null is OK.
+      controller.onTakeBack(boardController);
+      expect(controller.state.pills, isEmpty);
+      expect(controller.state.currentFen, kInitialFEN);
+      expect(boardController.fen, kInitialFEN);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('take-back works after pill navigation (setPosition fallback)', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play 3 moves.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Navigate to pill 0 (e4) -- this calls setPosition, clearing board history.
+      controller.onPillTapped(0, boardController);
+      expect(boardController.canUndo, false);
+
+      // Take back should still work (falls back to setPosition).
+      controller.onTakeBack(boardController);
+      expect(controller.state.pills.length, 2);
+      // Board FEN should match the engine's expected FEN.
+      expect(boardController.fen, controller.state.currentFen);
+
+      controller.dispose();
+      boardController.dispose();
+    });
   });
 
   group('Pill tap navigation', () {

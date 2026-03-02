@@ -411,7 +411,23 @@ class AddLineController extends ChangeNotifier {
     final result = engine.takeBack();
     if (result == null) return;
 
-    boardController.setPosition(result.fen);
+    // Prefer undo() for visual continuity (restores the previous last-move
+    // highlight). Falls back to resetToInitial/setPosition when board
+    // history is empty or when undo produces a FEN that doesn't match
+    // the engine's expected FEN (desync after pill navigation, etc.).
+    if (boardController.canUndo) {
+      boardController.undo();
+      // Correctness guard: if the board FEN doesn't match the engine's
+      // expected FEN after undo, the board history was out of sync.
+      // Fall back to setPosition to ensure correctness.
+      if (boardController.fen != result.fen) {
+        boardController.setPosition(result.fen);
+      }
+    } else if (result.fen == kInitialFEN) {
+      boardController.resetToInitial();
+    } else {
+      boardController.setPosition(result.fen);
+    }
 
     final newPills = _buildPillsList(engine);
     final displayName = engine.getCurrentDisplayName();

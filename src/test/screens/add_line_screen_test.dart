@@ -752,6 +752,43 @@ void main() {
       // Editor should be dismissed.
       expect(find.byType(InlineLabelEditor), findsNothing);
     });
+    testWidgets('take-back removes last pill and shows empty state',
+        (tester) async {
+      final repId = await seedRepertoire(db); // empty tree
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Verify initial empty state.
+      expect(find.text('Play a move to begin'), findsOneWidget);
+
+      // Play a move via the screen's own chessboard callback.
+      final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      // Pill should appear.
+      expect(find.text('e4'), findsOneWidget);
+
+      // Take Back button should be enabled. Tap it.
+      final takeBackButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Take Back'),
+      );
+      expect(takeBackButton.onPressed, isNotNull);
+      await tester.tap(find.text('Take Back'));
+      await tester.pumpAndSettle();
+
+      // Pill should be gone, empty state restored.
+      expect(find.text('e4'), findsNothing);
+      expect(find.text('Play a move to begin'), findsOneWidget);
+
+      // Take Back button should now be disabled.
+      final takeBackAfter = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Take Back'),
+      );
+      expect(takeBackAfter.onPressed, isNull);
+    });
+
     testWidgets('PopScope warns on unsaved moves when navigating back',
         (tester) async {
       final repId = await seedRepertoire(db);
