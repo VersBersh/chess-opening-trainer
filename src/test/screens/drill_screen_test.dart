@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessground/chessground.dart' show PlayerSide;
 import 'package:dartchess/dartchess.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter/material.dart';
@@ -427,10 +428,6 @@ void main() {
           tester.widget<ChessboardWidget>(find.byType(ChessboardWidget));
       expect(boardWidget.shapes, isNotNull);
       expect(boardWidget.shapes!.isNotEmpty, true);
-
-      // Drain the pending 1500ms revert timer to avoid test framework error
-      await tester.pump(const Duration(milliseconds: 2000));
-      await tester.pump();
     });
 
     testWidgets('shows X annotation on genuine wrong move', (tester) async {
@@ -462,10 +459,6 @@ void main() {
           tester.widget<ChessboardWidget>(find.byType(ChessboardWidget));
       expect(boardWidget.annotations, isNotNull);
       expect(boardWidget.annotations!.isNotEmpty, true);
-
-      // Drain the pending 1500ms revert timer
-      await tester.pump(const Duration(milliseconds: 2000));
-      await tester.pump();
     });
 
     testWidgets('arrow only on sibling correction (no X annotation)',
@@ -528,15 +521,11 @@ void main() {
       expect(boardWidget.shapes!.isNotEmpty, true);
       // annotations should be null for sibling corrections
       expect(boardWidget.annotations, isNull);
-
-      // Drain the pending 1500ms revert timer
-      await tester.pump(const Duration(milliseconds: 2000));
-      await tester.pump();
     });
   });
 
   group('DrillScreen — mistake revert', () {
-    testWidgets('reverts incorrect move after pause', (tester) async {
+    testWidgets('reverts incorrect move immediately', (tester) async {
       final card = buildReviewCard(whiteLine9);
       final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
       final reviewRepo = FakeReviewRepository(dueCards: [card]);
@@ -561,19 +550,65 @@ void main() {
       final wrongMove = pos.parseSan('Bc4')! as NormalMove;
       notifier.boardController.playMove(wrongMove);
       unawaited(notifier.processUserMove(wrongMove));
-
-      // Board should not be at pre-mistake position yet
       await tester.pump();
 
-      // Pump past the 1500ms revert delay
-      await tester.pump(const Duration(milliseconds: 2000));
-      await tester.pump();
-
-      // Board should be back to pre-mistake FEN
+      // Board should already be reverted to pre-mistake FEN
       expect(notifier.boardController.fen, fenBeforeMistake);
 
-      // State should be back to DrillUserTurn
+      // State should be DrillMistakeFeedback (not DrillUserTurn)
       final state = container.read(drillControllerProvider(_defaultConfig));
+      expect(state.value, isA<DrillMistakeFeedback>());
+    });
+
+    testWidgets('board is interactive during mistake feedback and accepts retry',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(_defaultConfig).notifier);
+
+      // Play a wrong move: Bc4 instead of expected Ba4
+      final pos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final wrongMove = pos.parseSan('Bc4')! as NormalMove;
+      notifier.boardController.playMove(wrongMove);
+      unawaited(notifier.processUserMove(wrongMove));
+      await tester.pump();
+
+      // Verify state is DrillMistakeFeedback
+      var state = container.read(drillControllerProvider(_defaultConfig));
+      expect(state.value, isA<DrillMistakeFeedback>());
+
+      // Verify the ChessboardWidget has playerSide set to the user's color
+      // (not PlayerSide.none), confirming the board is interactive
+      final boardWidget =
+          tester.widget<ChessboardWidget>(find.byType(ChessboardWidget));
+      expect(boardWidget.playerSide, PlayerSide.white);
+
+      // Without any additional delay, play the correct move (Ba4)
+      final retryPos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final correctMove = retryPos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(correctMove);
+      unawaited(notifier.processUserMove(correctMove));
+      // Pump for the 300ms opponent auto-play delay
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      // State should advance past mistake feedback (DrillUserTurn for next
+      // user move, since the line is not complete yet after Ba4 + Nf6)
+      state = container.read(drillControllerProvider(_defaultConfig));
       expect(state.value, isA<DrillUserTurn>());
     });
   });
@@ -960,10 +995,6 @@ void main() {
 
       // In DrillMistakeFeedback state -- label still visible
       expect(find.text('Sicilian'), findsOneWidget);
-
-      // Drain the pending 1500ms revert timer
-      await tester.pump(const Duration(milliseconds: 2000));
-      await tester.pump();
     });
 
     testWidgets('aggregate label format (multiple labels)', (tester) async {

@@ -363,7 +363,7 @@ class DrillController
             wrongMoveDestination: move.to,
           ));
         }
-        await _revertAfterMistake(gen);
+        boardController.setPosition(_preMoveFen);
 
       case SiblingLineCorrection():
         final expectedMove = sanToMove(prePosition, result.expectedSan);
@@ -377,25 +377,8 @@ class DrillController
             expectedMove: expectedMove,
           ));
         }
-        await _revertAfterMistake(gen);
+        boardController.setPosition(_preMoveFen);
     }
-  }
-
-  // ---- Mistake revert timing -----------------------------------------------
-
-  Future<void> _revertAfterMistake(int gen) async {
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (_isStale(gen)) return;
-
-    boardController.setPosition(_preMoveFen);
-    _preMoveFen = boardController.fen;
-
-    state = AsyncData(DrillUserTurn(
-      currentCardNumber: _engine.currentIndex + 1,
-      totalCards: _engine.totalCards,
-      userColor: _engine.userColor,
-      lineLabel: _currentLineLabel,
-    ));
   }
 
   // ---- Line/card completion ------------------------------------------------

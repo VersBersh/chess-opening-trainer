@@ -138,7 +138,9 @@ class DrillScreen extends ConsumerWidget {
               : 'Card ${drillState.currentCardNumber} of ${drillState.totalCards}',
           userColor: drillState.userColor,
           lineLabel: drillState.lineLabel,
-          playerSide: PlayerSide.none,
+          playerSide: drillState.userColor == Side.white
+              ? PlayerSide.white
+              : PlayerSide.black,
           showSkip: true,
           shapes: _buildFeedbackShapes(drillState, drillColors),
           annotations: _buildFeedbackAnnotations(drillState, drillColors),
