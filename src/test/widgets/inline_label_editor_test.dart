@@ -200,6 +200,50 @@ void main() {
       expect(find.text('(no display name)'), findsNothing);
     });
 
+    testWidgets('text field has maxLength of 50', (tester) async {
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.maxLength, 50);
+    });
+
+    testWidgets('cannot type beyond maxLength', (tester) async {
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      // Enter a string longer than 50 characters.
+      final longText = 'A' * 60;
+      await tester.enterText(find.byType(TextField), longText);
+      await tester.pumpAndSettle();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller!.text.length, 50);
+    });
+
+    testWidgets('existing label at maxLength can be loaded and shortened',
+        (tester) async {
+      final label50 = 'A' * 50;
+      await tester.pumpWidget(buildTestApp(currentLabel: label50));
+      await tester.pumpAndSettle();
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller!.text, label50);
+      expect(textField.controller!.text.length, 50);
+    });
+
+    testWidgets('existing over-length label is displayed intact',
+        (tester) async {
+      final label60 = 'A' * 60;
+      await tester.pumpWidget(buildTestApp(currentLabel: label60));
+      await tester.pumpAndSettle();
+
+      // The full over-length label should be loaded without truncation.
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.controller!.text, label60);
+      expect(textField.controller!.text.length, 60);
+    });
+
     testWidgets('trims whitespace before saving', (tester) async {
       String? savedLabel;
 

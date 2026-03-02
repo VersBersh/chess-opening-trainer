@@ -125,6 +125,7 @@ class _InlineLabelEditorState extends State<InlineLabelEditor> {
             controller: _textController,
             focusNode: _focusNode,
             enabled: !_isSaving,
+            maxLength: 50,
             decoration: const InputDecoration(
               labelText: 'Label',
               hintText: 'e.g. Sicilian, Najdorf',
