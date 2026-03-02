@@ -5,7 +5,7 @@ import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
 
 // ---------------------------------------------------------------------------
-// Shared dialogs used by RepertoireBrowserScreen.
+// Shared repertoire dialogs (used by both RepertoireBrowserScreen and AddLineScreen).
 // ---------------------------------------------------------------------------
 
 /// Thrown when the user cancels a label change from the impact warning dialog.
@@ -122,6 +122,35 @@ Future<void> showCardStatsDialog(
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Shows a warning dialog when the user is about to save a line that has no
+/// label/name anywhere along its path.
+///
+/// Returns `true` if the user chooses "Save without name" (proceed with save),
+/// `false` if the user chooses "Add name" (cancel save to add a label), or
+/// `null` if the dialog is dismissed.
+Future<bool?> showNoNameWarningDialog(BuildContext context) {
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Line has no name'),
+      content: const Text(
+        'Naming lines is recommended so you know which line you are '
+        'supposed to play during training.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Add name'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Save without name'),
         ),
       ],
     ),

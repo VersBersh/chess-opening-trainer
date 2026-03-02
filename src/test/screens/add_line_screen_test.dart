@@ -146,6 +146,10 @@ Future<void> triggerParityMismatchWarning(WidgetTester tester) async {
 
   await tester.tap(find.text('Confirm'));
   await tester.pumpAndSettle();
+
+  // Dismiss the no-name warning dialog (unnamed line from empty repertoire).
+  await tester.tap(find.text('Save without name'));
+  await tester.pumpAndSettle();
 }
 
 Widget buildTestApp(
@@ -178,7 +182,8 @@ Widget buildTestApp(
 /// `await tester.tap(find.text('Confirm'))` and `pumpAndSettle()`.
 Future<({AddLineController controller, ChessboardController testBoard, int repId})>
     pumpWithExtendingMove(WidgetTester tester, AppDatabase db) async {
-  final repId = await seedRepertoire(db, lines: [['e4']], createCards: true);
+  final repId = await seedRepertoire(db,
+      lines: [['e4']], createCards: true, labelsOnSan: {'e4': 'Main'});
   final e4Id = await getMoveIdBySan(db, repId, 'e4');
 
   final repRepo = LocalRepertoireRepository(db);
@@ -1017,6 +1022,10 @@ void main() {
       await tester.tap(find.text('Confirm'));
       await tester.pumpAndSettle();
 
+      // Dismiss no-name warning (unnamed line from empty repertoire).
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
       // No parity warning should appear.
       expect(find.text('Lines for White should end on a White move'), findsNothing);
 
@@ -1064,10 +1073,12 @@ void main() {
 
     testWidgets('ConfirmError shows error SnackBar on confirm',
         (tester) async {
-      // Seed tree with e4 -> e5.
-      final repId = await seedRepertoire(db, lines: [
-        ['e4', 'e5'],
-      ]);
+      // Seed tree with e4 -> e5 (labeled so no-name dialog is skipped).
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'e5'],
+          ],
+          labelsOnSan: {'e4': 'Main'});
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
@@ -1110,10 +1121,12 @@ void main() {
 
     testWidgets('ConfirmError shows error SnackBar on flip-and-confirm',
         (tester) async {
-      // Seed tree with e4 -> e5.
-      final repId = await seedRepertoire(db, lines: [
-        ['e4', 'e5'],
-      ]);
+      // Seed tree with e4 -> e5 (labeled so no-name dialog is skipped).
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'e5'],
+          ],
+          labelsOnSan: {'e4': 'Main'});
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
@@ -1372,6 +1385,10 @@ void main() {
       await tester.tap(find.text('Confirm'));
       await tester.pumpAndSettle();
 
+      // Dismiss no-name warning (unnamed line from empty repertoire).
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
       // Snackbar should appear with "Line saved" and "Undo".
       expect(find.text('Line saved'), findsOneWidget);
       expect(find.text('Undo'), findsOneWidget);
@@ -1384,6 +1401,10 @@ void main() {
 
       // Tap Confirm.
       await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Dismiss no-name warning (unnamed line from empty repertoire).
+      await tester.tap(find.text('Save without name'));
       await tester.pumpAndSettle();
 
       // Snackbar should appear.
@@ -1416,6 +1437,10 @@ void main() {
 
       // Tap Confirm.
       await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Dismiss no-name warning (unnamed line from empty repertoire).
+      await tester.tap(find.text('Save without name'));
       await tester.pumpAndSettle();
 
       // Snackbar should appear with 8-second auto-dismiss duration.
@@ -1731,6 +1756,185 @@ void main() {
       final savedE5 =
           updatedMoves.firstWhere((m) => m.id == e5Line2.id);
       expect(savedE5.label, isNull);
+    });
+  });
+
+  group('No-name warning dialog', () {
+    testWidgets('confirming a line with no labels shows the warning dialog',
+        (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // The no-name warning dialog should appear.
+      expect(find.text('Line has no name'), findsOneWidget);
+      expect(
+          find.text('Save without name'), findsOneWidget);
+      expect(find.text('Add name'), findsOneWidget);
+    });
+
+    testWidgets('"Save without name" proceeds to persist the line',
+        (tester) async {
+      final result = await pumpWithNewLine(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Dialog should appear.
+      expect(find.text('Line has no name'), findsOneWidget);
+
+      // Tap "Save without name".
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // Dialog should be gone.
+      expect(find.text('Line has no name'), findsNothing);
+
+      // Moves should be persisted.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(result.repId);
+      expect(moves.length, 1);
+      expect(moves.first.san, 'e4');
+    });
+
+    testWidgets('"Add name" does not persist and stays on screen',
+        (tester) async {
+      final result = await pumpWithNewLine(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Dialog should appear.
+      expect(find.text('Line has no name'), findsOneWidget);
+
+      // Tap "Add name".
+      await tester.tap(find.text('Add name'));
+      await tester.pumpAndSettle();
+
+      // Dialog should be gone.
+      expect(find.text('Line has no name'), findsNothing);
+
+      // Moves should NOT be persisted.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(result.repId);
+      expect(moves, isEmpty);
+
+      // The screen should still be visible with the unsaved pill.
+      expect(find.text('Add Line'), findsOneWidget);
+      expect(find.text('e4'), findsOneWidget);
+    });
+
+    testWidgets('confirming a line with a label does NOT show the warning',
+        (tester) async {
+      // Seed a repertoire with a labeled move. Start from that move
+      // so aggregateDisplayName is non-empty.
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4'],
+          ],
+          labelsOnSan: {'e4': 'King Pawn'},
+          createCards: true);
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(
+          repRepo, reviewRepo, repId,
+          startingMoveId: e4Id);
+
+      await tester.pumpWidget(
+        buildTestApp(db, repId, startingMoveId: e4Id, controller: controller),
+      );
+      await tester.pumpAndSettle();
+
+      // Play extending move e5 using a test-local board controller.
+      final testBoard = ChessboardController();
+      final e4Fen = controller.state.currentFen;
+      testBoard.setPosition(e4Fen);
+      final e5NormalMove = sanToNormalMove(e4Fen, 'e5');
+      testBoard.playMove(e5NormalMove);
+      controller.onBoardMove(e5NormalMove, testBoard);
+
+      // Flip board for parity (2-ply = even = black expected).
+      controller.flipBoard();
+
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      await tester.pump();
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // No "Line has no name" dialog should appear.
+      expect(find.text('Line has no name'), findsNothing);
+
+      // Line should be persisted directly (or parity handled).
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.any((m) => m.san == 'e5'), isTrue);
+    });
+
+    testWidgets(
+        '"Add name" short-circuits before parity validation',
+        (tester) async {
+      // Seed an empty repertoire. Play e4 then e5 (2-ply, even).
+      // Board is White (default), so parity would mismatch (even = Black
+      // expected). But the no-name check should fire first, and choosing
+      // "Add name" should prevent confirmAndPersist from ever running.
+      final repId = await seedRepertoire(db);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      // Play e4, e5 via test board controller.
+      final testBoard = ChessboardController();
+      final e4NormalMove = sanToNormalMove(kInitialFEN, 'e4');
+      testBoard.playMove(e4NormalMove);
+      controller.onBoardMove(e4NormalMove, testBoard);
+
+      final e4Fen = testBoard.fen;
+      final e5NormalMove = sanToNormalMove(e4Fen, 'e5');
+      testBoard.playMove(e5NormalMove);
+      controller.onBoardMove(e5NormalMove, testBoard);
+
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      await tester.pump();
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // No-name dialog should appear (no labels on the path).
+      expect(find.text('Line has no name'), findsOneWidget);
+
+      // Tap "Add name" to cancel.
+      await tester.tap(find.text('Add name'));
+      await tester.pumpAndSettle();
+
+      // No-name dialog should be dismissed.
+      expect(find.text('Line has no name'), findsNothing);
+
+      // Parity warning should NOT have been shown (short-circuited).
+      expect(find.text('Line parity mismatch'), findsNothing);
+
+      // No moves should be persisted.
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves, isEmpty);
     });
   });
 }

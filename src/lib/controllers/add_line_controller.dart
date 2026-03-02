@@ -280,6 +280,12 @@ class AddLineController extends ChangeNotifier {
   /// Whether there are new (buffered) moves to persist.
   bool get hasNewMoves => _state.engine?.hasNewMoves ?? false;
 
+  /// Whether any move along the current line's path has a label.
+  ///
+  /// Returns `true` when [AddLineState.aggregateDisplayName] is non-empty,
+  /// meaning at least one existing/followed move has a label assigned.
+  bool get hasLineLabel => _state.aggregateDisplayName.isNotEmpty;
+
   /// Whether branching from the currently focused pill is valid.
   ///
   /// Returns true if focusedPillIndex points to a saved pill AND there are

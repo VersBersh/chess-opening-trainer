@@ -138,6 +138,16 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
 
   Future<void> _onConfirmLine() async {
     setState(() => _isLabelEditorVisible = false);
+
+    if (!_controller.hasNewMoves) return;
+
+    // Warn if the line has no label anywhere along its path.
+    if (!_controller.hasLineLabel) {
+      final proceed = await showNoNameWarningDialog(context);
+      if (proceed != true) return;
+      if (!mounted) return;
+    }
+
     final result = await _controller.confirmAndPersist();
 
     if (!mounted) return;

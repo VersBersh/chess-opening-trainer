@@ -1413,4 +1413,111 @@ void main() {
       boardController.dispose();
     });
   });
+
+  group('hasLineLabel', () {
+    test('returns false for a fresh repertoire with no moves', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      expect(controller.hasLineLabel, false);
+
+      controller.dispose();
+    });
+
+    test('returns false when line path has no labels', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow existing moves e4, e5.
+      final moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Buffer a new move Bc4.
+      final bc4Move = sanToNormalMove(currentFen, 'Bc4');
+      boardController.playMove(bc4Move);
+      controller.onBoardMove(bc4Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.hasLineLabel, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('returns true when extending a path that has a label', () async {
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'e5'],
+          ],
+          labelsOnSan: {'e4': 'King Pawn'});
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow existing moves e4, e5.
+      final moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Buffer a new move Nf3.
+      final nf3Move = sanToNormalMove(currentFen, 'Nf3');
+      boardController.playMove(nf3Move);
+      controller.onBoardMove(nf3Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.hasLineLabel, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('returns true when branching from a labeled starting node', () async {
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'e5', 'Nf3'],
+          ],
+          labelsOnSan: {'e5': 'Sicilian'});
+
+      // Find e5's move ID to use as startingMoveId.
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId,
+          startingMoveId: e5Id);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Buffer a new move d4 (branching from e5).
+      final currentFen = controller.state.currentFen;
+      final d4Move = sanToNormalMove(currentFen, 'd4');
+      boardController.setPosition(currentFen);
+      boardController.playMove(d4Move);
+      controller.onBoardMove(d4Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.hasLineLabel, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
 }
