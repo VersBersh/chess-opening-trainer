@@ -33,7 +33,6 @@ class MovePillsWidget extends StatelessWidget {
     required this.pills,
     this.focusedIndex,
     required this.onPillTapped,
-    this.onDeleteLast,
   });
 
   /// The ordered list of pill data, one per ply.
@@ -44,10 +43,6 @@ class MovePillsWidget extends StatelessWidget {
 
   /// Callback invoked when a pill is tapped, with the tapped pill's index.
   final void Function(int index) onPillTapped;
-
-  /// Callback invoked when the delete action is triggered on the last pill.
-  /// When `null`, the delete affordance is hidden.
-  final VoidCallback? onDeleteLast;
 
   @override
   Widget build(BuildContext context) {
@@ -70,9 +65,7 @@ class MovePillsWidget extends StatelessWidget {
             _MovePill(
               data: pills[i],
               isFocused: i == focusedIndex,
-              isLast: i == pills.length - 1,
               onTap: () => onPillTapped(i),
-              onDelete: i == pills.length - 1 ? onDeleteLast : null,
             ),
         ],
       ),
@@ -88,16 +81,12 @@ class _MovePill extends StatelessWidget {
   const _MovePill({
     required this.data,
     required this.isFocused,
-    required this.isLast,
     required this.onTap,
-    this.onDelete,
   });
 
   final MovePillData data;
   final bool isFocused;
-  final bool isLast;
   final VoidCallback onTap;
-  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -160,56 +149,24 @@ class _MovePill extends StatelessWidget {
       }
     }
 
-    final showDelete = isLast && onDelete != null;
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Pill container -- uses a decorated Container with separate tap
-        // targets for the SAN text and the delete icon so that tapping the
-        // delete icon does NOT also fire onTap.
-        Container(
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: borderColor, width: borderWidth),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // SAN text tap target
-              GestureDetector(
-                onTap: onTap,
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    left: 10,
-                    right: showDelete ? 4 : 10,
-                    top: 6,
-                    bottom: 6,
-                  ),
-                  child: Text(
-                    data.san,
-                    style: TextStyle(color: textColor),
-                  ),
-                ),
-              ),
-              // Delete icon tap target (separate from SAN text)
-              if (showDelete)
-                GestureDetector(
-                  onTap: onDelete,
-                  behavior: HitTestBehavior.opaque,
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: textColor,
-                    ),
-                  ),
-                ),
-            ],
+        // Pill container
+        GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: borderColor, width: borderWidth),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Text(
+              data.san,
+              style: TextStyle(color: textColor),
+            ),
           ),
         ),
 

@@ -22,7 +22,6 @@ Widget buildTestApp({
   required List<MovePillData> pills,
   int? focusedIndex,
   void Function(int)? onPillTapped,
-  VoidCallback? onDeleteLast,
   double width = 400,
   bool includePillTheme = true,
 }) {
@@ -38,7 +37,6 @@ Widget buildTestApp({
           pills: pills,
           focusedIndex: focusedIndex,
           onPillTapped: onPillTapped ?? (_) {},
-          onDeleteLast: onDeleteLast,
         ),
       ),
     ),
@@ -212,75 +210,15 @@ void main() {
       expect(labelFinder, findsNothing);
     });
 
-    testWidgets('delete icon visible on last pill only', (tester) async {
+    testWidgets('pills do not render a delete icon', (tester) async {
       final pills = [
         const MovePillData(san: 'e4', isSaved: true),
-        const MovePillData(san: 'e5', isSaved: true),
-        const MovePillData(san: 'Nf3', isSaved: false),
+        const MovePillData(san: 'e5', isSaved: false),
       ];
 
-      await tester.pumpWidget(buildTestApp(
-        pills: pills,
-        onDeleteLast: () {},
-      ));
-
-      // Only one close icon should be rendered (on the last pill).
-      expect(find.byIcon(Icons.close), findsOneWidget);
-    });
-
-    testWidgets('delete icon hidden when onDeleteLast is null',
-        (tester) async {
-      final pills = [
-        const MovePillData(san: 'e4', isSaved: true),
-        const MovePillData(san: 'e5', isSaved: true),
-        const MovePillData(san: 'Nf3', isSaved: false),
-      ];
-
-      await tester.pumpWidget(buildTestApp(
-        pills: pills,
-        onDeleteLast: null,
-      ));
+      await tester.pumpWidget(buildTestApp(pills: pills));
 
       expect(find.byIcon(Icons.close), findsNothing);
-    });
-
-    testWidgets('tapping delete icon fires onDeleteLast callback',
-        (tester) async {
-      var deleteCalled = false;
-      final pills = [
-        const MovePillData(san: 'e4', isSaved: true),
-        const MovePillData(san: 'e5', isSaved: true),
-        const MovePillData(san: 'Nf3', isSaved: false),
-      ];
-
-      await tester.pumpWidget(buildTestApp(
-        pills: pills,
-        onDeleteLast: () => deleteCalled = true,
-      ));
-
-      await tester.tap(find.byIcon(Icons.close));
-      expect(deleteCalled, true);
-    });
-
-    testWidgets('tapping delete icon does not fire onPillTapped',
-        (tester) async {
-      var pillTapped = false;
-      var deleteCalled = false;
-      final pills = [
-        const MovePillData(san: 'e4', isSaved: true),
-        const MovePillData(san: 'e5', isSaved: true),
-        const MovePillData(san: 'Nf3', isSaved: false),
-      ];
-
-      await tester.pumpWidget(buildTestApp(
-        pills: pills,
-        onPillTapped: (_) => pillTapped = true,
-        onDeleteLast: () => deleteCalled = true,
-      ));
-
-      await tester.tap(find.byIcon(Icons.close));
-      expect(deleteCalled, true);
-      expect(pillTapped, false);
     });
 
     testWidgets('pills wrap onto multiple lines', (tester) async {

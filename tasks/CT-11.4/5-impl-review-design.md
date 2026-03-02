@@ -1,0 +1,6 @@
+- **Verdict** — `Approved with Notes`
+- **Issues**
+1. **Minor — Clean Code (File Size) + SRP pressure**: [`add_line_screen.dart:37`](/C:/code/misc/chess-trainer-4/src/lib/screens/add_line_screen.dart:37) is a 496-line state class that mixes UI layout, dialog composition, snackbar/undo orchestration, board sync, and controller coordination. This gives the class multiple reasons to change and makes architecture harder to read from code alone.  
+Suggested fix: extract dialog builders and action-bar/pills sections into smaller widgets/helpers, and move confirm/undo orchestration into a dedicated coordinator/use-case layer.
+
+The actual CT-11.4 changes in [`move_pills_widget.dart`](/C:/code/misc/chess-trainer-4/src/lib/widgets/move_pills_widget.dart) and [`move_pills_widget_test.dart`](/C:/code/misc/chess-trainer-4/src/test/widgets/move_pills_widget_test.dart) are otherwise clean: delete affordance was removed consistently, API surface was simplified, and regression coverage for “no X icon” was retained.

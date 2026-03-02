@@ -439,7 +439,6 @@ class _AddLineScreenState extends State<AddLineScreen> {
             pills: state.pills,
             focusedIndex: state.focusedPillIndex,
             onPillTapped: _onPillTapped,
-            onDeleteLast: _controller.canTakeBack ? _onTakeBack : null,
           ),
 
           // Action bar
