@@ -106,4 +106,84 @@ class LocalReviewRepository implements ReviewRepository {
     ).getSingle();
     return result.read<int>('cnt');
   }
+
+  @override
+  Future<Map<int, ({int dueCount, int totalCount})>> getRepertoireSummaries(
+      {DateTime? asOf}) async {
+    final cutoff = asOf ?? DateTime.now();
+
+    final results = await _db.customSelect(
+      '''
+      SELECT
+        repertoire_id,
+        COUNT(*) AS total_count,
+        COUNT(CASE WHEN next_review_date <= ? THEN 1 END) AS due_count
+      FROM review_cards
+      GROUP BY repertoire_id
+      ''',
+      variables: [Variable<DateTime>(cutoff)],
+      readsFrom: {_db.reviewCards},
+    ).get();
+
+    final map = <int, ({int dueCount, int totalCount})>{};
+    for (final row in results) {
+      final repertoireId = row.read<int>('repertoire_id');
+      map[repertoireId] = (
+        dueCount: row.read<int>('due_count'),
+        totalCount: row.read<int>('total_count'),
+      );
+    }
+    return map;
+  }
+
+  /// SQLite bind-variable limit minus one (reserved for the cutoff datetime).
+  static const _maxIdsPerChunk = 900;
+
+  @override
+  Future<Map<int, int>> getDueCountForSubtrees(List<int> moveIds,
+      {DateTime? asOf}) async {
+    if (moveIds.isEmpty) return {};
+
+    final cutoff = asOf ?? DateTime.now();
+    final map = <int, int>{};
+
+    // Chunk to stay within SQLite's 999-variable limit.
+    for (var i = 0; i < moveIds.length; i += _maxIdsPerChunk) {
+      final chunk = moveIds.sublist(
+        i,
+        i + _maxIdsPerChunk < moveIds.length
+            ? i + _maxIdsPerChunk
+            : moveIds.length,
+      );
+      final placeholders = List.filled(chunk.length, '?').join(', ');
+
+      final results = await _db.customSelect(
+        '''
+        WITH RECURSIVE subtrees(root_id, node_id) AS (
+          SELECT id, id FROM repertoire_moves WHERE id IN ($placeholders)
+          UNION ALL
+          SELECT s.root_id, m.id
+          FROM repertoire_moves m
+          JOIN subtrees s ON m.parent_move_id = s.node_id
+        )
+        SELECT s.root_id, COUNT(*) AS due_count
+        FROM subtrees s
+        JOIN review_cards rc ON rc.leaf_move_id = s.node_id
+        WHERE rc.next_review_date <= ?
+        GROUP BY s.root_id
+        ''',
+        variables: [
+          ...chunk.map(Variable.withInt),
+          Variable<DateTime>(cutoff),
+        ],
+        readsFrom: {_db.repertoireMoves, _db.reviewCards},
+      ).get();
+
+      for (final row in results) {
+        final rootId = row.read<int>('root_id');
+        map[rootId] = (map[rootId] ?? 0) + row.read<int>('due_count');
+      }
+    }
+    return map;
+  }
 }

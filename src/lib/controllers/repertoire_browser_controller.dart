@@ -117,19 +117,15 @@ class RepertoireBrowserController extends ChangeNotifier {
       // 3. Compute initial expand state.
       final expandedIds = _computeInitialExpandState(cache);
 
-      // 4. Load due-card counts for labeled nodes.
-      final dueCountMap = <int, int>{};
-      for (final move in allMoves) {
-        if (move.label != null) {
-          final cards = await _reviewRepo.getCardsForSubtree(
-            move.id,
-            dueOnly: true,
-          );
-          if (cards.isNotEmpty) {
-            dueCountMap[move.id] = cards.length;
-          }
-        }
-      }
+      // 4. Load due-card counts for labeled nodes in a single query.
+      final labeledMoveIds = allMoves
+          .where((m) => m.label != null)
+          .map((m) => m.id)
+          .toList();
+
+      final dueCountMap = labeledMoveIds.isEmpty
+          ? <int, int>{}
+          : await _reviewRepo.getDueCountForSubtrees(labeledMoveIds);
 
       _state = _state.copyWith(
         repertoireName: repertoire.name,

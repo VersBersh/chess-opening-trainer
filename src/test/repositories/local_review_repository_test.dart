@@ -673,4 +673,163 @@ void main() {
       }
     });
   });
+
+  // -------------------------------------------------------------------------
+  // getRepertoireSummaries
+  // -------------------------------------------------------------------------
+
+  group('getRepertoireSummaries', () {
+    test('returns empty map when no cards exist', () async {
+      await db
+          .into(db.repertoires)
+          .insert(RepertoiresCompanion.insert(name: 'Empty'));
+
+      final summaries =
+          await repo.getRepertoireSummaries(asOf: DateTime(2026, 3, 2));
+      expect(summaries, isEmpty);
+    });
+
+    test('returns correct due and total counts per repertoire', () async {
+      final seed = await seedBranchingTree(db);
+
+      // asOf = 2026-03-02: Nf3 (Jan 10) and Bc4 (Mar 2) are due; c5 (Jun 15) is not.
+      final summaries =
+          await repo.getRepertoireSummaries(asOf: DateTime(2026, 3, 2));
+
+      expect(summaries, contains(seed.repId));
+      final counts = summaries[seed.repId]!;
+      expect(counts.totalCount, 3);
+      expect(counts.dueCount, 2);
+    });
+
+    test('handles multiple repertoires', () async {
+      // Repertoire 1: branching tree with 3 cards.
+      final seed = await seedBranchingTree(db);
+
+      // Repertoire 2: single line with 1 card due in the past.
+      final (repId2, _, _) = await seedLineWithCard(
+        db,
+        ['d4', 'd5'],
+        nextReviewDate: DateTime(2026, 1, 1),
+      );
+
+      final summaries =
+          await repo.getRepertoireSummaries(asOf: DateTime(2026, 3, 2));
+
+      expect(summaries.length, 2);
+
+      final counts1 = summaries[seed.repId]!;
+      expect(counts1.totalCount, 3);
+      expect(counts1.dueCount, 2);
+
+      final counts2 = summaries[repId2]!;
+      expect(counts2.totalCount, 1);
+      expect(counts2.dueCount, 1);
+    });
+
+    test('includes cards due exactly on asOf boundary', () async {
+      // Bc4 is due on DateTime(2026, 3, 2).
+      await seedBranchingTree(db);
+
+      final summaries =
+          await repo.getRepertoireSummaries(asOf: DateTime(2026, 3, 2));
+
+      final counts = summaries.values.first;
+      // Nf3 (Jan 10) and Bc4 (Mar 2) are due; c5 (Jun 15) is not.
+      expect(counts.dueCount, 2);
+    });
+
+    test('repertoires with zero cards are absent from map', () async {
+      // Create a repertoire with no cards.
+      await db
+          .into(db.repertoires)
+          .insert(RepertoiresCompanion.insert(name: 'Empty'));
+
+      // Create a repertoire with cards.
+      await seedBranchingTree(db);
+
+      final summaries =
+          await repo.getRepertoireSummaries(asOf: DateTime(2026, 3, 2));
+
+      // Only the branching tree repertoire should be in the map.
+      expect(summaries.length, 1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getDueCountForSubtrees
+  // -------------------------------------------------------------------------
+
+  group('getDueCountForSubtrees', () {
+    test('returns empty map for empty moveIds list', () async {
+      final result =
+          await repo.getDueCountForSubtrees([], asOf: DateTime(2026, 3, 2));
+      expect(result, isEmpty);
+    });
+
+    test('returns correct due counts for a branching tree', () async {
+      final seed = await seedBranchingTree(db);
+
+      // asOf = 2026-03-02:
+      //   e4 subtree: Nf3 (Jan 10) + Bc4 (Mar 2) due, c5 (Jun 15) not => 2
+      //   e5 subtree: Nf3 (Jan 10) + Bc4 (Mar 2) due => 2
+      final result = await repo.getDueCountForSubtrees(
+        [seed.e4Id, seed.e5Id],
+        asOf: DateTime(2026, 3, 2),
+      );
+
+      expect(result[seed.e4Id], 2);
+      expect(result[seed.e5Id], 2);
+    });
+
+    test('omits entries with zero due count', () async {
+      final seed = await seedBranchingTree(db);
+
+      // c5 subtree: c5 (Jun 15) is not due at 2026-03-02.
+      final result = await repo.getDueCountForSubtrees(
+        [seed.c5Id],
+        asOf: DateTime(2026, 3, 2),
+      );
+
+      expect(result.containsKey(seed.c5Id), false);
+    });
+
+    test('handles leaf nodes', () async {
+      final seed = await seedBranchingTree(db);
+
+      // Nf3 is a leaf with a card due on Jan 10 (past due).
+      final result = await repo.getDueCountForSubtrees(
+        [seed.nf3Id],
+        asOf: DateTime(2026, 3, 2),
+      );
+
+      expect(result[seed.nf3Id], 1);
+    });
+
+    test('handles overlapping subtrees', () async {
+      final seed = await seedBranchingTree(db);
+
+      // e5 subtree includes Nf3 and Bc4. Nf3 is also queried as its own root.
+      // asOf = 2026-03-02: both Nf3 (Jan 10) and Bc4 (Mar 2) are due.
+      final result = await repo.getDueCountForSubtrees(
+        [seed.e5Id, seed.nf3Id],
+        asOf: DateTime(2026, 3, 2),
+      );
+
+      expect(result[seed.e5Id], 2); // Nf3 + Bc4
+      expect(result[seed.nf3Id], 1); // just Nf3
+    });
+
+    test('returns empty map when all cards are future-due', () async {
+      final seed = await seedBranchingTree(db);
+
+      // asOf before any card is due.
+      final result = await repo.getDueCountForSubtrees(
+        [seed.e4Id],
+        asOf: DateTime(2025, 1, 1),
+      );
+
+      expect(result, isEmpty);
+    });
+  });
 }

@@ -163,6 +163,33 @@ class FakeReviewRepository implements ReviewRepository {
   @override
   Future<int> getCardCountForRepertoire(int repertoireId) async =>
       allCards.where((c) => c.repertoireId == repertoireId).length;
+
+  @override
+  Future<Map<int, ({int dueCount, int totalCount})>> getRepertoireSummaries(
+      {DateTime? asOf}) async {
+    // Merge allCards and dueCards so that tests setting only dueCards still work.
+    final seen = <int>{};
+    final merged = <ReviewCard>[];
+    for (final card in [...allCards, ...dueCards]) {
+      if (seen.add(card.id)) merged.add(card);
+    }
+    final map = <int, ({int dueCount, int totalCount})>{};
+    for (final card in merged) {
+      final rid = card.repertoireId;
+      final prev = map[rid] ?? (dueCount: 0, totalCount: 0);
+      final isDue = dueCards.contains(card);
+      map[rid] = (
+        dueCount: prev.dueCount + (isDue ? 1 : 0),
+        totalCount: prev.totalCount + 1,
+      );
+    }
+    return map;
+  }
+
+  @override
+  Future<Map<int, int>> getDueCountForSubtrees(List<int> moveIds,
+          {DateTime? asOf}) async =>
+      {};
 }
 
 /// A repertoire repository that blocks [getAllRepertoires] on a completer so

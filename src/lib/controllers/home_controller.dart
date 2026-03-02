@@ -47,20 +47,21 @@ class HomeController extends AutoDisposeAsyncNotifier<HomeState> {
     final reviewRepo = ref.read(reviewRepositoryProvider);
 
     final repertoires = await repertoireRepo.getAllRepertoires();
+    final summaryMap = await reviewRepo.getRepertoireSummaries();
+
     final summaries = <RepertoireSummary>[];
     var totalDue = 0;
 
     for (final repertoire in repertoires) {
-      final dueCards =
-          await reviewRepo.getDueCardsForRepertoire(repertoire.id);
-      final totalCardCount =
-          await reviewRepo.getCardCountForRepertoire(repertoire.id);
+      final counts = summaryMap[repertoire.id];
+      final dueCount = counts?.dueCount ?? 0;
+      final totalCardCount = counts?.totalCount ?? 0;
       summaries.add(RepertoireSummary(
         repertoire: repertoire,
-        dueCount: dueCards.length,
+        dueCount: dueCount,
         totalCardCount: totalCardCount,
       ));
-      totalDue += dueCards.length;
+      totalDue += dueCount;
     }
 
     return HomeState(repertoires: summaries, totalDueCount: totalDue);

@@ -209,6 +209,16 @@ class FakeReviewRepository implements ReviewRepository {
   @override
   Future<int> getCardCountForRepertoire(int repertoireId) async =>
       _allCards.where((c) => c.repertoireId == repertoireId).length;
+
+  @override
+  Future<Map<int, ({int dueCount, int totalCount})>> getRepertoireSummaries(
+          {DateTime? asOf}) async =>
+      {};
+
+  @override
+  Future<Map<int, int>> getDueCountForSubtrees(List<int> moveIds,
+          {DateTime? asOf}) async =>
+      {};
 }
 
 // ---------------------------------------------------------------------------
