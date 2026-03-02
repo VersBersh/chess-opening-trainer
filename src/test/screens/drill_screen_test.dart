@@ -811,7 +811,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle(const Duration(seconds: 2));
 
-      // Should show next review text (0 mistakes = quality 5, interval 1 day = "Tomorrow")
+      // Should show next review text (0 mistakes = quality 5, interval 1 day)
       expect(find.textContaining('Next review:'), findsOneWidget);
     });
 

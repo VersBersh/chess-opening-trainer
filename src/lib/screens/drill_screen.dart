@@ -1147,7 +1147,9 @@ class DrillScreen extends ConsumerWidget {
     final dueDay = DateTime(nextDue.year, nextDue.month, nextDue.day);
     final difference = dueDay.difference(today).inDays;
 
-    if (difference <= 1) {
+    if (difference <= 0) {
+      return 'Today';
+    } else if (difference == 1) {
       return 'Tomorrow';
     } else if (difference <= 30) {
       return 'In $difference days';
