@@ -1,0 +1,10 @@
+- **Verdict** — `Approved with Notes`
+- **Issues**
+1. **Major — Single Responsibility / File Size smell**: [`drill_screen.dart:1`](C:/code/misc/chess-trainer-1/src/lib/screens/drill_screen.dart:1) (1129 lines) combines domain state types, async controller/orchestration, filtering logic, theme resolution, and full UI rendering in one file/class cluster (`DrillController`, `DrillScreen`, `_DrillFilterAutocomplete`). This increases change-coupling and makes extension/testing harder.  
+Suggested fix: split by responsibility, e.g. `drill_controller.dart`, `drill_screen_view.dart`, `drill_feedback_widgets.dart`, and keep only composition at screen entry.
+
+2. **Minor — DRY / Open-Closed pressure in theme construction**: [`main.dart:59`](C:/code/misc/chess-trainer-1/src/lib/main.dart:59) and [`main.dart:75`](C:/code/misc/chess-trainer-1/src/lib/main.dart:75) duplicate most `ThemeData` assembly for light/dark (same structure, different tokens). As more theme extensions/tokens are added, this requires editing both blocks and risks divergence.  
+Suggested fix: extract a shared theme factory method (for example `buildAppTheme(ColorScheme scheme, {required PillTheme pill, required DrillFeedbackTheme drill})`) and call it for light/dark variants.
+
+3. **Minor — Hidden semantic coupling via enum conversion paths**: [`settings_screen.dart:43`](C:/code/misc/chess-trainer-1/src/lib/screens/settings_screen.dart:43) and [`app_theme_mode.dart:34`](C:/code/misc/chess-trainer-1/src/lib/theme/app_theme_mode.dart:34) each implement part of `ThemeMode <-> ThemeModeChoice` mapping logic. It works now, but mapping rules are split across modules.  
+Suggested fix: centralize conversions in `ThemeModeChoice` (for example `ThemeModeChoice.fromThemeMode(...)` and `ThemeModeChoice.tryParseName(...)`) so UI and persistence depend on one authoritative mapping.

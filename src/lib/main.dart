@@ -9,6 +9,8 @@ import 'repositories/local/local_repertoire_repository.dart';
 import 'repositories/local/local_review_repository.dart';
 import 'screens/home_screen.dart';
 import 'services/dev_seed.dart';
+import 'theme/app_theme_mode.dart';
+import 'theme/drill_feedback_theme.dart';
 import 'theme/pill_theme.dart';
 
 // ---------------------------------------------------------------------------
@@ -39,37 +41,59 @@ Future<void> main() async {
   );
 }
 
-class ChessTrainerApp extends StatelessWidget {
+class ChessTrainerApp extends ConsumerWidget {
   final Widget home;
 
   const ChessTrainerApp({super.key, required this.home});
 
   @override
-  Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.fromSeed(seedColor: Colors.indigo);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(appThemeModeProvider);
+
+    final lightColorScheme = ColorScheme.fromSeed(seedColor: Colors.indigo);
+    final darkColorScheme = ColorScheme.fromSeed(
+      seedColor: Colors.indigo,
+      brightness: Brightness.dark,
+    );
+
+    final lightTheme = ThemeData(
+      colorScheme: lightColorScheme,
+      useMaterial3: true,
+      extensions: const [
+        PillTheme.light(),
+        drillFeedbackThemeLight,
+      ],
+      appBarTheme: AppBarTheme(
+        backgroundColor: lightColorScheme.inversePrimary,
+        foregroundColor: lightColorScheme.onSurface,
+      ),
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    final darkTheme = ThemeData(
+      colorScheme: darkColorScheme,
+      useMaterial3: true,
+      extensions: const [
+        PillTheme.dark(),
+        drillFeedbackThemeDark,
+      ],
+      appBarTheme: AppBarTheme(
+        backgroundColor: darkColorScheme.inversePrimary,
+        foregroundColor: darkColorScheme.onSurface,
+      ),
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
 
     return MaterialApp(
       title: 'Chess Trainer',
-      theme: ThemeData(
-        colorScheme: colorScheme,
-        useMaterial3: true,
-        extensions: const [
-          PillTheme(
-            savedColor: Color(0xFF5B8FDB),
-            unsavedColor: Color(0xFFB0CBF0),
-            focusedBorderColor: Color(0xFF1A56A8),
-          ),
-        ],
-        appBarTheme: AppBarTheme(
-          backgroundColor: colorScheme.inversePrimary,
-          foregroundColor: colorScheme.onSurface,
-        ),
-        snackBarTheme: const SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
-        ),
-      ),
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeMode,
       home: home,
     );
   }
 }
-

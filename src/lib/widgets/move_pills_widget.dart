@@ -112,12 +112,12 @@ class _MovePill extends StatelessWidget {
     if (pillTheme != null) {
       if (data.isSaved && isFocused) {
         background = pillTheme.savedColor;
-        textColor = Colors.white;
+        textColor = pillTheme.textOnSavedColor;
         borderColor = pillTheme.focusedBorderColor;
         borderWidth = 2;
       } else if (data.isSaved && !isFocused) {
         background = pillTheme.savedColor;
-        textColor = Colors.white;
+        textColor = pillTheme.textOnSavedColor;
         borderColor = pillTheme.savedColor;
         borderWidth = 1;
       } else if (!data.isSaved && isFocused) {

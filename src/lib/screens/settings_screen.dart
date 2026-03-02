@@ -3,6 +3,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../theme/app_theme_mode.dart';
 import '../theme/board_theme.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
@@ -36,6 +37,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final boardTheme = ref.watch(boardThemeProvider);
+    final themeMode = ref.watch(appThemeModeProvider);
+
+    // Resolve current ThemeModeChoice from the ThemeMode value.
+    final currentChoice = ThemeModeChoice.values.firstWhere(
+      (c) => c.themeMode == themeMode,
+      orElse: () => ThemeModeChoice.system,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -44,6 +52,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Theme mode picker
+          Text(
+            'Theme',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<ThemeModeChoice>(
+            segments: ThemeModeChoice.values
+                .map((choice) => ButtonSegment<ThemeModeChoice>(
+                      value: choice,
+                      label: Text(choice.label),
+                    ))
+                .toList(),
+            selected: {currentChoice},
+            onSelectionChanged: (selected) {
+              ref
+                  .read(appThemeModeProvider.notifier)
+                  .setThemeMode(selected.first);
+            },
+          ),
+          const SizedBox(height: 24),
+
           // Live preview board
           Center(
             child: ConstrainedBox(

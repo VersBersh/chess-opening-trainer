@@ -13,6 +13,7 @@ import '../repositories/review_repository.dart';
 import '../services/chess_utils.dart';
 import '../services/drill_engine.dart';
 import '../theme/board_theme.dart';
+import '../theme/drill_feedback_theme.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
 
@@ -718,6 +719,9 @@ class DrillScreen extends ConsumerWidget {
         );
 
       case DrillMistakeFeedback():
+        final drillColors =
+            Theme.of(context).extension<DrillFeedbackTheme>()
+                ?? drillFeedbackThemeDefault;
         return _buildDrillScaffold(
           context,
           ref,
@@ -729,8 +733,8 @@ class DrillScreen extends ConsumerWidget {
           lineLabel: drillState.lineLabel,
           playerSide: PlayerSide.none,
           showSkip: true,
-          shapes: _buildFeedbackShapes(drillState),
-          annotations: _buildFeedbackAnnotations(drillState),
+          shapes: _buildFeedbackShapes(drillState, drillColors),
+          annotations: _buildFeedbackAnnotations(drillState, drillColors),
         );
 
       case DrillFilterNoResults():
@@ -880,11 +884,12 @@ class DrillScreen extends ConsumerWidget {
     }
   }
 
-  ISet<Shape> _buildFeedbackShapes(DrillMistakeFeedback feedback) {
+  ISet<Shape> _buildFeedbackShapes(
+      DrillMistakeFeedback feedback, DrillFeedbackTheme drillColors) {
     // Arrow showing the expected/correct move
     final arrowColor = feedback.isSiblingCorrection
-        ? const Color(0xFF4488FF) // blue for sibling corrections
-        : const Color(0xFF44CC44); // green for wrong moves
+        ? drillColors.siblingArrowColor
+        : drillColors.correctArrowColor;
 
     final shapes = <Shape>{
       Arrow(
@@ -897,7 +902,7 @@ class DrillScreen extends ConsumerWidget {
     // Red circle on the wrong move destination (only for genuine mistakes)
     if (!feedback.isSiblingCorrection && feedback.wrongMoveDestination != null) {
       shapes.add(Circle(
-        color: const Color(0xFFCC4444),
+        color: drillColors.mistakeColor,
         orig: feedback.wrongMoveDestination!,
       ));
     }
@@ -906,13 +911,13 @@ class DrillScreen extends ConsumerWidget {
   }
 
   IMap<Square, Annotation>? _buildFeedbackAnnotations(
-      DrillMistakeFeedback feedback) {
+      DrillMistakeFeedback feedback, DrillFeedbackTheme drillColors) {
     // Use annotation with "X" symbol for genuine mistakes
     if (!feedback.isSiblingCorrection && feedback.wrongMoveDestination != null) {
       return IMap({
-        feedback.wrongMoveDestination!: const Annotation(
+        feedback.wrongMoveDestination!: Annotation(
           symbol: 'X',
-          color: Color(0xFFCC4444),
+          color: drillColors.mistakeColor,
         ),
       });
     }
@@ -1018,6 +1023,8 @@ class DrillScreen extends ConsumerWidget {
   Widget _buildSessionComplete(
       BuildContext context, DrillSessionComplete drillState) {
     final summary = drillState.summary;
+    final drillColors = Theme.of(context).extension<DrillFeedbackTheme>()
+        ?? drillFeedbackThemeDefault;
 
     return Scaffold(
       appBar: AppBar(title: Text(summary.isFreePractice ? 'Practice Complete' : 'Session Complete')),
@@ -1068,11 +1075,11 @@ class DrillScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
                   _buildBreakdownRow(
                       context, 'Perfect', summary.perfectCount,
-                      const Color(0xFF4CAF50)), // semantic: success green
+                      drillColors.perfectColor),
                   const SizedBox(height: 8),
                   _buildBreakdownRow(context, 'Hesitation',
                       summary.hesitationCount,
-                      const Color(0xFF8BC34A)), // semantic: light green
+                      drillColors.hesitationColor),
                   const SizedBox(height: 8),
                   _buildBreakdownRow(context, 'Struggled',
                       summary.struggledCount,

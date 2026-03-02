@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/screens/settings_screen.dart';
+import 'package:chess_trainer/theme/app_theme_mode.dart';
 import 'package:chess_trainer/theme/board_theme.dart';
 import 'package:chess_trainer/widgets/chessboard_widget.dart';
 
@@ -41,9 +42,16 @@ void main() {
       await tester.pumpWidget(buildTestApp());
       await tester.pumpAndSettle();
 
-      expect(find.text('Board Color'), findsOneWidget);
-      expect(find.text('Piece Set'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('Board Color'), findsOneWidget);
+
+      // Piece Set section may be below the fold — scroll to it.
+      await tester.scrollUntilVisible(
+        find.text('Piece Set'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('Piece Set'), findsOneWidget);
     });
 
     testWidgets('renders a preview chessboard', (tester) async {
@@ -57,6 +65,13 @@ void main() {
       await tester.pumpWidget(buildTestApp());
       await tester.pumpAndSettle();
 
+      // Scroll to piece set section first — it may be below the fold.
+      await tester.scrollUntilVisible(
+        find.text('Piece Set'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
+
       // All piece set labels should be visible.
       for (final choice in PieceSetChoice.values) {
         expect(find.text(choice.label), findsOneWidget);
@@ -67,6 +82,13 @@ void main() {
         (tester) async {
       await tester.pumpWidget(buildTestApp());
       await tester.pumpAndSettle();
+
+      // Scroll to the piece set section first.
+      await tester.scrollUntilVisible(
+        find.text(PieceSetChoice.merida.label),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
 
       // Tap the Merida chip.
       await tester.tap(find.text(PieceSetChoice.merida.label));
@@ -118,6 +140,13 @@ void main() {
           find.byType(ChessboardWidget));
       expect(boardWidget.settings?.pieceAssets, PieceSet.cburnett.assets);
 
+      // Scroll to the piece set section first.
+      await tester.scrollUntilVisible(
+        find.text(PieceSetChoice.california.label),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
+
       // Tap a different piece set.
       await tester.tap(find.text(PieceSetChoice.california.label));
       await tester.pumpAndSettle();
@@ -126,6 +155,58 @@ void main() {
       boardWidget = tester.widget<ChessboardWidget>(
           find.byType(ChessboardWidget));
       expect(boardWidget.settings?.pieceAssets, PieceSet.california.assets);
+    });
+  });
+
+  group('SettingsScreen — theme mode picker', () {
+    testWidgets('renders the Theme section title', (tester) async {
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Theme'), findsOneWidget);
+    });
+
+    testWidgets('renders Light, Dark, and System segments', (tester) async {
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Light'), findsOneWidget);
+      expect(find.text('Dark'), findsOneWidget);
+      expect(find.text('System'), findsOneWidget);
+    });
+
+    testWidgets('tapping Dark updates provider to ThemeMode.dark',
+        (tester) async {
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Dark'));
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SettingsScreen)),
+      );
+      final state = container.read(appThemeModeProvider);
+      expect(state, ThemeMode.dark);
+    });
+
+    testWidgets('tapping System updates provider to ThemeMode.system',
+        (tester) async {
+      await tester.pumpWidget(buildTestApp());
+      await tester.pumpAndSettle();
+
+      // First switch to light so System is a change.
+      await tester.tap(find.text('Light'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('System'));
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SettingsScreen)),
+      );
+      final state = container.read(appThemeModeProvider);
+      expect(state, ThemeMode.system);
     });
   });
 }
