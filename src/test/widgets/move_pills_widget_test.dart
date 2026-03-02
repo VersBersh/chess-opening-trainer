@@ -197,17 +197,57 @@ void main() {
 
       // Only the SAN text should appear, no label text.
       expect(find.text('e4'), findsOneWidget);
-      // With label: null, no label text should appear. The widget only renders
-      // a Transform.rotate when a label is present, so we verify by ancestor:
-      // no Text widget should be a descendant of a Transform.rotate wrapper
-      // (excluding any framework-internal Transforms).
-      final labelFinder = find.descendant(
-        of: find.byWidgetPredicate(
+      // Verify no label text widget exists (label uses fontSize 10).
+      final labelStyleFinder = find.byWidgetPredicate(
+        (w) => w is Text && w.style?.fontSize == 10,
+      );
+      expect(labelStyleFinder, findsNothing);
+    });
+
+    testWidgets('labeled pill renders flat text without rotation',
+        (tester) async {
+      final pills = [
+        const MovePillData(san: 'e4', isSaved: true, label: 'Sicilian'),
+      ];
+
+      await tester.pumpWidget(buildTestApp(pills: pills));
+
+      // Label text is present.
+      expect(find.text('Sicilian'), findsOneWidget);
+
+      // No Transform.rotate wrapper around the label.
+      final rotatedLabelFinder = find.ancestor(
+        of: find.text('Sicilian'),
+        matching: find.byWidgetPredicate(
           (w) => w is Transform && w.transform.storage[0] != 1.0,
         ),
-        matching: find.byType(Text),
       );
-      expect(labelFinder, findsNothing);
+      expect(rotatedLabelFinder, findsNothing);
+    });
+
+    testWidgets('label does not affect pill layout height', (tester) async {
+      final pills = [
+        const MovePillData(san: 'e4', isSaved: true, label: 'Sicilian'),
+        const MovePillData(san: 'd4', isSaved: true),
+      ];
+
+      await tester.pumpWidget(buildTestApp(pills: pills));
+
+      final labeledSize = tester.getSize(find.ancestor(
+        of: find.text('e4'),
+        matching: find.byWidgetPredicate(
+          (w) => w is Stack && w.clipBehavior == Clip.none,
+        ),
+      ));
+      final unlabeledSize = tester.getSize(find.ancestor(
+        of: find.text('d4'),
+        matching: find.byType(GestureDetector),
+      ).first);
+
+      // The Stack (labeled pill) should have the same height as the
+      // GestureDetector (unlabeled pill) because the label is positioned
+      // outside the layout bounds.
+      expect(labeledSize.height, unlabeledSize.height);
     });
 
     testWidgets('pills do not render a delete icon', (tester) async {

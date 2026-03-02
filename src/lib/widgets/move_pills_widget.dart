@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../theme/pill_theme.dart';
 
+/// Vertical offset (in logical pixels) for the label positioned beneath a pill.
+/// Negative because `Positioned.bottom` is measured upward from the Stack's
+/// bottom edge; a negative value places the label *below* the Stack bounds.
+const double _kLabelBottomOffset = -14;
+
 // ---------------------------------------------------------------------------
 // Pill data model
 // ---------------------------------------------------------------------------
@@ -60,6 +65,7 @@ class MovePillsWidget extends StatelessWidget {
       child: Wrap(
         spacing: 4,
         runSpacing: 4,
+        clipBehavior: Clip.none, // labels may paint outside pill bounds
         children: [
           for (var i = 0; i < pills.length; i++)
             _MovePill(
@@ -149,38 +155,44 @@ class _MovePill extends StatelessWidget {
       }
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    final pillBody = GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: borderColor, width: borderWidth),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(
+          data.san,
+          style: TextStyle(color: textColor),
+        ),
+      ),
+    );
+
+    if (data.label == null) {
+      return pillBody;
+    }
+
+    return Stack(
+      clipBehavior: Clip.none,
       children: [
-        // Pill container
-        GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: Container(
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: borderColor, width: borderWidth),
+        pillBody,
+        Positioned(
+          left: 0,
+          bottom: _kLabelBottomOffset,
+          child: Text(
+            data.label!,
+            style: TextStyle(
+              fontSize: 10,
+              color: colorScheme.primary,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Text(
-              data.san,
-              style: TextStyle(color: textColor),
-            ),
+            maxLines: 1,
+            overflow: TextOverflow.visible,
           ),
         ),
-
-        // Label beneath the pill
-        if (data.label != null)
-          Transform.rotate(
-            angle: -0.15,
-            child: Text(
-              data.label!,
-              style: TextStyle(fontSize: 10, color: colorScheme.primary),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
       ],
     );
   }
