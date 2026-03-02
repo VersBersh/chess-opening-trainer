@@ -29,6 +29,7 @@ When a new card begins, the **most specific label** from the card's line is disp
 - The label shown is the **deepest labeled position** along the card's line (i.e., the most specific variation name). The full aggregate display name (root-to-deepest-label) is shown.
 - If the line has no labels at all, no label is shown (the header area can be blank or show a generic fallback like the repertoire name).
 - The label updates each time a new card begins.
+- **Applies to both Drill mode and Free Practice mode.** The line name display is identical in both modes. See [free-practice.md](free-practice.md).
 
 ## Starting a Card
 

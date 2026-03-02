@@ -13,13 +13,23 @@ Free Practice introduces no new persisted models. It is an SR-exempt drill sessi
 
 - A **"Free Practice"** button is added to the home screen, separate from the per-repertoire "Start Drill" button.
 - "Start Drill" remains gated by having due cards. "Free Practice" is always available as long as the repertoire has cards.
+- **No intermediate screen.** Tapping "Free Practice" goes straight to the drill screen — there is no separate setup or filter screen. Filtering happens inline on the drill screen itself (see Inline Filter below).
 
 ## Card Selection
 
-- By default, **all cards** in the repertoire are included — regardless of their SR schedule.
-- A **search box with autocomplete** lets the user filter by **label**. Selecting a label scopes the session to only cards whose line passes through a node with that label (i.e., the subtree rooted at that labeled position).
-  - The autocomplete searches over existing position labels (as created via the labeling feature in [line-management.md](line-management.md)).
-  - Multiple labels can be selected to combine variations into a single session.
+- By default, **all cards** in the repertoire are included — regardless of their SR schedule. Cards are served in random order.
+- Filtering is done via an **inline filter box** on the drill screen (see Inline Filter section below), not on a separate setup screen.
+
+## Inline Filter
+
+In Free Practice mode (not regular Drill mode), a **filter box** is shown at the bottom of the drill screen.
+
+- The filter box starts empty — all cards are available.
+- The user can type to narrow down to a specific variation by **label**. The filter searches over existing position labels (as created via the labeling feature in [line-management.md](line-management.md)).
+- Selecting a label scopes the session to only cards whose line passes through a node with that label (i.e., the subtree rooted at that labeled position).
+- Multiple labels can be selected to combine variations into a single session.
+- Clearing the filter returns to all cards.
+- The filter is always visible during the session — the user can adjust it between cards.
 
 ## Spaced Repetition
 
@@ -32,10 +42,22 @@ In a future iteration, the app may implement **cram detection** — recognizing 
 
 See the cram detection discussion in the archived [focus-mode.md](focus-mode.md) for detailed design options (discount quality, skip SR update, or flag to user).
 
+## Line Name Display
+
+During Free Practice, the **line name** (aggregate display name) is shown above the board when a card begins — the same behavior as regular Drill mode (see [drill-mode.md](drill-mode.md) Line Label Display). This tells the user which variation they're practicing.
+
 ## Session Behavior
 
 - Once started, free practice behaves identically to a normal drill session: the user plays through lines on the board, mistakes are shown, intro moves are auto-played, etc. All drill mechanics from [drill-mode.md](drill-mode.md) apply.
 - The only difference is that results are not persisted to the SR system.
+
+## "Keep Going" Button
+
+When all cards in the current set (filtered or unfiltered) have been reviewed, the session does not end automatically. Instead, a **"Keep Going"** button is displayed, allowing the user to continue studying the same set of cards.
+
+- Tapping "Keep Going" reshuffles the same card set and starts a new pass.
+- The user can keep going indefinitely — this supports cramming and deep practice.
+- The session only ends when the user explicitly exits (navigates away).
 
 ## Session Summary
 

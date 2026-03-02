@@ -55,7 +55,7 @@ Each repertoire list item also includes a **"Free Practice"** button. Tapping it
 
 - Free Practice is **always available** as long as the repertoire has cards (regardless of due status).
 - If the repertoire has no cards at all, the button is visually muted.
-- On tap, the user is taken to a label selection screen (search box with autocomplete) where they can optionally scope the session to specific variations, or start immediately with all cards.
+- On tap, the user goes **directly to the drill screen** in Free Practice mode — there is no intermediate setup or filter screen. Filtering by label is done inline on the drill screen itself.
 - See [free-practice.md](free-practice.md) for full details.
 
 ### Global Drill Entry (Deferred)

@@ -26,8 +26,9 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 
 - Pills are shown in order: e.g. `e4` → `e5` → `Nf3` → `Nc6` → ...
 - As the user makes moves on the board, new pills are appended to the row.
-- If a pill's move exists in the database and has a **label**, the label is shown beneath the pill. The label text may be vertically angled/slanted to fit the compact horizontal layout.
+- If a pill's move exists in the database and has a **label**, the label is shown beneath the pill as **flat text** (not angled/slanted). The label may overflow underneath neighboring pills — this is acceptable since it's unlikely adjacent pills will both have labels.
 - Pills for moves that already exist in the database are visually distinct from new (unsaved) pills (e.g., different background color or border).
+- **Equal width:** All pills have the **same width**, regardless of the SAN text length. This provides a clean, uniform appearance.
 - **Styling:** Pills use a blue fill, modest border radius (not full stadium shape), per [design/ui-guidelines.md](../design/ui-guidelines.md).
 - **Wrapping:** The pill row wraps onto multiple lines when moves exceed the available width. Pills must never scroll off-screen invisibly.
 
@@ -39,15 +40,18 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 
 ### Deleting Moves
 
-- The user can **delete the last pill** in the row. This removes that move from the in-memory buffer.
-- Only the last pill can be deleted (no deleting from the middle of a line). This is equivalent to the existing take-back functionality.
+- Pills do **not** have an X or delete affordance on them. The only way to remove moves is via the **Take Back button** in the action buttons area.
+- Take Back removes the last move from the in-memory buffer. Only the last move can be removed (no deleting from the middle of a line).
+- Take Back must work for **all moves**, including the very first move (e.g., taking back 1. e4 to return to the empty starting position).
+- See [line-management.md](line-management.md) for take-back rules.
 
 ### Editing Labels
 
-- The Label button is **enabled** in Add Line mode. The user can add or edit a label at any time, not only after confirming.
-- When a pill is focused (tapped), the user can **add or edit the label** for that position directly from the pill or via the Label action button.
+- The Label button is **enabled** in Add Line mode, **regardless of board orientation**. Labels are independent of the line color (not tied to white/black move context) and should always be editable.
+- When a pill is focused (tapped), the user can **add or edit the label** for that position.
+- **No popup dialog.** Clicking a pill shows the label below it in an **inline editing box**. Clicking the box enables editing. See [design/ui-guidelines.md](../design/ui-guidelines.md) for the inline editing convention.
 - This follows the same labeling rules as [line-management.md](line-management.md) — labels are short local segments, the aggregate display name is computed by walking root-to-leaf.
-- **Multi-line impact warning:** If adding or editing a label would affect multiple existing lines (e.g., labeling a shared ancestor node), a confirmation dialog is shown before applying the change.
+- **Multi-line impact warning:** If adding or editing a label would affect multiple existing lines (e.g., labeling a shared ancestor node), an inline warning is shown (not a popup). See the confirmation behavior below.
 
 ### Branching
 
@@ -72,6 +76,13 @@ A **flip board** toggle is available. Board orientation determines the line's co
 - Black at bottom → black line (leaf at even ply).
 
 Line parity validation on confirm follows [line-management.md](line-management.md).
+
+## Confirmation Behavior
+
+- **No popup on confirm.** When the user presses Confirm, any warnings (e.g., line parity mismatch) are shown as an **inline warning below the board**, not as a popup dialog.
+- The user can read the warning and then either continue editing the line, flip the board, or confirm anyway.
+- The inline warning is dismissible and non-blocking — it does not interrupt the user's flow.
+- See [design/ui-guidelines.md](../design/ui-guidelines.md) for the inline warning convention.
 
 ## Aggregate Name Preview
 

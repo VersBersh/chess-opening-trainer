@@ -17,7 +17,11 @@ Uses **Repertoire**, **RepertoireMove**, and **ReviewCard** from [architecture/m
 
 ### Take-Back During Entry
 
-A **take-back button** is available during line entry. It removes the last move from the buffer and reverts the board to the previous position. The user can press it repeatedly to undo multiple moves. The button is **disabled** when the board is at the starting position or at a branch point (the boundary of existing repertoire data).
+A **take-back button** is available during line entry. It removes the last move from the buffer and reverts the board to the previous position. The user can press it repeatedly to undo multiple moves.
+
+- Take-back works for **all moves**, including the very first move (e.g., undoing 1. e4 returns to the empty starting position).
+- The button is **disabled** when the board is at the starting position (no moves to undo) or at a branch point (the boundary of existing repertoire data that was not entered in this session).
+- Take-back is the **only** way to remove moves — pills do not have individual delete (X) buttons. See [add-line.md](add-line.md).
 
 ### Board Orientation and Color
 
@@ -35,7 +39,7 @@ On confirm, the system validates that the line's parity matches the board orient
 - If the board is oriented for **white** (white at bottom), the line must end on an **odd ply** (white's move).
 - If the board is oriented for **black** (black at bottom), the line must end on an **even ply** (black's move).
 
-If there is a mismatch, the system **warns the user** — it does not silently accept the line. The warning offers to **flip the board and confirm as the other color**. This ensures the board orientation during entry is consistent with how the line will be drilled (the user sees the board from their side in both contexts).
+If there is a mismatch, the system **warns the user** via an **inline warning below the board** — not a popup dialog. The warning offers to **flip the board and confirm as the other color**. The user can ignore the warning and continue editing, or flip the board and reconfirm. See [design/ui-guidelines.md](../design/ui-guidelines.md) for the inline warning convention.
 
 ### Branching from Existing Lines
 
