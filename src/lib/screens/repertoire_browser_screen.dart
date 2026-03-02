@@ -117,6 +117,9 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   /// The FEN to restore when discarding edit mode.
   String? _editModeStartFen;
 
+  /// Generation counter for invalidating stale undo snackbars.
+  int _undoGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -351,6 +354,10 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
       }
     }
 
+    // Invalidate any prior undo snackbar.
+    _undoGeneration++;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
     // 6b. Persist the new moves.
     final confirmData = engine.getConfirmData();
     final repRepo = LocalRepertoireRepository(widget.db);
@@ -358,6 +365,10 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
 
     if (confirmData.isExtension) {
       // Path A: Extension -- use atomic extendLine.
+      // Capture the old card's SR state before committing.
+      final oldLeafMoveId = confirmData.parentMoveId!;
+      final oldCard = await reviewRepo.getCardForLeaf(oldLeafMoveId);
+
       final companions = <RepertoireMovesCompanion>[];
       for (var i = 0; i < confirmData.newMoves.length; i++) {
         final buffered = confirmData.newMoves[i];
@@ -368,7 +379,24 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           sortOrder: i == 0 ? confirmData.sortOrder : 0,
         ));
       }
-      await repRepo.extendLine(confirmData.parentMoveId!, companions);
+      final insertedMoveIds =
+          await repRepo.extendLine(oldLeafMoveId, companions);
+
+      // Rebuild tree cache and exit edit mode.
+      await _loadData();
+      if (!mounted) return;
+      setState(() {
+        _state = _state.copyWith(
+          isEditMode: false,
+          lineEntryEngine: () => null,
+          currentFen: () => null,
+        );
+      });
+
+      // Show undo snackbar if we had an old card to restore.
+      if (oldCard != null) {
+        _showExtensionUndoSnackbar(oldLeafMoveId, insertedMoveIds, oldCard);
+      }
     } else {
       // Path B: Not an extension (branching from non-leaf or from root).
       int? parentId = confirmData.parentMoveId;
@@ -391,11 +419,10 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
         leafMoveId: parentId!,
         nextReviewDate: DateTime.now(),
       ));
-    }
 
-    // 6c. Rebuild tree cache and exit edit mode.
-    await _loadData();
-    if (mounted) {
+      // 6c. Rebuild tree cache and exit edit mode.
+      await _loadData();
+      if (!mounted) return;
       setState(() {
         _state = _state.copyWith(
           isEditMode: false,
@@ -404,6 +431,36 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
         );
       });
     }
+  }
+
+  void _showExtensionUndoSnackbar(
+    int oldLeafMoveId,
+    List<int> insertedMoveIds,
+    ReviewCard oldCard,
+  ) {
+    final capturedGeneration = _undoGeneration;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Line extended'),
+        duration: const Duration(seconds: 8),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            // Guard: if a newer extension has started, do nothing.
+            if (capturedGeneration != _undoGeneration) return;
+
+            final repRepo = LocalRepertoireRepository(widget.db);
+            await repRepo.undoExtendLine(
+                oldLeafMoveId, insertedMoveIds, oldCard);
+
+            if (!mounted) return;
+            await _loadData();
+          },
+        ),
+      ),
+    );
   }
 
   void _onDiscardEdit() {

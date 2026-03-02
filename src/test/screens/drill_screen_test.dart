@@ -133,8 +133,13 @@ class FakeRepertoireRepository implements RepertoireRepository {
           .toList();
 
   @override
-  Future<void> extendLine(
-          int oldLeafMoveId, List<RepertoireMovesCompanion> newMoves) async {}
+  Future<List<int>> extendLine(
+          int oldLeafMoveId, List<RepertoireMovesCompanion> newMoves) async =>
+      [];
+
+  @override
+  Future<void> undoExtendLine(
+          int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) async {}
 
   @override
   Future<int> countLeavesInSubtree(int moveId) async => 0;

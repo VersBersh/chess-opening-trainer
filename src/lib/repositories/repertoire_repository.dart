@@ -20,8 +20,10 @@ abstract class RepertoireRepository {
   Future<bool> isLeafMove(int moveId);
   Future<List<RepertoireMove>> getMovesAtPosition(
       int repertoireId, String fen);
-  Future<void> extendLine(
+  Future<List<int>> extendLine(
       int oldLeafMoveId, List<RepertoireMovesCompanion> newMoves);
+  Future<void> undoExtendLine(
+      int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard);
   Future<int> countLeavesInSubtree(int moveId);
   Future<List<RepertoireMove>> getOrphanedLeaves(int repertoireId);
   Future<void> pruneOrphans(int repertoireId);

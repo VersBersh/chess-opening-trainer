@@ -130,7 +130,7 @@ class LocalRepertoireRepository implements RepertoireRepository {
   }
 
   @override
-  Future<void> extendLine(
+  Future<List<int>> extendLine(
       int oldLeafMoveId, List<RepertoireMovesCompanion> newMoves) {
     return _db.transaction(() async {
       // Delete the old leaf's review card
@@ -139,18 +139,19 @@ class LocalRepertoireRepository implements RepertoireRepository {
           .go();
 
       // Insert new moves, chaining parent IDs
+      final insertedIds = <int>[];
       int parentId = oldLeafMoveId;
-      int? lastInsertedId;
       for (final move in newMoves) {
-        lastInsertedId = await _db.into(_db.repertoireMoves).insert(
+        final insertedId = await _db.into(_db.repertoireMoves).insert(
               move.copyWith(parentMoveId: Value(parentId)),
             );
-        parentId = lastInsertedId;
+        insertedIds.add(insertedId);
+        parentId = insertedId;
       }
 
       // Create a new review card for the new leaf
-      if (lastInsertedId != null) {
-        final newLeaf = await getMove(lastInsertedId);
+      if (insertedIds.isNotEmpty) {
+        final newLeaf = await getMove(insertedIds.last);
         if (newLeaf != null) {
           await _db.into(_db.reviewCards).insert(
                 ReviewCardsCompanion.insert(
@@ -161,6 +162,39 @@ class LocalRepertoireRepository implements RepertoireRepository {
               );
         }
       }
+
+      return insertedIds;
+    });
+  }
+
+  @override
+  Future<void> undoExtendLine(
+      int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) {
+    return _db.transaction(() async {
+      // Guard: no-op if nothing was inserted.
+      if (insertedMoveIds.isEmpty) return;
+
+      // Assert consistency: the old card must point to the old leaf.
+      if (oldCard.leafMoveId != oldLeafMoveId) {
+        throw StateError(
+          'undoExtendLine contract violation: '
+          'oldCard.leafMoveId (${oldCard.leafMoveId}) != '
+          'oldLeafMoveId ($oldLeafMoveId)',
+        );
+      }
+
+      // Delete the first inserted move; CASCADE removes all descendants
+      // and the new review card.
+      await (_db.delete(_db.repertoireMoves)
+            ..where((m) => m.id.equals(insertedMoveIds.first)))
+          .go();
+
+      // Re-insert the old review card with a fresh auto-increment ID.
+      final companion = oldCard.toCompanion(false).copyWith(
+            id: const Value.absent(),
+            leafMoveId: Value(oldLeafMoveId),
+          );
+      await _db.into(_db.reviewCards).insert(companion);
     });
   }
 

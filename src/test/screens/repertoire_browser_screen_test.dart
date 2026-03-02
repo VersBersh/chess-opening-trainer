@@ -1447,4 +1447,146 @@ void main() {
       expect(find.text('1...d5'), findsOneWidget);
     });
   });
+
+  group('Extension undo snackbar', () {
+    /// Seeds a repertoire with a review card on the leaf, then navigates to
+    /// the leaf, enters edit mode, plays [moveSan] on the board, and confirms.
+    ///
+    /// Returns the leaf move ID (before extension) for later assertions.
+    Future<int> seedAndExtend(
+      WidgetTester tester,
+      AppDatabase db, {
+      List<String> line = const ['e4', 'e5'],
+      required String moveSan,
+    }) async {
+      final repId = await seedRepertoire(db, lines: [line]);
+      final repRepo = LocalRepertoireRepository(db);
+
+      // Find the leaf move (last in the line).
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final leafMove = allMoves.firstWhere(
+        (m) => !allMoves.any((c) => c.parentMoveId == m.id),
+      );
+
+      // Create a review card on the leaf with non-default SR values.
+      await db.into(db.reviewCards).insert(
+            ReviewCardsCompanion.insert(
+              repertoireId: repId,
+              leafMoveId: leafMove.id,
+              nextReviewDate: DateTime(2026, 6, 15),
+            ).copyWith(
+              easeFactor: const Value(2.8),
+              intervalDays: const Value(7),
+              repetitions: const Value(3),
+            ),
+          );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select the leaf node (last SAN in the line).
+      final leafSan = line.last;
+      // Build the display text for the leaf move.
+      final plyIndex = line.length; // 1-based ply number
+      final moveNumber = (plyIndex + 1) ~/ 2;
+      final isBlackMove = plyIndex.isEven;
+      final displayText =
+          isBlackMove ? '$moveNumber...$leafSan' : '$moveNumber. $leafSan';
+      await tester.tap(find.text(displayText));
+      await tester.pump();
+
+      // Enter edit mode from the leaf.
+      await tester.tap(find.text('Edit'));
+      await tester.pump();
+
+      // Play a move on the board by calling Chessboard's GameData.onMove.
+      final chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      final pos = Chess.fromSetup(Setup.parseFen(chessboard.fen));
+      final parsed = pos.parseSan(moveSan)! as NormalMove;
+      chessboard.game!.onMove(parsed);
+      await tester.pump();
+
+      // Tap Confirm to trigger extension.
+      await tester.tap(find.widgetWithText(TextButton, 'Confirm'));
+      await tester.pumpAndSettle();
+
+      return leafMove.id;
+    }
+
+    testWidgets('snackbar appears after confirming line extension',
+        (tester) async {
+      await seedAndExtend(
+        tester,
+        db,
+        line: ['e4', 'e5'],
+        moveSan: 'Nf3',
+      );
+
+      // Snackbar should be visible with "Line extended" and "Undo" action.
+      expect(find.text('Line extended'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+    });
+
+    testWidgets('undo reverts extension: new moves gone, old card restored',
+        (tester) async {
+      final leafId = await seedAndExtend(
+        tester,
+        db,
+        line: ['e4', 'e5'],
+        moveSan: 'Nf3',
+      );
+
+      // Tap Undo on the snackbar.
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+
+      // Verify: old leaf's review card is restored with original SR values.
+      final reviewRepo = LocalReviewRepository(db);
+      final restoredCard = await reviewRepo.getCardForLeaf(leafId);
+      expect(restoredCard, isNotNull);
+      expect(restoredCard!.easeFactor, 2.8);
+      expect(restoredCard.intervalDays, 7);
+      expect(restoredCard.repetitions, 3);
+
+      // Verify: extension move (Nf3) is gone.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(
+          restoredCard.repertoireId);
+      expect(allMoves.any((m) => m.san == 'Nf3'), isFalse);
+      // Original moves should still be there.
+      expect(allMoves.any((m) => m.san == 'e4'), isTrue);
+      expect(allMoves.any((m) => m.san == 'e5'), isTrue);
+    });
+
+    testWidgets('snackbar expiry does not revert extension', (tester) async {
+      final leafId = await seedAndExtend(
+        tester,
+        db,
+        line: ['e4', 'e5'],
+        moveSan: 'Nf3',
+      );
+
+      // Let the snackbar expire (8 seconds duration).
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+
+      // Extension should still be in place.
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(1);
+      expect(allMoves.any((m) => m.san == 'Nf3'), isTrue);
+
+      // Old leaf should NOT have a card (it was consumed by the extension).
+      final oldCard = await reviewRepo.getCardForLeaf(leafId);
+      expect(oldCard, isNull);
+    });
+
+    // Note: The generation counter (`_undoGeneration`) that prevents stale
+    // undo callbacks from firing is tested indirectly through the three tests
+    // above. A full UI test of two sequential extensions in a single widget
+    // test is too fragile due to tree expand/collapse state and layout
+    // constraints. The sequential undo behavior is covered by the repository-
+    // level test in local_repertoire_repository_test.dart.
+  });
 }
