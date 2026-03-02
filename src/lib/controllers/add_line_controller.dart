@@ -1,5 +1,4 @@
 import 'package:dartchess/dartchess.dart';
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/foundation.dart';
 
 import '../models/repertoire.dart';
@@ -7,6 +6,7 @@ import '../repositories/local/database.dart';
 import '../repositories/repertoire_repository.dart';
 import '../repositories/review_repository.dart';
 import '../services/line_entry_engine.dart';
+import '../services/line_persistence_service.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/move_pills_widget.dart';
 
@@ -102,15 +102,21 @@ class ConfirmNoNewMoves extends ConfirmResult {
 class AddLineController extends ChangeNotifier {
   AddLineController(
     this._repertoireRepo,
-    this._reviewRepo,
+    ReviewRepository reviewRepo,
     this._repertoireId, {
     int? startingMoveId,
-  }) : _startingMoveId = startingMoveId;
+    LinePersistenceService? persistenceService,
+  })  : _startingMoveId = startingMoveId,
+        _persistenceService = persistenceService ??
+            LinePersistenceService(
+              repertoireRepo: _repertoireRepo,
+              reviewRepo: reviewRepo,
+            );
 
   final RepertoireRepository _repertoireRepo;
-  final ReviewRepository _reviewRepo;
   final int _repertoireId;
   final int? _startingMoveId;
+  final LinePersistenceService _persistenceService;
 
   AddLineState _state = const AddLineState();
 
@@ -500,67 +506,17 @@ class AddLineController extends ChangeNotifier {
 
   Future<ConfirmResult> _persistMoves(LineEntryEngine engine) async {
     final confirmData = engine.getConfirmData();
+    final result = await _persistenceService.persistNewMoves(confirmData);
 
-    if (confirmData.isExtension) {
-      // Path A: Extension -- use atomic extendLine.
-      final oldLeafMoveId = confirmData.parentMoveId!;
-      final oldCard = await _reviewRepo.getCardForLeaf(oldLeafMoveId);
+    // Rebuild tree cache and reset engine.
+    await loadData();
 
-      final companions = <RepertoireMovesCompanion>[];
-      for (var i = 0; i < confirmData.newMoves.length; i++) {
-        final buffered = confirmData.newMoves[i];
-        companions.add(RepertoireMovesCompanion.insert(
-          repertoireId: confirmData.repertoireId,
-          fen: buffered.fen,
-          san: buffered.san,
-          sortOrder: i == 0 ? confirmData.sortOrder : 0,
-        ));
-      }
-      final insertedMoveIds =
-          await _repertoireRepo.extendLine(oldLeafMoveId, companions);
-
-      // Rebuild tree cache and reset engine.
-      await loadData();
-
-      return ConfirmSuccess(
-        isExtension: true,
-        oldLeafMoveId: oldLeafMoveId,
-        insertedMoveIds: insertedMoveIds,
-        oldCard: oldCard,
-      );
-    } else {
-      // Path B: Not an extension (branching from non-leaf or from root).
-      int? parentId = confirmData.parentMoveId;
-      final insertedIds = <int>[];
-      for (var i = 0; i < confirmData.newMoves.length; i++) {
-        final buffered = confirmData.newMoves[i];
-        final companion = RepertoireMovesCompanion.insert(
-          repertoireId: confirmData.repertoireId,
-          fen: buffered.fen,
-          san: buffered.san,
-          sortOrder: i == 0 ? confirmData.sortOrder : 0,
-        );
-        final withParent = parentId != null
-            ? companion.copyWith(parentMoveId: Value(parentId))
-            : companion;
-        parentId = await _repertoireRepo.saveMove(withParent);
-        insertedIds.add(parentId);
-      }
-      // Create card for the last inserted move (the new leaf).
-      await _reviewRepo.saveReview(ReviewCardsCompanion.insert(
-        repertoireId: confirmData.repertoireId,
-        leafMoveId: parentId!,
-        nextReviewDate: DateTime.now(),
-      ));
-
-      // Rebuild tree cache and reset engine.
-      await loadData();
-
-      return ConfirmSuccess(
-        isExtension: false,
-        insertedMoveIds: insertedIds,
-      );
-    }
+    return ConfirmSuccess(
+      isExtension: result.isExtension,
+      oldLeafMoveId: result.oldLeafMoveId,
+      insertedMoveIds: result.insertedMoveIds,
+      oldCard: result.oldCard,
+    );
   }
 
   // ---- Undo extension -----------------------------------------------------
