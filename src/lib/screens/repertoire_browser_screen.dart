@@ -283,7 +283,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     if (labelToSave == move.label) return;
 
     // Multi-line impact check: warn if the label change affects multiple lines.
-    final leafCount = cache.countDescendantLeaves(selectedId);
+    final leafCount = cache.countDescendantLeaves(moveId);
     if (leafCount > 1) {
       final confirmed = await _showMultiLineWarningDialog(leafCount);
       if (confirmed != true) return;
