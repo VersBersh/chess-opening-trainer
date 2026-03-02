@@ -1372,6 +1372,93 @@ void main() {
       expect(cards.length, 1);
       expect(cards.first.leafMoveId, moves.first.id);
     });
+
+    testWidgets('board FEN and pills preserved after label save',
+        (tester) async {
+      // Seed tree with e4, e5, Nf3.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final expectedFens = computeFens(['e4', 'e5', 'Nf3']);
+
+      // Start at Nf3 so existing path has all 3 pills.
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(
+          repRepo, reviewRepo, repId,
+          startingMoveId: nf3Id);
+
+      addTearDown(() => controller.dispose());
+
+      await tester.pumpWidget(
+        buildTestApp(db, repId, startingMoveId: nf3Id, controller: controller),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify initial pills are all present.
+      expect(find.text('e4'), findsOneWidget);
+      expect(find.text('e5'), findsOneWidget);
+      expect(find.text('Nf3'), findsOneWidget);
+
+      // Tap e4 pill to navigate there.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Tap e4 again to open the inline editor (re-tap focused saved pill).
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Inline label editor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Enter a new label text and submit via Enter.
+      await tester.enterText(find.byType(TextField), 'King Pawn');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Assert state-level correctness:
+      // 1. Pills still show 3 items.
+      expect(find.text('e4'), findsOneWidget);
+      expect(find.text('e5'), findsOneWidget);
+      expect(find.text('Nf3'), findsOneWidget);
+
+      // 2. Board FEN matches expected FEN at e4.
+      final chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.fen, expectedFens[0]);
+
+      // 3. Confirm button is disabled (no new moves).
+      final confirmButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Confirm'),
+      );
+      expect(confirmButton.onPressed, isNull);
+
+      // 4. Take Back button is disabled (no buffered moves).
+      final takeBackButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Take Back'),
+      );
+      expect(takeBackButton.onPressed, isNull);
+
+      // 5. Label was persisted in DB.
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'King Pawn');
+
+      // 6. Verify board remains functional after label save: invoke onMove
+      // with a legal move (d5 -- black to move from e4 position).
+      final chessboardAfter =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboardAfter.game!.onMove(
+        NormalMove(from: Square.d7, to: Square.d5),
+      );
+      await tester.pumpAndSettle();
+
+      // A new pill should appear for d5.
+      expect(find.text('d5'), findsOneWidget);
+    });
   });
 
   group('Transposition conflict warnings', () {

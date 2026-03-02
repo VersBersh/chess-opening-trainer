@@ -761,6 +761,185 @@ void main() {
       controller.dispose();
       boardController.dispose();
     });
+
+    test('updateLabel preserves focusedPillIndex and currentFen', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all 3 existing moves.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final fens = computeFens(moves);
+
+      // Tap pill at index 1 (e5).
+      controller.onPillTapped(1, boardController);
+      expect(controller.state.focusedPillIndex, 1);
+      expect(controller.state.currentFen, fens[1]);
+
+      // Update label on pill 1.
+      await controller.updateLabel(1, 'Sicilian');
+
+      // Assert: navigation state preserved.
+      expect(controller.state.focusedPillIndex, 1);
+      expect(controller.state.currentFen, fens[1]);
+      expect(controller.state.preMoveFen, fens[1]);
+      expect(controller.state.pills.length, 3);
+      for (final pill in controller.state.pills) {
+        expect(pill.isSaved, true);
+      }
+      expect(controller.state.pills[1].label, 'Sicilian');
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('updateLabel does not break subsequent branching', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all 3 existing moves.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final fens = computeFens(moves);
+
+      // Tap pill at index 1 (e5) to focus it.
+      controller.onPillTapped(1, boardController);
+
+      // Update label.
+      await controller.updateLabel(1, 'Sicilian');
+
+      // After updateLabel, no new moves and no take-back possible.
+      expect(controller.hasNewMoves, false);
+      expect(controller.canTakeBack, false);
+
+      // Play a new move (d4) from the e5 position. Black played e5, so
+      // it's white to move at fens[1]. d4 is legal.
+      final d4Move = sanToNormalMove(fens[1], 'd4');
+      boardController.setPosition(fens[1]);
+      boardController.playMove(d4Move);
+      final result = controller.onBoardMove(d4Move, boardController);
+
+      expect(result, isA<MoveAccepted>());
+
+      // Because focusedPillIndex (1) is not at the end (pills.length was 3),
+      // onBoardMove triggers branch mode: creates a new engine from e5's
+      // move ID, drops the tail (Nf3), and adds d4 as buffered.
+      expect(controller.state.pills.length, 3);
+      expect(controller.hasNewMoves, true);
+      expect(controller.canTakeBack, true);
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.pills[0].isSaved, true);
+      expect(controller.state.pills[1].san, 'e5');
+      expect(controller.state.pills[1].isSaved, true);
+      expect(controller.state.pills[2].san, 'd4');
+      expect(controller.state.pills[2].isSaved, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('updateLabel preserves pills when starting from root', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 and e5 (startingMoveId is null, so these are followed moves).
+      final moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final fens = computeFens(moves);
+
+      // Tap pill 0 (e4).
+      controller.onPillTapped(0, boardController);
+      expect(controller.state.focusedPillIndex, 0);
+
+      // Update label on pill 0.
+      await controller.updateLabel(0, 'King Pawn');
+
+      // Assert: pills preserved, label updated, focus preserved.
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].label, 'King Pawn');
+      expect(controller.state.focusedPillIndex, 0);
+      expect(controller.state.currentFen, fens[0]);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('updateLabel is a no-op when hasNewMoves is true', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (saved), then play e5 (buffered).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final fens = computeFens(['e4']);
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].label, isNull);
+
+      // Attempt to update label while hasNewMoves is true.
+      await controller.updateLabel(0, 'Test');
+
+      // Assert: no-op -- label unchanged, state unchanged.
+      expect(controller.state.pills[0].label, isNull);
+      expect(controller.hasNewMoves, true);
+      expect(controller.state.pills.length, 2);
+
+      // Verify the label was NOT persisted to DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move2 = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move2.label, isNull);
+
+      controller.dispose();
+      boardController.dispose();
+    });
   });
 
   group('getFenAtPillIndex', () {

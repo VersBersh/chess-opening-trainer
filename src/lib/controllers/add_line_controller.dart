@@ -584,13 +584,79 @@ class AddLineController extends ChangeNotifier {
 
   // ---- Label editing ------------------------------------------------------
 
+  /// Whether label editing is permitted.
+  ///
+  /// The UI gates editing behind this (via `canEditLabel`), but `updateLabel()`
+  /// is a public API so we also check internally.
+  bool get canEditLabel {
+    final focusedIndex = _state.focusedPillIndex;
+    if (focusedIndex == null) return false;
+    if (focusedIndex >= _state.pills.length) return false;
+    if (!_state.pills[focusedIndex].isSaved) return false;
+    return !hasNewMoves;
+  }
+
   /// Updates the label on the move at the given pill index.
+  ///
+  /// Preserves navigation state (focusedPillIndex, currentFen, preMoveFen,
+  /// boardOrientation) instead of doing a full reset via [loadData].
   Future<void> updateLabel(int pillIndex, String? newLabel) async {
+    // Guard: label editing requires no unsaved moves (the UI enforces this
+    // via canEditLabel, but protect against direct callers).
+    if (hasNewMoves) return;
+
     final moveId = getMoveIdAtPillIndex(pillIndex);
     if (moveId == null) return;
 
+    // Save navigation state before refresh.
+    final savedFocusedPillIndex = _state.focusedPillIndex;
+    final savedCurrentFen = _state.currentFen;
+    final savedPreMoveFen = _state.preMoveFen;
+    final savedBoardOrientation = _state.boardOrientation;
+
     await _repertoireRepo.updateMoveLabel(moveId, newLabel);
-    await loadData();
+
+    // Reload repertoire name, all moves, and rebuild cache (same as loadData
+    // steps 1-2).
+    final repertoire = await _repertoireRepo.getRepertoire(_repertoireId);
+    final allMoves =
+        await _repertoireRepo.getMovesForRepertoire(_repertoireId);
+    final cache = RepertoireTreeCache.build(allMoves);
+
+    // Create a new engine with startingMoveId set to the old engine's
+    // lastExistingMoveId. Since hasNewMoves is false (guarded above), the
+    // new engine's _existingPath covers the full navigated trail and
+    // _bufferedMoves starts empty -- no data is lost.
+    final lastExistingMoveId = _state.engine?.lastExistingMoveId;
+    final engine = LineEntryEngine(
+      treeCache: cache,
+      repertoireId: _repertoireId,
+      startingMoveId: lastExistingMoveId,
+    );
+
+    // Rebuild pills and display name from the fresh engine/cache.
+    final pills = _buildPillsList(engine);
+    final displayName = engine.getCurrentDisplayName();
+
+    // Clamp focusedPillIndex to stay within bounds (should be unchanged
+    // after a label-only update, but defensive).
+    final clampedFocusedIndex = savedFocusedPillIndex != null && pills.isNotEmpty
+        ? savedFocusedPillIndex.clamp(0, pills.length - 1)
+        : savedFocusedPillIndex;
+
+    _state = AddLineState(
+      treeCache: cache,
+      engine: engine,
+      boardOrientation: savedBoardOrientation,
+      focusedPillIndex: clampedFocusedIndex,
+      currentFen: savedCurrentFen,
+      preMoveFen: savedPreMoveFen,
+      aggregateDisplayName: displayName,
+      isLoading: false,
+      repertoireName: repertoire.name,
+      pills: pills,
+    );
+    notifyListeners();
   }
 
   // ---- Board orientation --------------------------------------------------

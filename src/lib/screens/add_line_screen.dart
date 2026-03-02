@@ -429,6 +429,14 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
           }
         }
         await _controller.updateLabel(focusedIndex, label);
+        if (mounted) {
+          final fen = _controller.state.currentFen;
+          if (fen == kInitialFEN) {
+            _boardController.resetToInitial();
+          } else {
+            _boardController.setPosition(fen);
+          }
+        }
       },
       onClose: () {
         if (mounted) {
@@ -506,15 +514,10 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   }
 
   Widget _buildActionBar(BuildContext context, AddLineState state) {
-    final focusedIndex = state.focusedPillIndex;
-    final isSavedPillFocused = focusedIndex != null &&
-        focusedIndex < state.pills.length &&
-        state.pills[focusedIndex].isSaved;
     // Label editing is enabled when a saved pill is focused and no unsaved
-    // moves exist (updateLabel() calls loadData() which would drop buffered
-    // moves). Board orientation is intentionally NOT a factor — labels are
-    // organizational metadata independent of line color (see add-line.md).
-    final canEditLabel = isSavedPillFocused && !_controller.hasNewMoves;
+    // moves exist. Board orientation is intentionally NOT a factor — labels
+    // are organizational metadata independent of line color (see add-line.md).
+    final canEditLabel = _controller.canEditLabel;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
