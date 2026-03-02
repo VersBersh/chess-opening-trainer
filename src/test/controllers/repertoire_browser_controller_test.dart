@@ -95,6 +95,15 @@ Future<int> seedRepertoire(
   return repId;
 }
 
+/// Creates a [RepertoireBrowserController] wired to the given [db] and [repId].
+RepertoireBrowserController createController(AppDatabase db, int repId) {
+  return RepertoireBrowserController(
+    LocalRepertoireRepository(db),
+    LocalReviewRepository(db),
+    repId,
+  );
+}
+
 /// Helper to look up the move ID for a given SAN in the DB.
 Future<int?> getMoveIdBySan(AppDatabase db, int repId, String san) async {
   final allMoves = await LocalRepertoireRepository(db)
@@ -127,11 +136,7 @@ void main() {
         ['e4', 'e5', 'Nf3'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       expect(controller.state.isLoading, false);
@@ -155,11 +160,7 @@ void main() {
         createCards: true,
       );
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       // e4 is labeled and has a descendant card, so it should have a due count.
@@ -177,11 +178,7 @@ void main() {
         ['e4', 'e5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e4Id = await getMoveIdBySan(db, repId, 'e4');
@@ -201,11 +198,7 @@ void main() {
         ['e4', 'e5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e4Id = await getMoveIdBySan(db, repId, 'e4');
@@ -225,11 +218,7 @@ void main() {
     test('toggles board orientation', () async {
       final repId = await seedRepertoire(db);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       expect(controller.state.boardOrientation, Side.white);
@@ -248,11 +237,7 @@ void main() {
         ['e4', 'e5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e5Id = await getMoveIdBySan(db, repId, 'e5');
@@ -272,11 +257,7 @@ void main() {
         ['e4', 'e5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e4Id = await getMoveIdBySan(db, repId, 'e4');
@@ -295,11 +276,7 @@ void main() {
         ['e4', 'e5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e4Id = await getMoveIdBySan(db, repId, 'e4');
@@ -320,11 +297,7 @@ void main() {
         ['e4', 'c5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e4Id = await getMoveIdBySan(db, repId, 'e4');
@@ -344,11 +317,7 @@ void main() {
         ['e4', 'e5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e4Id = await getMoveIdBySan(db, repId, 'e4');
@@ -374,11 +343,7 @@ void main() {
         ['e4', 'e5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e5Id = await getMoveIdBySan(db, repId, 'e5');
@@ -407,11 +372,7 @@ void main() {
         createCards: true,
       );
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       // Delete e5 first.
@@ -442,11 +403,7 @@ void main() {
         createCards: true,
       );
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       // Delete e5 first.
@@ -478,11 +435,7 @@ void main() {
         createCards: true,
       );
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e5Id = await getMoveIdBySan(db, repId, 'e5');
@@ -502,11 +455,7 @@ void main() {
         createCards: false,
       );
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e5Id = await getMoveIdBySan(db, repId, 'e5');
@@ -523,11 +472,7 @@ void main() {
         ['e4', 'e5'],
       ]);
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e4Id = await getMoveIdBySan(db, repId, 'e4');
@@ -552,11 +497,7 @@ void main() {
         createCards: true,
       );
 
-      final controller = RepertoireBrowserController(
-        LocalRepertoireRepository(db),
-        LocalReviewRepository(db),
-        repId,
-      );
+      final controller = createController(db, repId);
       await controller.loadData();
 
       final e5Id = await getMoveIdBySan(db, repId, 'e5');

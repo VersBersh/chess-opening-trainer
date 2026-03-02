@@ -5,6 +5,9 @@ import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
 import '../repositories/repertoire_repository.dart';
 import '../repositories/review_repository.dart';
+import '../services/deletion_service.dart';
+
+export '../services/deletion_service.dart' show OrphanChoice, BranchDeleteInfo;
 
 // ---------------------------------------------------------------------------
 // State
@@ -58,24 +61,6 @@ class RepertoireBrowserState {
 }
 
 // ---------------------------------------------------------------------------
-// Orphan handling
-// ---------------------------------------------------------------------------
-
-/// User's choice when a parent move becomes childless after deletion.
-enum OrphanChoice { keepShorterLine, removeMove }
-
-// ---------------------------------------------------------------------------
-// Data types for two-step dialog pattern
-// ---------------------------------------------------------------------------
-
-/// Data needed by the screen to show a branch-delete confirmation dialog.
-class BranchDeleteInfo {
-  final int lineCount;
-  final int cardCount;
-  const BranchDeleteInfo({required this.lineCount, required this.cardCount});
-}
-
-// ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
 
@@ -94,6 +79,10 @@ class RepertoireBrowserController extends ChangeNotifier {
   final RepertoireRepository _repertoireRepo;
   final ReviewRepository _reviewRepo;
   final int _repertoireId;
+  late final DeletionService _deletionService = DeletionService(
+    repertoireRepo: _repertoireRepo,
+    reviewRepo: _reviewRepo,
+  );
   bool _disposed = false;
 
   var _state = const RepertoireBrowserState();
@@ -269,20 +258,12 @@ class RepertoireBrowserController extends ChangeNotifier {
   // ---- Deletion handlers ---------------------------------------------------
 
   /// Deletes a move (and all descendants via CASCADE) and returns the parent ID.
-  Future<int?> deleteMoveAndGetParent(int moveId) async {
-    final move = await _repertoireRepo.getMove(moveId);
-    if (move == null) return null;
-    final parentId = move.parentMoveId;
-    await _repertoireRepo.deleteMove(moveId);
-    return parentId;
-  }
+  Future<int?> deleteMoveAndGetParent(int moveId) =>
+      _deletionService.deleteMoveAndGetParent(moveId);
 
   /// Returns info needed for the branch-delete confirmation dialog.
-  Future<BranchDeleteInfo> getBranchDeleteInfo(int moveId) async {
-    final lineCount = await _repertoireRepo.countLeavesInSubtree(moveId);
-    final cards = await _reviewRepo.getCardsForSubtree(moveId);
-    return BranchDeleteInfo(lineCount: lineCount, cardCount: cards.length);
-  }
+  Future<BranchDeleteInfo> getBranchDeleteInfo(int moveId) =>
+      _deletionService.getBranchDeleteInfo(moveId);
 
   /// Handles orphaned moves after a deletion.
   ///
@@ -292,35 +273,8 @@ class RepertoireBrowserController extends ChangeNotifier {
   Future<void> handleOrphans(
     int? parentMoveId,
     Future<OrphanChoice?> Function(int moveId) promptUser,
-  ) async {
-    int? currentId = parentMoveId;
-
-    while (currentId != null) {
-      final children = await _repertoireRepo.getChildMoves(currentId);
-      if (children.isNotEmpty) break; // not an orphan
-
-      final choice = await promptUser(currentId);
-
-      if (choice == null) {
-        break; // Dialog dismissed -- abort orphan handling
-      } else if (choice == OrphanChoice.keepShorterLine) {
-        final move = await _repertoireRepo.getMove(currentId);
-        if (move == null) break;
-        await _reviewRepo.saveReview(ReviewCardsCompanion.insert(
-          repertoireId: move.repertoireId,
-          leafMoveId: currentId,
-          nextReviewDate: DateTime.now(),
-        ));
-        break;
-      } else {
-        // Remove move -- delete and check its parent
-        final move = await _repertoireRepo.getMove(currentId);
-        final nextParent = move?.parentMoveId;
-        await _repertoireRepo.deleteMove(currentId);
-        currentId = nextParent;
-      }
-    }
-  }
+  ) =>
+      _deletionService.handleOrphans(parentMoveId, promptUser);
 
   // ---- Card Stats -----------------------------------------------------------
 
@@ -332,7 +286,6 @@ class RepertoireBrowserController extends ChangeNotifier {
   // ---- Orphan prompt data ---------------------------------------------------
 
   /// Returns the move data needed to show an orphan prompt dialog.
-  Future<RepertoireMove?> getMoveForOrphanPrompt(int moveId) async {
-    return _repertoireRepo.getMove(moveId);
-  }
+  Future<RepertoireMove?> getMoveForOrphanPrompt(int moveId) =>
+      _deletionService.getMoveForOrphanPrompt(moveId);
 }
