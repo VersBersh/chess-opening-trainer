@@ -54,9 +54,7 @@ class LocalReviewRepository implements ReviewRepository {
   Future<List<ReviewCard>> getCardsForSubtree(int moveId,
       {bool dueOnly = false, DateTime? asOf}) async {
     final cutoff = asOf ?? DateTime.now();
-    final dueFilter = dueOnly
-        ? "AND rc.next_review_date <= '${cutoff.toIso8601String()}'"
-        : '';
+    final dueFilter = dueOnly ? 'AND rc.next_review_date <= ?' : '';
 
     final results = await _db.customSelect(
       '''
@@ -69,7 +67,10 @@ class LocalReviewRepository implements ReviewRepository {
       JOIN subtree s ON rc.leaf_move_id = s.id
       $dueFilter
       ''',
-      variables: [Variable.withInt(moveId)],
+      variables: [
+        Variable.withInt(moveId),
+        if (dueOnly) Variable<DateTime>(cutoff),
+      ],
       readsFrom: {_db.repertoireMoves, _db.reviewCards},
     ).get();
 
