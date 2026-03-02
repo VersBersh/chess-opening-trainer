@@ -76,22 +76,28 @@ class HomeController extends AutoDisposeAsyncNotifier<HomeState> {
     state = await AsyncValue.guard(_load);
   }
 
-  /// Returns the ID of the first repertoire, auto-creating "My Repertoire"
-  /// if none exist. All repository access stays in the controller.
-  Future<int> openRepertoire() async {
+  /// Creates a new repertoire with the given name. Returns the new ID.
+  Future<int> createRepertoire(String name) async {
     final repertoireRepo = ref.read(repertoireRepositoryProvider);
-    var repertoires = await repertoireRepo.getAllRepertoires();
+    final id = await repertoireRepo.saveRepertoire(
+      RepertoiresCompanion.insert(name: name),
+    );
+    state = AsyncData(await _load());
+    return id;
+  }
 
-    if (repertoires.isEmpty) {
-      await repertoireRepo.saveRepertoire(
-        RepertoiresCompanion.insert(name: 'My Repertoire'),
-      );
-      repertoires = await repertoireRepo.getAllRepertoires();
-      // Update state so the repertoire list is current
-      state = AsyncData(await _load());
-    }
+  /// Renames an existing repertoire.
+  Future<void> renameRepertoire(int id, String newName) async {
+    final repertoireRepo = ref.read(repertoireRepositoryProvider);
+    await repertoireRepo.renameRepertoire(id, newName);
+    state = AsyncData(await _load());
+  }
 
-    return repertoires.first.id;
+  /// Deletes a repertoire and all its lines and review history.
+  Future<void> deleteRepertoire(int id) async {
+    final repertoireRepo = ref.read(repertoireRepositoryProvider);
+    await repertoireRepo.deleteRepertoire(id);
+    state = AsyncData(await _load());
   }
 }
 
@@ -154,6 +160,110 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         .then((_) => ref.read(homeControllerProvider.notifier).refresh());
   }
 
+  // ---- Dialogs --------------------------------------------------------------
+
+  Future<String?> _showCreateRepertoireDialog() {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final trimmed = controller.text.trim();
+            final isValid = trimmed.isNotEmpty && trimmed.length <= 100;
+
+            return AlertDialog(
+              title: const Text('Create repertoire'),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                maxLength: 100,
+                decoration: const InputDecoration(labelText: 'Name'),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(null),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: isValid
+                      ? () => Navigator.of(context).pop(trimmed)
+                      : null,
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<String?> _showRenameRepertoireDialog(String currentName) {
+    final controller = TextEditingController(text: currentName);
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final trimmed = controller.text.trim();
+            final isValid = trimmed.isNotEmpty && trimmed.length <= 100;
+
+            return AlertDialog(
+              title: const Text('Rename repertoire'),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                maxLength: 100,
+                decoration: const InputDecoration(labelText: 'Name'),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(null),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: isValid
+                      ? () => Navigator.of(context).pop(trimmed)
+                      : null,
+                  child: const Text('Rename'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<bool?> _showDeleteRepertoireDialog(String repertoireName) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete repertoire'),
+        content: Text(
+          'Delete $repertoireName? This will remove all lines and '
+          'review history. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncState = ref.watch(homeControllerProvider);
@@ -204,6 +314,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: homeState.repertoires.isEmpty
           ? _buildEmptyState(context)
           : _buildRepertoireList(context, homeState),
+      floatingActionButton: homeState.repertoires.isNotEmpty
+          ? FloatingActionButton(
+              onPressed: () async {
+                final name = await _showCreateRepertoireDialog();
+                if (name != null) {
+                  await ref
+                      .read(homeControllerProvider.notifier)
+                      .createRepertoire(name);
+                }
+              },
+              tooltip: 'Create repertoire',
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 
@@ -241,7 +365,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row: repertoire name + due badge
+            // Header row: repertoire name + due badge + context menu
             Row(
               children: [
                 Expanded(
@@ -258,6 +382,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Badge(
                     label: Text('${summary.dueCount} due'),
                   ),
+                PopupMenuButton<String>(
+                  onSelected: (value) async {
+                    switch (value) {
+                      case 'rename':
+                        final newName = await _showRenameRepertoireDialog(
+                            summary.repertoire.name);
+                        if (newName != null) {
+                          await ref
+                              .read(homeControllerProvider.notifier)
+                              .renameRepertoire(
+                                  summary.repertoire.id, newName);
+                        }
+                      case 'delete':
+                        final confirmed = await _showDeleteRepertoireDialog(
+                            summary.repertoire.name);
+                        if (confirmed == true) {
+                          await ref
+                              .read(homeControllerProvider.notifier)
+                              .deleteRepertoire(summary.repertoire.id);
+                        }
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'rename',
+                      child: Text('Rename'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete'),
+                    ),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -335,7 +492,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           const SizedBox(height: 32),
-          // TODO(CT-next): Replace with name-entry dialog per spec (Repertoire CRUD section)
           FilledButton.icon(
             onPressed: _onCreateFirstRepertoire,
             icon: const Icon(Icons.add),
@@ -347,8 +503,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _onCreateFirstRepertoire() async {
-    final id =
-        await ref.read(homeControllerProvider.notifier).openRepertoire();
+    final name = await _showCreateRepertoireDialog();
+    if (name == null) return;
+
+    final id = await ref
+        .read(homeControllerProvider.notifier)
+        .createRepertoire(name);
     if (mounted) {
       Navigator.of(context)
           .push(MaterialPageRoute(

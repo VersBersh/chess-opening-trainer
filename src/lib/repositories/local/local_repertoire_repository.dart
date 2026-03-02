@@ -30,6 +30,12 @@ class LocalRepertoireRepository implements RepertoireRepository {
   }
 
   @override
+  Future<void> renameRepertoire(int id, String newName) async {
+    await (_db.update(_db.repertoires)..where((r) => r.id.equals(id)))
+        .write(RepertoiresCompanion(name: Value(newName)));
+  }
+
+  @override
   Future<List<RepertoireMove>> getMovesForRepertoire(int repertoireId) {
     return (_db.select(_db.repertoireMoves)
           ..where((m) => m.repertoireId.equals(repertoireId)))

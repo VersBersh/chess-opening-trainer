@@ -51,7 +51,17 @@ class FakeRepertoireRepository implements RepertoireRepository {
   }
 
   @override
-  Future<void> deleteRepertoire(int id) async {}
+  Future<void> deleteRepertoire(int id) async {
+    _repertoires = _repertoires.where((r) => r.id != id).toList();
+  }
+
+  @override
+  Future<void> renameRepertoire(int id, String newName) async {
+    _repertoires = _repertoires.map((r) {
+      if (r.id == id) return Repertoire(id: r.id, name: newName);
+      return r;
+    }).toList();
+  }
 
   @override
   Future<List<RepertoireMove>> getMovesForRepertoire(int repertoireId) async =>
@@ -770,6 +780,348 @@ void main() {
       expect(find.text('Start Drill'), findsNothing);
       expect(find.text('Free Practice'), findsNothing);
       expect(find.text('Add Line'), findsNothing);
+    });
+  });
+
+  group('HomeScreen -- repertoire CRUD', () {
+    group('Empty-state create flow', () {
+      testWidgets('Create dialog opens from empty state button',
+          (tester) async {
+        final repertoireRepo = FakeRepertoireRepository(repertoires: []);
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Create your first repertoire'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Create repertoire'), findsOneWidget);
+        expect(find.byType(TextField), findsOneWidget);
+        expect(find.text('Create'), findsOneWidget);
+      });
+
+      testWidgets('Create dialog validates empty name', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository(repertoires: []);
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Create your first repertoire'));
+        await tester.pumpAndSettle();
+
+        // "Create" button should be disabled when text field is empty
+        final createButton = tester.widget<TextButton>(
+          find.widgetWithText(TextButton, 'Create'),
+        );
+        expect(createButton.onPressed, isNull);
+      });
+
+      testWidgets('Empty-state create navigates to browser', (tester) async {
+        final db = AppDatabase(NativeDatabase.memory());
+
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              databaseProvider.overrideWithValue(db),
+              repertoireRepositoryProvider
+                  .overrideWithValue(LocalRepertoireRepository(db)),
+              reviewRepositoryProvider
+                  .overrideWithValue(LocalReviewRepository(db)),
+              sharedPreferencesProvider.overrideWithValue(_testPrefs),
+            ],
+            child: const MaterialApp(
+              home: HomeScreen(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Should be in empty state
+        await tester.tap(find.text('Create your first repertoire'));
+        await tester.pumpAndSettle();
+
+        // Enter a name and tap Create
+        await tester.enterText(find.byType(TextField), 'My Repertoire');
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(TextButton, 'Create'));
+        await tester.pumpAndSettle();
+
+        // Should navigate to RepertoireBrowserScreen
+        expect(find.byType(RepertoireBrowserScreen), findsOneWidget);
+
+        await db.close();
+      });
+
+      testWidgets('Cancel on empty-state Create dialog does not create',
+          (tester) async {
+        final repertoireRepo = FakeRepertoireRepository(repertoires: []);
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Create your first repertoire'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+        await tester.pumpAndSettle();
+
+        // Should still be in empty state
+        expect(find.text('Create your first repertoire'), findsOneWidget);
+      });
+    });
+
+    group('FAB create flow', () {
+      testWidgets('Create dialog from FAB', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        // Tap the FAB
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Create repertoire'), findsOneWidget);
+        expect(find.byType(TextField), findsOneWidget);
+      });
+
+      testWidgets('FAB create adds repertoire to list', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        // Tap FAB, enter name, confirm
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextField), 'New Rep');
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(TextButton, 'Create'));
+        await tester.pumpAndSettle();
+
+        // New repertoire should appear in the list (no navigation away)
+        expect(find.text('New Rep'), findsOneWidget);
+        expect(find.byType(HomeScreen), findsOneWidget);
+        expect(find.byType(RepertoireBrowserScreen), findsNothing);
+      });
+
+      testWidgets('Cancel on FAB Create dialog does not create',
+          (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+        await tester.pumpAndSettle();
+
+        // Only the original repertoire should exist
+        expect(find.text('Test'), findsOneWidget);
+        expect(find.text('New Rep'), findsNothing);
+      });
+    });
+
+    group('Context menu and Rename', () {
+      testWidgets('Context menu shows Rename and Delete', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        // Tap the PopupMenuButton (more_vert icon)
+        await tester.tap(find.byType(PopupMenuButton<String>));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Rename'), findsOneWidget);
+        expect(find.text('Delete'), findsOneWidget);
+      });
+
+      testWidgets('Rename dialog pre-fills current name', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(PopupMenuButton<String>));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Rename'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Rename repertoire'), findsOneWidget);
+        // Text field should be pre-filled with "Test"
+        final textField = tester.widget<TextField>(find.byType(TextField));
+        expect(textField.controller!.text, 'Test');
+      });
+
+      testWidgets('Rename updates the repertoire name', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(PopupMenuButton<String>));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Rename'));
+        await tester.pumpAndSettle();
+
+        // Clear and enter new name
+        await tester.enterText(find.byType(TextField), 'Renamed Rep');
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(TextButton, 'Rename'));
+        await tester.pumpAndSettle();
+
+        // Updated name should appear
+        expect(find.text('Renamed Rep'), findsOneWidget);
+        expect(find.text('Test'), findsNothing);
+      });
+    });
+
+    group('Delete', () {
+      testWidgets('Delete confirmation dialog shows correct message',
+          (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(PopupMenuButton<String>));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Delete repertoire'), findsOneWidget);
+        expect(
+          find.textContaining('Delete Test?'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('This cannot be undone.'),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('Delete removes the repertoire', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository(repertoires: const [
+          Repertoire(id: 1, name: 'Keep'),
+          Repertoire(id: 2, name: 'Remove'),
+        ]);
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        // Find the PopupMenuButton for the second card ("Remove")
+        final popupButtons =
+            find.byType(PopupMenuButton<String>);
+        await tester.tap(popupButtons.last);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+
+        // Confirm deletion
+        await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Remove'), findsNothing);
+        expect(find.text('Keep'), findsOneWidget);
+      });
+
+      testWidgets('Delete last repertoire shows empty state', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(PopupMenuButton<String>));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Create your first repertoire'), findsOneWidget);
+      });
+
+      testWidgets('Cancel on Delete dialog does not delete', (tester) async {
+        final repertoireRepo = FakeRepertoireRepository();
+        final reviewRepo = FakeReviewRepository(dueCards: []);
+
+        await tester.pumpWidget(buildTestApp(
+          repertoireRepo: repertoireRepo,
+          reviewRepo: reviewRepo,
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(PopupMenuButton<String>));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+        await tester.pumpAndSettle();
+
+        // Repertoire should still exist
+        expect(find.text('Test'), findsOneWidget);
+      });
     });
   });
 }

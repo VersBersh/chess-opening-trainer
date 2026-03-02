@@ -111,6 +111,47 @@ void main() {
     await db.close();
   });
 
+  group('renameRepertoire', () {
+    test('renames an existing repertoire', () async {
+      final repId = await db
+          .into(db.repertoires)
+          .insert(RepertoiresCompanion.insert(name: 'Original'));
+
+      await repo.renameRepertoire(repId, 'Renamed');
+
+      final repertoire = await repo.getRepertoire(repId);
+      expect(repertoire.name, 'Renamed');
+    });
+
+    test('rename persists after re-fetching', () async {
+      final repId = await db
+          .into(db.repertoires)
+          .insert(RepertoiresCompanion.insert(name: 'Before'));
+
+      await repo.renameRepertoire(repId, 'After');
+
+      final all = await repo.getAllRepertoires();
+      final renamed = all.firstWhere((r) => r.id == repId);
+      expect(renamed.name, 'After');
+    });
+
+    test('only renames the targeted repertoire', () async {
+      final id1 = await db
+          .into(db.repertoires)
+          .insert(RepertoiresCompanion.insert(name: 'First'));
+      final id2 = await db
+          .into(db.repertoires)
+          .insert(RepertoiresCompanion.insert(name: 'Second'));
+
+      await repo.renameRepertoire(id1, 'First Renamed');
+
+      final r1 = await repo.getRepertoire(id1);
+      final r2 = await repo.getRepertoire(id2);
+      expect(r1.name, 'First Renamed');
+      expect(r2.name, 'Second');
+    });
+  });
+
   group('updateMoveLabel', () {
     test('sets a label on an unlabeled move', () async {
       final seed = await seedSingleMove(db);

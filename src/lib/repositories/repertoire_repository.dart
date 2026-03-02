@@ -5,6 +5,7 @@ abstract class RepertoireRepository {
   Future<Repertoire> getRepertoire(int id);
   Future<int> saveRepertoire(RepertoiresCompanion repertoire);
   Future<void> deleteRepertoire(int id);
+  Future<void> renameRepertoire(int id, String newName);
 
   Future<List<RepertoireMove>> getMovesForRepertoire(int repertoireId);
   Future<RepertoireMove?> getMove(int id);

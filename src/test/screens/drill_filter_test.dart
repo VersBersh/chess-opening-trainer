@@ -105,6 +105,9 @@ class FakeRepertoireRepository implements RepertoireRepository {
   Future<void> deleteRepertoire(int id) async {}
 
   @override
+  Future<void> renameRepertoire(int id, String newName) async {}
+
+  @override
   Future<RepertoireMove?> getMove(int id) async =>
       _moves.where((m) => m.id == id).firstOrNull;
 
