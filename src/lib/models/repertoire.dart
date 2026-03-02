@@ -7,19 +7,38 @@ class RepertoireTreeCache {
   final Map<int, RepertoireMove> movesById;
   final Map<int, List<RepertoireMove>> childrenByParentId;
   final Map<String, List<RepertoireMove>> movesByFen;
+  final Map<String, List<RepertoireMove>> movesByPositionKey;
   final List<RepertoireMove> rootMoves;
 
   RepertoireTreeCache._({
     required this.movesById,
     required this.childrenByParentId,
     required this.movesByFen,
+    required this.movesByPositionKey,
     required this.rootMoves,
   });
+
+  /// Strips the halfmove clock and fullmove number from a FEN string,
+  /// returning the first four fields (board, turn, castling, en-passant).
+  ///
+  /// This produces a position key that is identical for transposition-
+  /// equivalent positions regardless of the move order used to reach them.
+  static String normalizePositionKey(String fen) {
+    int spaceCount = 0;
+    for (int i = 0; i < fen.length; i++) {
+      if (fen[i] == ' ') {
+        spaceCount++;
+        if (spaceCount == 4) return fen.substring(0, i);
+      }
+    }
+    return fen; // Defensive: return as-is if fewer than 4 spaces
+  }
 
   factory RepertoireTreeCache.build(List<RepertoireMove> allMoves) {
     final movesById = <int, RepertoireMove>{};
     final childrenByParentId = <int, List<RepertoireMove>>{};
     final movesByFen = <String, List<RepertoireMove>>{};
+    final movesByPositionKey = <String, List<RepertoireMove>>{};
     final rootMoves = <RepertoireMove>[];
 
     for (final move in allMoves) {
@@ -32,6 +51,9 @@ class RepertoireTreeCache {
       }
 
       movesByFen.putIfAbsent(move.fen, () => []).add(move);
+
+      final positionKey = normalizePositionKey(move.fen);
+      movesByPositionKey.putIfAbsent(positionKey, () => []).add(move);
     }
 
     // Sort children by sort_order
@@ -44,6 +66,7 @@ class RepertoireTreeCache {
       movesById: movesById,
       childrenByParentId: childrenByParentId,
       movesByFen: movesByFen,
+      movesByPositionKey: movesByPositionKey,
       rootMoves: rootMoves,
     );
   }
@@ -63,6 +86,23 @@ class RepertoireTreeCache {
 
   List<RepertoireMove> getMovesAtPosition(String fen) {
     return movesByFen[fen] ?? [];
+  }
+
+  /// Returns all child moves of all nodes whose normalized FEN matches the
+  /// given [positionKey]. Used for transposition detection: finds repertoire
+  /// moves available at a position regardless of the move order used to reach
+  /// it.
+  List<RepertoireMove> getChildrenAtPosition(String positionKey) {
+    final nodesAtPosition = movesByPositionKey[positionKey];
+    if (nodesAtPosition == null) return [];
+    final result = <RepertoireMove>[];
+    for (final node in nodesAtPosition) {
+      final children = childrenByParentId[node.id];
+      if (children != null) {
+        result.addAll(children);
+      }
+    }
+    return result;
   }
 
   List<RepertoireMove> getRootMoves() => rootMoves;

@@ -197,7 +197,8 @@ class DrillEngine {
       return CorrectMove(isLineComplete: false);
     }
 
-    // Wrong move -- check if it's a sibling line correction
+    // Wrong move -- check if it's a sibling line correction.
+    // First: tree-structural siblings (fast path, common case).
     final parentMoveId = expectedMove.parentMoveId;
     final siblingsAtPosition = parentMoveId == null
         ? _treeCache.rootMoves
@@ -207,6 +208,22 @@ class DrillEngine {
         .any((m) => m.san == san && m.id != expectedMove.id);
 
     if (isSiblingLine) {
+      return SiblingLineCorrection(expectedSan: expectedMove.san);
+    }
+
+    // Second: FEN-based transposition lookup using normalized position keys.
+    // The parent's FEN is the current board position. Normalize it to strip
+    // move counters so transposition-equivalent positions match.
+    final parentFen = parentMoveId != null
+        ? _treeCache.movesById[parentMoveId]!.fen
+        : kInitialFEN;
+    final parentPositionKey =
+        RepertoireTreeCache.normalizePositionKey(parentFen);
+    final transpositionChildren =
+        _treeCache.getChildrenAtPosition(parentPositionKey);
+    final isTranspositionSibling = transpositionChildren
+        .any((m) => m.san == san && m.id != expectedMove.id);
+    if (isTranspositionSibling) {
       return SiblingLineCorrection(expectedSan: expectedMove.san);
     }
 

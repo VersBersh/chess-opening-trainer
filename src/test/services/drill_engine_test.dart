@@ -456,6 +456,133 @@ void main() {
     });
   });
 
+  group('submitMove -- transposition sibling detection', () {
+    // Two lines that reach the same position via different move orders:
+    // Line A: 1. d4 Nf6 2. c4 e6 3. Nc3 (ids 1-5)
+    // Line B: 1. c4 e6 2. d4 Nf6 3. Nf3 (ids 101-105)
+    //
+    // After move 4 in each line, the board position is identical (same pieces,
+    // same side to move, same castling rights, same en-passant square), but
+    // the raw FEN strings differ in the halfmove clock (0 after e6 vs 1 after
+    // Nf6). The normalized position key strips these counters.
+    //
+    // Both d4 and c4 are root moves, so the intro stops at index 0 (branch
+    // point). The user plays all white moves interactively.
+
+    late List<RepertoireMove> lineA;
+    late List<RepertoireMove> lineB;
+    late List<RepertoireMove> allMoves;
+
+    setUp(() {
+      lineA = buildLine(['d4', 'Nf6', 'c4', 'e6', 'Nc3'], startId: 1);
+      lineB = buildLine(['c4', 'e6', 'd4', 'Nf6', 'Nf3'], startId: 101);
+      allMoves = [...lineA, ...lineB];
+    });
+
+    test('transposition move is detected as sibling-line correction', () {
+      final engine = buildEngine(allMoves, lineA);
+      engine.startCard();
+
+      // introEndIndex = 0 (root has multiple children: d4 and c4).
+      expect(engine.currentCardState!.introEndIndex, 0);
+
+      // Play through line A up to the transposition point.
+      engine.submitMove('d4'); // correct (index 0), auto-plays Nf6 (index 1)
+      engine.submitMove('c4'); // correct (index 2), auto-plays e6 (index 3)
+
+      // Now at index 4: expected move is Nc3. Play Nf3 (from line B).
+      // Tree-structural check: parent is e6 (id 4), children = [Nc3 (id 5)].
+      // No match for Nf3. But FEN-based check finds the transposition.
+      final result = engine.submitMove('Nf3');
+      expect(result, isA<SiblingLineCorrection>());
+      expect((result as SiblingLineCorrection).expectedSan, 'Nc3');
+      expect(engine.currentCardState!.mistakeCount, 0);
+    });
+
+    test('non-repertoire move at transposition position is still a genuine mistake', () {
+      final engine = buildEngine(allMoves, lineA);
+      engine.startCard();
+
+      engine.submitMove('d4'); // correct, auto-plays Nf6
+      engine.submitMove('c4'); // correct, auto-plays e6
+
+      // Play a move not in any repertoire line at this position.
+      final result = engine.submitMove('e4');
+      expect(result, isA<WrongMove>());
+      expect((result as WrongMove).expectedSan, 'Nc3');
+      expect(engine.currentCardState!.mistakeCount, 1);
+    });
+
+    test('tree-structural siblings are still detected (fast path)', () {
+      // Regression guard: a sibling from the same tree parent is detected
+      // without needing the FEN-based fallback.
+      // Add a second child of e6 (id 4) in line A's tree: 3. Nf3 as a
+      // structural sibling of 3. Nc3.
+      Position pos = Chess.initial;
+      for (final san in ['d4', 'Nf6', 'c4', 'e6']) {
+        pos = pos.play(pos.parseSan(san)!);
+      }
+      final posAfterNf3 = pos.play(pos.parseSan('Nf3')!);
+
+      final structuralSibling = RepertoireMove(
+        id: 200,
+        repertoireId: 1,
+        parentMoveId: 4, // same parent as Nc3 (e6, id 4)
+        fen: posAfterNf3.fen,
+        san: 'Nf3',
+        sortOrder: 1,
+      );
+
+      final allMovesWithSibling = [...lineA, structuralSibling];
+      final engine = buildEngine(allMovesWithSibling, lineA);
+      engine.startCard();
+
+      // Only one root move (d4), so no branch at root. The branch is at
+      // index 4 (Nc3 vs Nf3 under parent e6). introEndIndex = 4.
+      expect(engine.currentCardState!.introEndIndex, 4);
+
+      // Play Nf3 -- it's a tree-structural sibling of Nc3.
+      final result = engine.submitMove('Nf3');
+      expect(result, isA<SiblingLineCorrection>());
+      expect((result as SiblingLineCorrection).expectedSan, 'Nc3');
+      expect(engine.currentCardState!.mistakeCount, 0);
+    });
+
+    test('normalizePositionKey strips halfmove clock and fullmove number', () {
+      // Two FENs differing only in move counters should produce the same key.
+      const fen1 =
+          'rnbqkb1r/pppp1ppp/4pn2/8/2PP4/8/PP2PPPP/RNBQKBNR w KQkq - 0 3';
+      const fen2 =
+          'rnbqkb1r/pppp1ppp/4pn2/8/2PP4/8/PP2PPPP/RNBQKBNR w KQkq - 1 3';
+      expect(
+        RepertoireTreeCache.normalizePositionKey(fen1),
+        RepertoireTreeCache.normalizePositionKey(fen2),
+      );
+
+      // The normalized key should be the first four fields.
+      expect(
+        RepertoireTreeCache.normalizePositionKey(fen1),
+        'rnbqkb1r/pppp1ppp/4pn2/8/2PP4/8/PP2PPPP/RNBQKBNR w KQkq -',
+      );
+
+      // FENs differing in board position should produce different keys.
+      const fen3 =
+          'rnbqkb1r/pppp1ppp/4pn2/8/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq - 1 3';
+      expect(
+        RepertoireTreeCache.normalizePositionKey(fen1),
+        isNot(RepertoireTreeCache.normalizePositionKey(fen3)),
+      );
+
+      // FENs differing in side to move should produce different keys.
+      const fen4 =
+          'rnbqkb1r/pppp1ppp/4pn2/8/2PP4/8/PP2PPPP/RNBQKBNR b KQkq - 0 3';
+      expect(
+        RepertoireTreeCache.normalizePositionKey(fen1),
+        isNot(RepertoireTreeCache.normalizePositionKey(fen4)),
+      );
+    });
+  });
+
   group('Card completion scoring', () {
     test('0 mistakes -> quality 5', () {
       final engine = buildEngine(whiteLine9, whiteLine9);
