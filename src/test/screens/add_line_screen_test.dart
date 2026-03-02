@@ -132,7 +132,7 @@ List<String> computeFens(List<String> sans, {String startFen = kInitialFEN}) {
   return fens;
 }
 
-/// Plays e4 then e5 and taps Confirm to trigger a parity mismatch warning.
+/// Plays e4 then e5 and taps Confirm to trigger the parity warning.
 /// Board is White (default) with 2 ply (even = Black expected) -> mismatch.
 /// Returns after pumpAndSettle so the inline warning is visible.
 Future<void> triggerParityMismatchWarning(WidgetTester tester) async {
@@ -934,7 +934,7 @@ void main() {
       await triggerParityMismatchWarning(tester);
 
       // Inline warning should appear (not a dialog).
-      expect(find.text('Line parity mismatch'), findsOneWidget);
+      expect(find.text('Lines for White should end on a White move'), findsOneWidget);
       expect(find.textContaining('Flip and confirm as Black'), findsOneWidget);
       expect(find.byType(AlertDialog), findsNothing);
     });
@@ -946,13 +946,13 @@ void main() {
       await tester.pumpAndSettle();
 
       await triggerParityMismatchWarning(tester);
-      expect(find.text('Line parity mismatch'), findsOneWidget);
+      expect(find.text('Lines for White should end on a White move'), findsOneWidget);
 
       // Tap "Flip and confirm as Black".
       await tester.tap(find.textContaining('Flip and confirm as Black'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Line parity mismatch'), findsNothing);
+      expect(find.text('Lines for White should end on a White move'), findsNothing);
 
       // Moves should be persisted.
       final repRepo = LocalRepertoireRepository(db);
@@ -969,12 +969,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await triggerParityMismatchWarning(tester);
-      expect(find.text('Line parity mismatch'), findsOneWidget);
+      expect(find.text('Lines for White should end on a White move'), findsOneWidget);
 
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
 
-      expect(find.text('Line parity mismatch'), findsNothing);
+      expect(find.text('Lines for White should end on a White move'), findsNothing);
 
       // Moves should NOT be persisted (just dismissed, not confirmed).
       final repRepo = LocalRepertoireRepository(db);
@@ -989,14 +989,14 @@ void main() {
       await tester.pumpAndSettle();
 
       await triggerParityMismatchWarning(tester);
-      expect(find.text('Line parity mismatch'), findsOneWidget);
+      expect(find.text('Lines for White should end on a White move'), findsOneWidget);
 
       // Play another move (Nf3) to auto-dismiss the warning.
       final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
       chessboard.game!.onMove(NormalMove(from: Square.g1, to: Square.f3));
       await tester.pumpAndSettle();
 
-      expect(find.text('Line parity mismatch'), findsNothing);
+      expect(find.text('Lines for White should end on a White move'), findsNothing);
     });
 
     testWidgets('no warning when parity matches -- confirm saves immediately',
@@ -1018,7 +1018,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // No parity warning should appear.
-      expect(find.text('Line parity mismatch'), findsNothing);
+      expect(find.text('Lines for White should end on a White move'), findsNothing);
 
       // Move should be persisted directly.
       final repRepo = LocalRepertoireRepository(db);
@@ -1034,7 +1034,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await triggerParityMismatchWarning(tester);
-      expect(find.text('Line parity mismatch'), findsOneWidget);
+      expect(find.text('Lines for White should end on a White move'), findsOneWidget);
 
       // Scroll to make flip board button visible (warning pushes it off-screen).
       await tester.ensureVisible(find.byIcon(Icons.swap_vert));
@@ -1043,7 +1043,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.swap_vert));
       await tester.pumpAndSettle();
 
-      expect(find.text('Line parity mismatch'), findsNothing);
+      expect(find.text('Lines for White should end on a White move'), findsNothing);
     });
 
     testWidgets('pill tap clears the inline warning', (tester) async {
@@ -1052,14 +1052,14 @@ void main() {
       await tester.pumpAndSettle();
 
       await triggerParityMismatchWarning(tester);
-      expect(find.text('Line parity mismatch'), findsOneWidget);
+      expect(find.text('Lines for White should end on a White move'), findsOneWidget);
 
       // Tap the first pill (e4) to navigate to that position.
       await tester.tap(find.text('e4').first);
       await tester.pumpAndSettle();
 
       // Warning should be dismissed (position context changed).
-      expect(find.text('Line parity mismatch'), findsNothing);
+      expect(find.text('Lines for White should end on a White move'), findsNothing);
     });
 
     testWidgets('ConfirmError shows error SnackBar on confirm',
@@ -1132,7 +1132,7 @@ void main() {
       await tester.tap(find.text('Confirm'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Line parity mismatch'), findsOneWidget);
+      expect(find.text('Lines for White should end on a White move'), findsOneWidget);
 
       // Inject a conflicting 'd5' row under e4 to trigger unique constraint.
       final e4Id = await getMoveIdBySan(db, repId, 'e4');

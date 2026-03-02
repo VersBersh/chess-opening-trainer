@@ -460,7 +460,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: colorScheme.errorContainer,
+        color: colorScheme.tertiaryContainer,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -469,22 +469,22 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.warning_amber_rounded,
-                  size: 20, color: colorScheme.onErrorContainer),
+              Icon(Icons.info_outline,
+                  size: 20, color: colorScheme.onTertiaryContainer),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Line parity mismatch',
+                  'Lines for $currentSide should end on a $currentSide move',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: colorScheme.onErrorContainer,
+                    color: colorScheme.onTertiaryContainer,
                   ),
                 ),
               ),
               IconButton(
                 onPressed: _onDismissParityWarning,
                 icon: Icon(Icons.close,
-                    size: 18, color: colorScheme.onErrorContainer),
+                    size: 18, color: colorScheme.onTertiaryContainer),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 tooltip: 'Dismiss',
@@ -493,15 +493,14 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'You are entering a line from $currentSide\'s perspective, '
-            'but the line ends on $expectedSide\'s move.',
-            style: TextStyle(color: colorScheme.onErrorContainer),
+            'Try adding one more move, or flip the board.',
+            style: TextStyle(color: colorScheme.onTertiaryContainer),
           ),
           const SizedBox(height: 8),
           TextButton(
             onPressed: _onFlipAndConfirm,
             style: TextButton.styleFrom(
-              foregroundColor: colorScheme.onErrorContainer,
+              foregroundColor: colorScheme.onTertiaryContainer,
             ),
             child: Text('Flip and confirm as $expectedSide'),
           ),
