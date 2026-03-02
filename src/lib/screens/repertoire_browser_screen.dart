@@ -1,6 +1,5 @@
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,8 +7,8 @@ import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
 import '../repositories/local/local_repertoire_repository.dart';
 import '../repositories/local/local_review_repository.dart';
-import '../services/line_entry_engine.dart';
 import '../theme/board_theme.dart';
+import 'add_line_screen.dart';
 import 'import_screen.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
@@ -33,9 +32,6 @@ class RepertoireBrowserState {
     this.dueCountByMoveId = const {},
     this.isLoading = true,
     this.repertoireName = '',
-    this.isEditMode = false,
-    this.lineEntryEngine,
-    this.currentFen,
     this.errorMessage,
   });
 
@@ -46,9 +42,6 @@ class RepertoireBrowserState {
   final Map<int, int> dueCountByMoveId;
   final bool isLoading;
   final String repertoireName;
-  final bool isEditMode;
-  final LineEntryEngine? lineEntryEngine;
-  final String? currentFen;
   final String? errorMessage;
 
   RepertoireBrowserState copyWith({
@@ -59,9 +52,6 @@ class RepertoireBrowserState {
     Map<int, int>? dueCountByMoveId,
     bool? isLoading,
     String? repertoireName,
-    bool? isEditMode,
-    LineEntryEngine? Function()? lineEntryEngine,
-    String? Function()? currentFen,
     String? Function()? errorMessage,
   }) {
     return RepertoireBrowserState(
@@ -73,11 +63,6 @@ class RepertoireBrowserState {
       dueCountByMoveId: dueCountByMoveId ?? this.dueCountByMoveId,
       isLoading: isLoading ?? this.isLoading,
       repertoireName: repertoireName ?? this.repertoireName,
-      isEditMode: isEditMode ?? this.isEditMode,
-      lineEntryEngine: lineEntryEngine != null
-          ? lineEntryEngine()
-          : this.lineEntryEngine,
-      currentFen: currentFen != null ? currentFen() : this.currentFen,
       errorMessage:
           errorMessage != null ? errorMessage() : this.errorMessage,
     );
@@ -117,16 +102,6 @@ class RepertoireBrowserScreen extends StatefulWidget {
 class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   var _state = const RepertoireBrowserState();
   late final ChessboardController _boardController;
-
-  /// The FEN of the position before the most recent move during edit mode.
-  /// Used to compute SAN from a NormalMove.
-  String _preMoveFen = kInitialFEN;
-
-  /// The FEN to restore when discarding edit mode.
-  String? _editModeStartFen;
-
-  /// Generation counter for invalidating stale undo snackbars.
-  int _undoGeneration = 0;
 
   @override
   void initState() {
@@ -282,223 +257,6 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     }
   }
 
-  // ---- Edit mode event handlers -------------------------------------------
-
-  void _onEnterEditMode() {
-    final cache = _state.treeCache;
-    if (cache == null) return;
-
-    final selectedId = _state.selectedMoveId;
-    final selectedMove =
-        selectedId != null ? cache.movesById[selectedId] : null;
-
-    final engine = LineEntryEngine(
-      treeCache: cache,
-      repertoireId: widget.repertoireId,
-      startingMoveId: selectedId,
-    );
-
-    final startingFen = selectedMove?.fen ?? kInitialFEN;
-
-    // Set the board to the starting position.
-    if (selectedMove != null) {
-      _boardController.setPosition(selectedMove.fen);
-    } else {
-      _boardController.resetToInitial();
-    }
-
-    _preMoveFen = startingFen;
-    _editModeStartFen = startingFen;
-
-    setState(() {
-      _state = _state.copyWith(
-        isEditMode: true,
-        lineEntryEngine: () => engine,
-        currentFen: () => startingFen,
-      );
-    });
-  }
-
-  void _onEditModeMove(NormalMove move) {
-    final engine = _state.lineEntryEngine;
-    if (engine == null) return;
-
-    // _preMoveFen was captured before the move was played.
-    final preMovePosition = Chess.fromSetup(Setup.parseFen(_preMoveFen));
-    final (_, san) = preMovePosition.makeSan(move);
-    final resultingFen = _boardController.fen;
-
-    engine.acceptMove(san, resultingFen);
-    _preMoveFen = resultingFen;
-
-    setState(() {
-      _state = _state.copyWith(currentFen: () => resultingFen);
-    });
-  }
-
-  void _onTakeBack() {
-    final engine = _state.lineEntryEngine;
-    if (engine == null || !engine.canTakeBack()) return;
-
-    final result = engine.takeBack();
-    if (result != null) {
-      _boardController.setPosition(result.fen);
-      _preMoveFen = result.fen;
-      setState(() {
-        _state = _state.copyWith(currentFen: () => result.fen);
-      });
-    }
-  }
-
-  Future<void> _onConfirmLine() async {
-    final engine = _state.lineEntryEngine;
-    if (engine == null || !engine.hasNewMoves) return;
-
-    // 6a. Validate parity.
-    final parity = engine.validateParity(_state.boardOrientation);
-    if (parity is ParityMismatch) {
-      final shouldFlipAndConfirm = await _showParityWarningDialog(
-        context,
-        parity,
-      );
-      if (shouldFlipAndConfirm == true) {
-        setState(() {
-          _state = _state.copyWith(
-            boardOrientation: _state.boardOrientation == Side.white
-                ? Side.black
-                : Side.white,
-          );
-        });
-      } else {
-        return; // User cancelled
-      }
-    }
-
-    // Invalidate any prior undo snackbar.
-    _undoGeneration++;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-    // 6b. Persist the new moves.
-    final confirmData = engine.getConfirmData();
-    final repRepo = LocalRepertoireRepository(widget.db);
-    final reviewRepo = LocalReviewRepository(widget.db);
-
-    if (confirmData.isExtension) {
-      // Path A: Extension -- use atomic extendLine.
-      // Capture the old card's SR state before committing.
-      final oldLeafMoveId = confirmData.parentMoveId!;
-      final oldCard = await reviewRepo.getCardForLeaf(oldLeafMoveId);
-
-      final companions = <RepertoireMovesCompanion>[];
-      for (var i = 0; i < confirmData.newMoves.length; i++) {
-        final buffered = confirmData.newMoves[i];
-        companions.add(RepertoireMovesCompanion.insert(
-          repertoireId: confirmData.repertoireId,
-          fen: buffered.fen,
-          san: buffered.san,
-          sortOrder: i == 0 ? confirmData.sortOrder : 0,
-        ));
-      }
-      final insertedMoveIds =
-          await repRepo.extendLine(oldLeafMoveId, companions);
-
-      // Rebuild tree cache and exit edit mode.
-      await _loadData();
-      if (!mounted) return;
-      setState(() {
-        _state = _state.copyWith(
-          isEditMode: false,
-          lineEntryEngine: () => null,
-          currentFen: () => null,
-        );
-      });
-
-      // Show undo snackbar if we had an old card to restore.
-      if (oldCard != null) {
-        _showExtensionUndoSnackbar(oldLeafMoveId, insertedMoveIds, oldCard);
-      }
-    } else {
-      // Path B: Not an extension (branching from non-leaf or from root).
-      int? parentId = confirmData.parentMoveId;
-      for (var i = 0; i < confirmData.newMoves.length; i++) {
-        final buffered = confirmData.newMoves[i];
-        final companion = RepertoireMovesCompanion.insert(
-          repertoireId: confirmData.repertoireId,
-          fen: buffered.fen,
-          san: buffered.san,
-          sortOrder: i == 0 ? confirmData.sortOrder : 0,
-        );
-        final withParent = parentId != null
-            ? companion.copyWith(parentMoveId: Value(parentId))
-            : companion;
-        parentId = await repRepo.saveMove(withParent);
-      }
-      // Create card for the last inserted move (the new leaf).
-      await reviewRepo.saveReview(ReviewCardsCompanion.insert(
-        repertoireId: confirmData.repertoireId,
-        leafMoveId: parentId!,
-        nextReviewDate: DateTime.now(),
-      ));
-
-      // 6c. Rebuild tree cache and exit edit mode.
-      await _loadData();
-      if (!mounted) return;
-      setState(() {
-        _state = _state.copyWith(
-          isEditMode: false,
-          lineEntryEngine: () => null,
-          currentFen: () => null,
-        );
-      });
-    }
-  }
-
-  void _showExtensionUndoSnackbar(
-    int oldLeafMoveId,
-    List<int> insertedMoveIds,
-    ReviewCard oldCard,
-  ) {
-    final capturedGeneration = _undoGeneration;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Line extended'),
-        duration: const Duration(seconds: 8),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () async {
-            // Guard: if a newer extension has started, do nothing.
-            if (capturedGeneration != _undoGeneration) return;
-
-            final repRepo = LocalRepertoireRepository(widget.db);
-            await repRepo.undoExtendLine(
-                oldLeafMoveId, insertedMoveIds, oldCard);
-
-            if (!mounted) return;
-            await _loadData();
-          },
-        ),
-      ),
-    );
-  }
-
-  void _onDiscardEdit() {
-    // Reset board to the position before edit mode started.
-    if (_editModeStartFen != null) {
-      _boardController.setPosition(_editModeStartFen!);
-    } else {
-      _boardController.resetToInitial();
-    }
-
-    setState(() {
-      _state = _state.copyWith(
-        isEditMode: false,
-        lineEntryEngine: () => null,
-        currentFen: () => null,
-      );
-    });
-  }
-
   // ---- Label editing -------------------------------------------------------
 
   Future<void> _onEditLabel() async {
@@ -532,61 +290,72 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     await _loadData(); // Rebuild cache
   }
 
+  // ---- Add Line navigation --------------------------------------------------
+
+  void _onAddLine() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => AddLineScreen(
+            db: widget.db,
+            repertoireId: widget.repertoireId,
+            startingMoveId: _state.selectedMoveId,
+          ),
+        ))
+        .then((_) {
+          if (mounted) _loadData();
+        });
+  }
+
+  // ---- View Card Stats ------------------------------------------------------
+
+  Future<void> _onViewCardStats() async {
+    final selectedId = _state.selectedMoveId;
+    if (selectedId == null) return;
+
+    final reviewRepo = LocalReviewRepository(widget.db);
+    final card = await reviewRepo.getCardForLeaf(selectedId);
+
+    if (!mounted) return;
+
+    if (card == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No review card for this move.'),
+        ),
+      );
+      return;
+    }
+
+    final nextReview = card.nextReviewDate;
+    final dateStr =
+        '${nextReview.year}-${nextReview.month.toString().padLeft(2, '0')}-${nextReview.day.toString().padLeft(2, '0')}';
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Card Stats'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Ease factor: ${card.easeFactor.toStringAsFixed(2)}'),
+            Text('Interval: ${card.intervalDays} days'),
+            Text('Repetitions: ${card.repetitions}'),
+            Text('Next review: $dateStr'),
+            Text('Last quality: ${card.lastQuality ?? 'N/A'}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---- Dialogs --------------------------------------------------------------
-
-  Future<bool?> _showParityWarningDialog(
-    BuildContext context,
-    ParityMismatch mismatch,
-  ) {
-    final expectedSide =
-        mismatch.expectedOrientation == Side.white ? 'White' : 'Black';
-    final currentSide =
-        _state.boardOrientation == Side.white ? 'White' : 'Black';
-
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Line parity mismatch'),
-        content: Text(
-          'You are entering a line from $currentSide\'s perspective, '
-          'but the line ends on $expectedSide\'s move. '
-          'Do you want to flip the board and confirm as a $expectedSide line?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Flip and confirm'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<bool?> _showDiscardDialog(BuildContext context) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Discard unsaved line?'),
-        content: const Text(
-          'You have unsaved moves. Do you want to discard them?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Discard'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<String?> _showLabelDialog(
     BuildContext context, {
@@ -854,28 +623,28 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_state.isEditMode ||
-          !(_state.lineEntryEngine?.hasNewMoves ?? false),
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final navigator = Navigator.of(context);
-        final discard = await _showDiscardDialog(context);
-        if (discard == true && mounted) {
-          _onDiscardEdit();
-          navigator.pop();
-        }
-      },
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
-          title: Text(_state.repertoireName),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_state.repertoireName),
+              Text(
+                'Repertoire Manager',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
         ),
         body: _state.isLoading
             ? const Center(child: CircularProgressIndicator())
             : _state.errorMessage != null
                 ? _buildErrorView(context)
                 : _buildContent(context),
-      ),
     );
   }
 
@@ -927,20 +696,18 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
 
   Widget _buildContent(BuildContext context) {
     final cache = _state.treeCache!;
-    final isEditing = _state.isEditMode;
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= 600;
 
     if (isWide) {
-      return _buildWideContent(context, cache, isEditing);
+      return _buildWideContent(context, cache);
     }
-    return _buildNarrowContent(context, cache, isEditing);
+    return _buildNarrowContent(context, cache);
   }
 
   Widget _buildNarrowContent(
     BuildContext context,
     RepertoireTreeCache cache,
-    bool isEditing,
   ) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
@@ -949,21 +716,21 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
 
     return Column(
       children: [
-        _buildDisplayNameHeader(context, cache, isEditing),
+        _buildDisplayNameHeader(context, cache),
         // Chessboard
         ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxBoardSize),
           child: AspectRatio(
             aspectRatio: 1,
-            child: _buildChessboard(isEditing),
+            child: _buildChessboard(),
           ),
         ),
         // Board controls
-        if (!isEditing) _buildBoardControls(cache),
+        _buildBoardControls(cache),
         // Action bar
         _buildActionBar(context, cache, compact: false),
         // Move tree
-        Expanded(child: _buildMoveTree(cache, isEditing)),
+        Expanded(child: _buildMoveTree(cache)),
       ],
     );
   }
@@ -971,7 +738,6 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   Widget _buildWideContent(
     BuildContext context,
     RepertoireTreeCache cache,
-    bool isEditing,
   ) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -984,16 +750,16 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
             SizedBox(
               width: boardSize,
               height: boardSize,
-              child: _buildChessboard(isEditing),
+              child: _buildChessboard(),
             ),
             // Right: display name + controls + action bar + tree
             Expanded(
               child: Column(
                 children: [
-                  _buildDisplayNameHeader(context, cache, isEditing),
-                  if (!isEditing) _buildBoardControls(cache),
+                  _buildDisplayNameHeader(context, cache),
+                  _buildBoardControls(cache),
                   _buildActionBar(context, cache, compact: true),
-                  Expanded(child: _buildMoveTree(cache, isEditing)),
+                  Expanded(child: _buildMoveTree(cache)),
                 ],
               ),
             ),
@@ -1008,18 +774,11 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
   Widget _buildDisplayNameHeader(
     BuildContext context,
     RepertoireTreeCache cache,
-    bool isEditing,
   ) {
     final selectedId = _state.selectedMoveId;
-
-    final String displayName;
-    if (isEditing && _state.lineEntryEngine != null) {
-      displayName = _state.lineEntryEngine!.getCurrentDisplayName();
-    } else {
-      displayName = selectedId != null
-          ? cache.getAggregateDisplayName(selectedId)
-          : '';
-    }
+    final displayName = selectedId != null
+        ? cache.getAggregateDisplayName(selectedId)
+        : '';
 
     if (displayName.isEmpty) return const SizedBox.shrink();
 
@@ -1041,15 +800,14 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     );
   }
 
-  Widget _buildChessboard(bool isEditing) {
+  Widget _buildChessboard() {
     return Consumer(
       builder: (context, ref, _) {
         final boardTheme = ref.watch(boardThemeProvider);
         return ChessboardWidget(
           controller: _boardController,
           orientation: _state.boardOrientation,
-          playerSide: isEditing ? PlayerSide.both : PlayerSide.none,
-          onMove: isEditing ? _onEditModeMove : null,
+          playerSide: PlayerSide.none,
           settings: boardTheme.toSettings(),
         );
       },
@@ -1089,14 +847,13 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     );
   }
 
-  Widget _buildMoveTree(RepertoireTreeCache cache, bool isEditing) {
-    final selectedId = _state.selectedMoveId;
+  Widget _buildMoveTree(RepertoireTreeCache cache) {
     return MoveTreeWidget(
       treeCache: cache,
       expandedNodeIds: _state.expandedNodeIds,
-      selectedMoveId: isEditing ? null : selectedId,
+      selectedMoveId: _state.selectedMoveId,
       dueCountByMoveId: _state.dueCountByMoveId,
-      onNodeSelected: isEditing ? (_) {} : _onNodeSelected,
+      onNodeSelected: _onNodeSelected,
       onNodeToggleExpand: _onNodeToggleExpand,
     );
   }
@@ -1106,69 +863,7 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     RepertoireTreeCache cache, {
     required bool compact,
   }) {
-    if (_state.isEditMode) {
-      return _buildEditModeActionBar(context, compact: compact);
-    }
     return _buildBrowseModeActionBar(context, cache, compact: compact);
-  }
-
-  Widget _buildEditModeActionBar(BuildContext context,
-      {required bool compact}) {
-    final engine = _state.lineEntryEngine;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // Flip board
-          IconButton(
-            onPressed: _onFlipBoard,
-            icon: const Icon(Icons.swap_vert),
-            tooltip: 'Flip board',
-          ),
-
-          // Take back
-          if (compact)
-            IconButton(
-              onPressed:
-                  engine != null && engine.canTakeBack() ? _onTakeBack : null,
-              icon: const Icon(Icons.undo),
-              tooltip: 'Take Back',
-            )
-          else
-            TextButton.icon(
-              onPressed:
-                  engine != null && engine.canTakeBack() ? _onTakeBack : null,
-              icon: const Icon(Icons.undo, size: 18),
-              label: const Text('Take Back'),
-            ),
-
-          // Confirm line
-          if (compact)
-            IconButton(
-              onPressed:
-                  engine != null && engine.hasNewMoves ? _onConfirmLine : null,
-              icon: const Icon(Icons.check),
-              tooltip: 'Confirm',
-            )
-          else
-            TextButton.icon(
-              onPressed:
-                  engine != null && engine.hasNewMoves ? _onConfirmLine : null,
-              icon: const Icon(Icons.check, size: 18),
-              label: const Text('Confirm'),
-            ),
-
-          // Discard
-          IconButton(
-            onPressed: _onDiscardEdit,
-            icon: const Icon(Icons.close),
-            tooltip: 'Discard',
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildBrowseModeActionBar(
@@ -1177,9 +872,6 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     required bool compact,
   }) {
     final selectedId = _state.selectedMoveId;
-    final selectedMove =
-        selectedId != null ? cache.movesById[selectedId] : null;
-    final hasLabel = selectedMove?.label != null;
     final isLeaf = selectedId != null && cache.isLeaf(selectedId);
 
     if (compact) {
@@ -1190,9 +882,9 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             IconButton(
-              onPressed: _onEnterEditMode,
-              icon: const Icon(Icons.edit),
-              tooltip: 'Edit',
+              onPressed: _onAddLine,
+              icon: const Icon(Icons.add),
+              tooltip: 'Add Line',
             ),
             IconButton(
               onPressed: () async {
@@ -1213,13 +905,9 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
               tooltip: 'Label',
             ),
             IconButton(
-              onPressed: hasLabel
-                  ? () {
-                      // Stub -- wired in CT-4
-                    }
-                  : null,
-              icon: const Icon(Icons.center_focus_strong),
-              tooltip: 'Focus',
+              onPressed: isLeaf ? _onViewCardStats : null,
+              icon: const Icon(Icons.bar_chart),
+              tooltip: 'Stats',
             ),
             IconButton(
               onPressed: selectedId != null
@@ -1244,59 +932,65 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Edit button
-          TextButton.icon(
-            onPressed: _onEnterEditMode,
-            icon: const Icon(Icons.edit, size: 18),
-            label: const Text('Edit'),
+          // Add Line button
+          Flexible(
+            child: TextButton.icon(
+              onPressed: _onAddLine,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Line'),
+            ),
           ),
 
           // Import button
-          TextButton.icon(
-            onPressed: () async {
-              await Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => ImportScreen(
-                  db: widget.db,
-                  repertoireId: widget.repertoireId,
-                ),
-              ));
-              await _loadData(); // Rebuild tree cache
-            },
-            icon: const Icon(Icons.file_upload, size: 18),
-            label: const Text('Import'),
+          Flexible(
+            child: TextButton.icon(
+              onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ImportScreen(
+                    db: widget.db,
+                    repertoireId: widget.repertoireId,
+                  ),
+                ));
+                await _loadData(); // Rebuild tree cache
+              },
+              icon: const Icon(Icons.file_upload, size: 18),
+              label: const Text('Import'),
+            ),
           ),
 
           // Label button
-          TextButton.icon(
-            onPressed: selectedId != null ? _onEditLabel : null,
-            icon: const Icon(Icons.label, size: 18),
-            label: const Text('Label'),
+          Flexible(
+            child: TextButton.icon(
+              onPressed: selectedId != null ? _onEditLabel : null,
+              icon: const Icon(Icons.label, size: 18),
+              label: const Text('Label'),
+            ),
           ),
 
-          // Focus button (placeholder for CT-4)
-          TextButton.icon(
-            onPressed: hasLabel
-                ? () {
-                    // Stub -- wired in CT-4
-                  }
-                : null,
-            icon: const Icon(Icons.center_focus_strong, size: 18),
-            label: const Text('Focus'),
+          // Stats button
+          Flexible(
+            child: TextButton.icon(
+              onPressed: isLeaf ? _onViewCardStats : null,
+              icon: const Icon(Icons.bar_chart, size: 18),
+              label: const Text('Stats'),
+            ),
           ),
 
           // Delete button
-          TextButton.icon(
-            onPressed: selectedId != null
-                ? () {
-                    if (isLeaf) {
-                      _onDeleteLeaf();
-                    } else {
-                      _onDeleteBranch();
+          Flexible(
+            child: TextButton.icon(
+              onPressed: selectedId != null
+                  ? () {
+                      if (isLeaf) {
+                        _onDeleteLeaf();
+                      } else {
+                        _onDeleteBranch();
+                      }
                     }
-                  }
-                : null,
-            icon: const Icon(Icons.delete, size: 18),
-            label: Text(isLeaf ? 'Delete' : 'Delete Branch'),
+                  : null,
+              icon: const Icon(Icons.delete, size: 18),
+              label: Text(isLeaf ? 'Delete' : 'Delete Branch'),
+            ),
           ),
         ],
       ),

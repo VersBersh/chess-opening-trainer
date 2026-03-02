@@ -1,0 +1,10 @@
+- **Verdict** — Needs Fixes
+- **Issues**
+1. **Major — Single Responsibility / Embedded Design:** [`_RepertoireBrowserScreenState` has become a God object]( /C:/code/misc/chess-trainer-2/src/lib/screens/repertoire_browser_screen.dart:102 ). It now owns data loading, tree expansion policy, navigation, label editing, deletion/orphan workflows, Add Line routing, stats querying, and dialog rendering (for example, [`_onViewCardStats`]( /C:/code/misc/chess-trainer-2/src/lib/screens/repertoire_browser_screen.dart:311 ) and [`_buildBrowseModeActionBar`]( /C:/code/misc/chess-trainer-2/src/lib/screens/repertoire_browser_screen.dart:869 )). This gives the class many reasons to change and makes architecture harder to infer from boundaries alone.  
+Suggested fix: extract responsibilities into focused units (for example: `RepertoireBrowserController` for commands/state transitions, `CardStatsPresenter`/dialog widget, and an `ActionBar` widget with injected callbacks).
+
+2. **Minor — DRY / Open-Closed:** Action-bar behavior is duplicated in compact and full-width branches in [`_buildBrowseModeActionBar`]( /C:/code/misc/chess-trainer-2/src/lib/screens/repertoire_browser_screen.dart:869 ). The same actions (Add Line/Import/Label/Stats/Delete) are defined twice, which increases drift risk when adding/changing actions.  
+Suggested fix: define a shared action model (id, enabled, handler, icon, label) and render it with two view adapters (icon-only vs text-button).
+
+3. **Minor — Clean Code (File Size):** Both modified files exceed the 300-line smell threshold: [`repertoire_browser_screen.dart` (~999 lines)]( /C:/code/misc/chess-trainer-2/src/lib/screens/repertoire_browser_screen.dart:1 ) and [`repertoire_browser_screen_test.dart` (~1302 lines)]( /C:/code/misc/chess-trainer-2/src/test/screens/repertoire_browser_screen_test.dart:1 ). This hurts readability and design discoverability.  
+Suggested fix: split by responsibility (`*_actions.dart`, `*_dialogs.dart`, `*_view.dart`; and test files by feature group such as `labeling`, `deletion`, `stats`, `add_line`).

@@ -11,6 +11,7 @@ import 'package:chess_trainer/providers.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
+import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
 
 // ---------------------------------------------------------------------------
@@ -361,16 +362,21 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
+      // Add Line button should always be enabled
+      final addLineButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Add Line'),
+      );
+      expect(addLineButton.onPressed, isNotNull);
+
+      // Stats button should be disabled (no leaf selected)
+      final statsButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Stats'),
+      );
+      expect(statsButton.onPressed, isNull);
+
       // Select e4 (labeled, has children so NOT a leaf).
-      // Use textContaining because the label is appended in Text.rich.
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
-
-      // Focus button should be enabled (labeled node)
-      final focusButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Focus'),
-      );
-      expect(focusButton.onPressed, isNotNull);
 
       // Delete Branch button should be enabled (non-leaf node)
       final deleteBranchButton = tester.widget<TextButton>(
@@ -378,11 +384,19 @@ void main() {
       );
       expect(deleteBranchButton.onPressed, isNotNull);
 
+      // Stats should still be disabled (non-leaf)
+      final statsButton2 = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Stats'),
+      );
+      expect(statsButton2.onPressed, isNull);
+
       // Now expand and select the leaf node (Nf3)
       await tester.tap(find.byIcon(Icons.chevron_right).first);
       await tester.pump();
       // Need to expand e5 too
       await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+      await tester.ensureVisible(find.text('2. Nf3'));
       await tester.pump();
       await tester.tap(find.text('2. Nf3'));
       await tester.pump();
@@ -393,11 +407,11 @@ void main() {
       );
       expect(deleteButton2.onPressed, isNotNull);
 
-      // Focus should be disabled (no label on Nf3)
-      final focusButton2 = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Focus'),
+      // Stats should be enabled (leaf)
+      final statsButton3 = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Stats'),
       );
-      expect(focusButton2.onPressed, isNull);
+      expect(statsButton3.onPressed, isNotNull);
     });
 
     testWidgets('empty repertoire shows empty state', (tester) async {
@@ -411,7 +425,8 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets('repertoire name is shown in app bar', (tester) async {
+    testWidgets('repertoire name and subtitle shown in app bar',
+        (tester) async {
       final repId = await seedRepertoire(
         db,
         name: 'Sicilian Defence',
@@ -424,11 +439,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Sicilian Defence'), findsOneWidget);
+      expect(find.text('Repertoire Manager'), findsOneWidget);
     });
-  });
 
-  group('Edit mode', () {
-    testWidgets('enter edit mode shows edit-mode action bar', (tester) async {
+    testWidgets('board is always PlayerSide.none', (tester) async {
       final repId = await seedRepertoire(
         db,
         lines: [
@@ -439,51 +453,12 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Browse mode: Edit button should be visible
-      expect(find.text('Edit'), findsOneWidget);
-      expect(find.text('Confirm'), findsNothing);
-      expect(find.text('Take Back'), findsNothing);
-
-      // Tap Edit button
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Edit mode: Confirm and Take Back should be visible
-      expect(find.text('Confirm'), findsOneWidget);
-      expect(find.text('Take Back'), findsOneWidget);
-
-      // Browse mode buttons should be gone
-      expect(find.text('Label'), findsNothing);
-      expect(find.text('Focus'), findsNothing);
-      expect(find.text('Delete'), findsNothing);
-    });
-
-    testWidgets('board becomes interactive in edit mode', (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // In browse mode, playerSide should be none
-      var chessboard =
+      final chessboard =
           tester.widget<Chessboard>(find.byType(Chessboard));
       expect(chessboard.game?.playerSide, PlayerSide.none);
-
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // In edit mode, playerSide should be both
-      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
-      expect(chessboard.game?.playerSide, PlayerSide.both);
     });
 
-    testWidgets('confirm button disabled when no new moves', (tester) async {
+    testWidgets('no Edit button in action bar', (tester) async {
       final repId = await seedRepertoire(
         db,
         lines: [
@@ -494,297 +469,22 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Confirm should be disabled (no new moves buffered)
-      final confirmButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Confirm'),
-      );
-      expect(confirmButton.onPressed, isNull);
+      expect(find.widgetWithText(TextButton, 'Edit'), findsNothing);
     });
 
-    testWidgets('take-back disabled when no buffered moves', (tester) async {
+    testWidgets('no Focus button in action bar', (tester) async {
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
         ],
+        labelsOnSan: {'e4': 'King Pawn'},
       );
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Take Back should be disabled (no buffered moves)
-      final takeBackButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Take Back'),
-      );
-      expect(takeBackButton.onPressed, isNull);
-    });
-
-    testWidgets('discard exits edit mode', (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4', 'e5'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Verify we are in edit mode
-      expect(find.text('Confirm'), findsOneWidget);
-
-      // Tap discard (close icon)
-      await tester.tap(find.byIcon(Icons.close));
-      await tester.pump();
-
-      // Should be back in browse mode
-      expect(find.text('Edit'), findsOneWidget);
-      expect(find.text('Confirm'), findsNothing);
-    });
-
-    testWidgets('navigation buttons hidden in edit mode', (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4', 'e5'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // In browse mode: navigation buttons visible
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_forward), findsOneWidget);
-
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Navigation buttons should be hidden
-      expect(find.byIcon(Icons.arrow_back), findsNothing);
-      expect(find.byIcon(Icons.arrow_forward), findsNothing);
-    });
-
-    testWidgets('flip board works in edit mode', (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Default orientation is white
-      var chessboard =
-          tester.widget<Chessboard>(find.byType(Chessboard));
-      expect(chessboard.orientation, Side.white);
-
-      // Tap the flip button in edit mode action bar
-      await tester.tap(find.byIcon(Icons.swap_vert));
-      await tester.pump();
-
-      // Orientation should now be black
-      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
-      expect(chessboard.orientation, Side.black);
-    });
-
-    testWidgets('enter edit mode from selected node sets board position',
-        (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4', 'e5', 'Nf3'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Select e5
-      await tester.tap(find.text('1...e5'));
-      await tester.pump();
-
-      // Record board FEN at e5 position
-      final chessboardBefore =
-          tester.widget<Chessboard>(find.byType(Chessboard));
-      final fenAtE5 = chessboardBefore.fen;
-
-      // Enter edit mode from e5 position
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Board should still show position after e5
-      final chessboardAfter =
-          tester.widget<Chessboard>(find.byType(Chessboard));
-      expect(chessboardAfter.fen, fenAtE5);
-    });
-
-    testWidgets('enter edit mode with no selection starts from initial position',
-        (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4', 'e5'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Do not select any node. Enter edit mode.
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Board should show initial position
-      final chessboard =
-          tester.widget<Chessboard>(find.byType(Chessboard));
-      expect(chessboard.fen, kInitialFEN);
-    });
-
-    testWidgets('empty tree -- enter edit mode from root', (tester) async {
-      final repId = await seedRepertoire(db, lines: []);
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Enter edit mode on empty repertoire
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Should be in edit mode
-      expect(find.text('Confirm'), findsOneWidget);
-      expect(find.text('Take Back'), findsOneWidget);
-
-      // Board should show initial position
-      final chessboard =
-          tester.widget<Chessboard>(find.byType(Chessboard));
-      expect(chessboard.fen, kInitialFEN);
-    });
-
-    testWidgets('discard after entering edit mode restores original position',
-        (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4', 'e5', 'Nf3'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Select e5
-      await tester.tap(find.text('1...e5'));
-      await tester.pump();
-
-      final fenBefore =
-          tester.widget<Chessboard>(find.byType(Chessboard)).fen;
-
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Discard
-      await tester.tap(find.byIcon(Icons.close));
-      await tester.pump();
-
-      // Board should show the same position as before entering edit mode
-      final fenAfter =
-          tester.widget<Chessboard>(find.byType(Chessboard)).fen;
-      expect(fenAfter, fenBefore);
-    });
-
-    testWidgets('tree selection disabled during edit mode', (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4', 'e5'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Record current board FEN
-      final fenInEditMode =
-          tester.widget<Chessboard>(find.byType(Chessboard)).fen;
-
-      // Tap a tree node -- should not change the board
-      await tester.tap(find.text('1. e4'));
-      await tester.pump();
-
-      final fenAfterTap =
-          tester.widget<Chessboard>(find.byType(Chessboard)).fen;
-      expect(fenAfterTap, fenInEditMode);
-    });
-
-    testWidgets('confirm saves moves to database and exits edit mode',
-        (tester) async {
-      // Start with an empty repertoire to test the full flow.
-      // We cannot easily simulate board moves in widget tests, so we
-      // verify the infrastructure: enter edit mode, confirm is disabled
-      // (no moves), and the DB is empty.
-      final repId = await seedRepertoire(db, lines: []);
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Enter edit mode
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Confirm should be disabled (no new moves)
-      final confirmButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Confirm'),
-      );
-      expect(confirmButton.onPressed, isNull);
-
-      // Verify the DB has no moves
-      final repRepo = LocalRepertoireRepository(db);
-      final moves = await repRepo.getMovesForRepertoire(repId);
-      expect(moves, isEmpty);
-    });
-
-    testWidgets('edit button is enabled even with no node selected',
-        (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4', 'e5'],
-        ],
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Without selecting any node, Edit button should still be enabled
-      final editButton = tester.widget<TextButton>(
-        find.widgetWithText(TextButton, 'Edit'),
-      );
-      expect(editButton.onPressed, isNotNull);
+      expect(find.widgetWithText(TextButton, 'Focus'), findsNothing);
     });
   });
 
@@ -1042,6 +742,8 @@ void main() {
       await tester.pump();
       await tester.tap(find.byIcon(Icons.chevron_right).first); // expand e5
       await tester.pump();
+      await tester.ensureVisible(find.text('2. Nf3'));
+      await tester.pump();
       await tester.tap(find.text('2. Nf3'));
       await tester.pump();
       await tester.tap(find.text('Label'));
@@ -1059,38 +761,6 @@ void main() {
       expect(e4Move.label, 'Root Label');
       expect(e5Move.label, 'Interior Label');
       expect(nf3Move.label, 'Leaf Label');
-    });
-
-    testWidgets('edit-mode display name reflects labels on existing path',
-        (tester) async {
-      final repId = await seedRepertoire(
-        db,
-        lines: [
-          ['e4', 'e5', 'Nf3'],
-        ],
-        labelsOnSan: {'e4': 'King Pawn', 'Nf3': 'King Knight'},
-      );
-
-      await tester.pumpWidget(buildTestApp(db, repId));
-      await tester.pumpAndSettle();
-
-      // Select leaf node Nf3 (expand tree first)
-      await tester.tap(find.byIcon(Icons.chevron_right).first);
-      await tester.pump();
-      await tester.tap(find.byIcon(Icons.chevron_right).first);
-      await tester.pump();
-      await tester.tap(find.textContaining('2. Nf3'));
-      await tester.pump();
-
-      // Verify browse-mode header shows aggregate label
-      expect(find.text('King Pawn \u2014 King Knight'), findsOneWidget);
-
-      // Enter edit mode from this labeled node
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Edit-mode header should still show the aggregate label
-      expect(find.text('King Pawn \u2014 King Knight'), findsOneWidget);
     });
 
     testWidgets('no-op guard: saving unchanged label preserves existing value',
@@ -1463,145 +1133,173 @@ void main() {
     });
   });
 
-  group('Extension undo snackbar', () {
-    /// Seeds a repertoire with a review card on the leaf, then navigates to
-    /// the leaf, enters edit mode, plays [moveSan] on the board, and confirms.
-    ///
-    /// Returns the leaf move ID (before extension) for later assertions.
-    Future<int> seedAndExtend(
-      WidgetTester tester,
-      AppDatabase db, {
-      List<String> line = const ['e4', 'e5'],
-      required String moveSan,
-    }) async {
-      final repId = await seedRepertoire(db, lines: [line]);
-      final repRepo = LocalRepertoireRepository(db);
-
-      // Find the leaf move (last in the line).
-      final allMoves = await repRepo.getMovesForRepertoire(repId);
-      final leafMove = allMoves.firstWhere(
-        (m) => !allMoves.any((c) => c.parentMoveId == m.id),
+  group('Add Line', () {
+    testWidgets('Add Line button is always present and enabled',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
       );
-
-      // Create a review card on the leaf with non-default SR values.
-      await db.into(db.reviewCards).insert(
-            ReviewCardsCompanion.insert(
-              repertoireId: repId,
-              leafMoveId: leafMove.id,
-              nextReviewDate: DateTime(2026, 6, 15),
-            ).copyWith(
-              easeFactor: const Value(2.8),
-              intervalDays: const Value(7),
-              repetitions: const Value(3),
-            ),
-          );
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select the leaf node (last SAN in the line).
-      final leafSan = line.last;
-      // Build the display text for the leaf move.
-      final plyIndex = line.length; // 1-based ply number
-      final moveNumber = (plyIndex + 1) ~/ 2;
-      final isBlackMove = plyIndex.isEven;
-      final displayText =
-          isBlackMove ? '$moveNumber...$leafSan' : '$moveNumber. $leafSan';
-      await tester.tap(find.text(displayText));
-      await tester.pump();
+      // Add Line button should be present and enabled even with no selection
+      final addLineButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Add Line'),
+      );
+      expect(addLineButton.onPressed, isNotNull);
+    });
 
-      // Enter edit mode from the leaf.
-      await tester.tap(find.text('Edit'));
-      await tester.pump();
-
-      // Play a move on the board by calling Chessboard's GameData.onMove.
-      final chessboard =
-          tester.widget<Chessboard>(find.byType(Chessboard));
-      final pos = Chess.fromSetup(Setup.parseFen(chessboard.fen));
-      final parsed = pos.parseSan(moveSan)! as NormalMove;
-      chessboard.game!.onMove(parsed);
-      await tester.pump();
-
-      // Tap Confirm to trigger extension.
-      await tester.tap(find.widgetWithText(TextButton, 'Confirm'));
-      await tester.pumpAndSettle();
-
-      return leafMove.id;
-    }
-
-    testWidgets('snackbar appears after confirming line extension',
+    testWidgets('Add Line navigates to AddLineScreen with no selection',
         (tester) async {
-      await seedAndExtend(
-        tester,
+      final repId = await seedRepertoire(
         db,
-        line: ['e4', 'e5'],
-        moveSan: 'Nf3',
+        lines: [
+          ['e4', 'e5'],
+        ],
       );
 
-      // Snackbar should be visible with "Line extended" and "Undo" action.
-      expect(find.text('Line extended'), findsOneWidget);
-      expect(find.text('Undo'), findsOneWidget);
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Tap Add Line without selecting a node
+      await tester.tap(find.widgetWithText(TextButton, 'Add Line'));
+      await tester.pumpAndSettle();
+
+      // Should navigate to AddLineScreen
+      expect(find.byType(AddLineScreen), findsOneWidget);
     });
 
-    testWidgets('undo reverts extension: new moves gone, old card restored',
+    testWidgets('Add Line navigates to AddLineScreen with startingMoveId',
         (tester) async {
-      final leafId = await seedAndExtend(
-        tester,
+      final repId = await seedRepertoire(
         db,
-        line: ['e4', 'e5'],
-        moveSan: 'Nf3',
+        lines: [
+          ['e4', 'e5'],
+        ],
       );
 
-      // Tap Undo on the snackbar.
-      await tester.tap(find.text('Undo'));
+      await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Verify: old leaf's review card is restored with original SR values.
-      final reviewRepo = LocalReviewRepository(db);
-      final restoredCard = await reviewRepo.getCardForLeaf(leafId);
-      expect(restoredCard, isNotNull);
-      expect(restoredCard!.easeFactor, 2.8);
-      expect(restoredCard.intervalDays, 7);
-      expect(restoredCard.repetitions, 3);
+      // Select e4
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
 
-      // Verify: extension move (Nf3) is gone.
-      final repRepo = LocalRepertoireRepository(db);
-      final allMoves = await repRepo.getMovesForRepertoire(
-          restoredCard.repertoireId);
-      expect(allMoves.any((m) => m.san == 'Nf3'), isFalse);
-      // Original moves should still be there.
-      expect(allMoves.any((m) => m.san == 'e4'), isTrue);
-      expect(allMoves.any((m) => m.san == 'e5'), isTrue);
+      // Tap Add Line with a node selected
+      await tester.tap(find.widgetWithText(TextButton, 'Add Line'));
+      await tester.pumpAndSettle();
+
+      // Should navigate to AddLineScreen with startingMoveId
+      expect(find.byType(AddLineScreen), findsOneWidget);
+      final screen =
+          tester.widget<AddLineScreen>(find.byType(AddLineScreen));
+      expect(screen.startingMoveId, isNotNull);
     });
+  });
 
-    testWidgets('snackbar expiry does not revert extension', (tester) async {
-      final leafId = await seedAndExtend(
-        tester,
+  group('Card Stats', () {
+    testWidgets('Stats button disabled when no leaf selected',
+        (tester) async {
+      final repId = await seedRepertoire(
         db,
-        line: ['e4', 'e5'],
-        moveSan: 'Nf3',
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
       );
 
-      // Let the snackbar expire (8 seconds duration).
-      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Extension should still be in place.
-      final repRepo = LocalRepertoireRepository(db);
-      final reviewRepo = LocalReviewRepository(db);
-      final allMoves = await repRepo.getMovesForRepertoire(1);
-      expect(allMoves.any((m) => m.san == 'Nf3'), isTrue);
+      // No selection -- Stats should be disabled
+      final statsButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Stats'),
+      );
+      expect(statsButton.onPressed, isNull);
 
-      // Old leaf should NOT have a card (it was consumed by the extension).
-      final oldCard = await reviewRepo.getCardForLeaf(leafId);
-      expect(oldCard, isNull);
+      // Select e4 (non-leaf) -- Stats should still be disabled
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      final statsButton2 = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Stats'),
+      );
+      expect(statsButton2.onPressed, isNull);
     });
 
-    // Note: The generation counter (`_undoGeneration`) that prevents stale
-    // undo callbacks from firing is tested indirectly through the three tests
-    // above. A full UI test of two sequential extensions in a single widget
-    // test is too fragile due to tree expand/collapse state and layout
-    // constraints. The sequential undo behavior is covered by the repository-
-    // level test in local_repertoire_repository_test.dart.
+    testWidgets('Stats button enabled on leaf; dialog shows card data',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        createCards: true,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (leaf)
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Stats button should be enabled
+      final statsButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Stats'),
+      );
+      expect(statsButton.onPressed, isNotNull);
+
+      // Tap Stats
+      await tester.tap(find.widgetWithText(TextButton, 'Stats'));
+      await tester.pumpAndSettle();
+
+      // Dialog should show card stats
+      expect(find.text('Card Stats'), findsOneWidget);
+      expect(find.textContaining('Ease factor:'), findsOneWidget);
+      expect(find.textContaining('Interval:'), findsOneWidget);
+      expect(find.textContaining('Repetitions:'), findsOneWidget);
+      expect(find.textContaining('Next review:'), findsOneWidget);
+      expect(find.textContaining('Last quality:'), findsOneWidget);
+
+      // Close the dialog
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+
+      // Dialog should be dismissed
+      expect(find.text('Card Stats'), findsNothing);
+    });
+
+    testWidgets('Stats on leaf with no card shows snackbar',
+        (tester) async {
+      // Create repertoire with a leaf but no cards
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        createCards: false,
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e5 (leaf)
+      await tester.tap(find.text('1...e5'));
+      await tester.pump();
+
+      // Tap Stats
+      await tester.tap(find.widgetWithText(TextButton, 'Stats'));
+      await tester.pumpAndSettle();
+
+      // Should show snackbar with message
+      expect(find.text('No review card for this move.'), findsOneWidget);
+
+      // Should NOT show the dialog
+      expect(find.text('Card Stats'), findsNothing);
+    });
   });
 }
