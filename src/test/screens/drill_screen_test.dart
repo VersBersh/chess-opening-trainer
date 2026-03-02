@@ -1130,6 +1130,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle(const Duration(seconds: 2));
 
+      // Should show DrillPassComplete with "Pass Complete" heading
+      expect(find.text('Pass Complete'), findsOneWidget);
+      expect(find.text('Keep Going'), findsOneWidget);
+
+      // Tap "Finish" to reach the session summary
+      await tester.tap(find.text('Finish'));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
       // Should show "Practice Complete" instead of "Session Complete"
       expect(find.text('Practice Complete'), findsNWidgets(2));
       expect(find.text('Session Complete'), findsNothing);
@@ -1175,6 +1183,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle(const Duration(seconds: 2));
 
+      // Tap "Finish" to reach the session summary
+      await tester.tap(find.text('Finish'));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
       expect(find.textContaining('no SR updates'), findsOneWidget);
     });
 
@@ -1216,6 +1228,10 @@ void main() {
       notifier.boardController.playMove(oOMove);
       unawaited(notifier.processUserMove(oOMove));
       await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Tap "Finish" to reach the session summary
+      await tester.tap(find.text('Finish'));
       await tester.pumpAndSettle(const Duration(seconds: 2));
 
       expect(find.textContaining('Next review:'), findsNothing);
@@ -1267,6 +1283,350 @@ void main() {
 
       // AppBar should say "Free Practice — 1/1"
       expect(find.text('Free Practice \u2014 1/1'), findsOneWidget);
+    });
+
+    testWidgets('"Keep Going" button appears after all cards reviewed in free practice',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      // Complete the card
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // "Keep Going" button should be visible
+      expect(find.text('Keep Going'), findsOneWidget);
+      expect(find.text('Pass Complete'), findsOneWidget);
+      // We should NOT be on the session summary screen
+      expect(find.text('Done'), findsNothing);
+    });
+
+    testWidgets('tapping "Keep Going" starts a new pass',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      // Complete the card
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should be on the pass complete screen
+      expect(find.text('Keep Going'), findsOneWidget);
+
+      // Tap "Keep Going"
+      await tester.tap(find.text('Keep Going'));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Should be back on a card (DrillCardStart or DrillUserTurn)
+      final state =
+          container.read(drillControllerProvider(freePracticeConfig));
+      final stateVal = state.value!;
+      expect(
+        stateVal is DrillCardStart || stateVal is DrillUserTurn,
+        true,
+        reason: 'Expected active card state after Keep Going, got $stateVal',
+      );
+
+      // Progress indicator should show 1/1 (reset for new pass)
+      expect(find.text('Free Practice \u2014 1/1'), findsOneWidget);
+    });
+
+    testWidgets('"Finish" button shows session summary',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      // Complete the card
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Tap "Finish" to reach the session summary
+      await tester.tap(find.text('Finish'));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should show the session summary with "Practice Complete"
+      expect(find.text('Practice Complete'), findsNWidgets(2));
+      expect(find.text('Done'), findsOneWidget);
+      expect(find.text('1 cards reviewed'), findsOneWidget);
+    });
+
+    testWidgets('regular drill mode does NOT show "Keep Going"',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        // Uses _defaultConfig which has isExtraPractice: false
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(_defaultConfig).notifier);
+
+      // Complete the card
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should show DrillSessionComplete directly (no "Keep Going")
+      expect(find.text('Session Complete'), findsNWidgets(2));
+      expect(find.text('Keep Going'), findsNothing);
+      expect(find.text('Pass Complete'), findsNothing);
+    });
+
+    testWidgets('multiple passes work',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      // --- Pass 1 ---
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      var ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      var oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      expect(find.text('Pass Complete'), findsOneWidget);
+
+      // Tap "Keep Going"
+      await tester.tap(find.text('Keep Going'));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // --- Pass 2 ---
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should see "Pass Complete" again
+      expect(find.text('Pass Complete'), findsOneWidget);
+      expect(find.text('Keep Going'), findsOneWidget);
+    });
+
+    testWidgets('cumulative stats in summary after multiple passes',
+        (tester) async {
+      final card = buildReviewCard(whiteLine9);
+      final freePracticeConfig = DrillConfig(
+        repertoireId: 1,
+        preloadedCards: [card],
+        isExtraPractice: true,
+      );
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: freePracticeConfig,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(freePracticeConfig).notifier);
+
+      // --- Pass 1 ---
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      var ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      var oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Tap "Keep Going"
+      await tester.tap(find.text('Keep Going'));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // --- Pass 2 ---
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Tap "Finish" to see cumulative summary
+      await tester.tap(find.text('Finish'));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Should show "Practice Complete" and cumulative stats
+      expect(find.text('Practice Complete'), findsNWidgets(2));
+      // 2 cards reviewed across both passes (1 card completed per pass x 2 passes)
+      expect(find.text('2 cards reviewed'), findsOneWidget);
     });
   });
 }

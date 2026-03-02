@@ -106,6 +106,16 @@ class DrillEngine {
     _userColor = null;
   }
 
+  /// Reshuffles the current card queue and resets the session index.
+  ///
+  /// Used by the "Keep Going" feature in Free Practice mode to start a
+  /// new pass over the same card set in a different order.
+  void reshuffleQueue() {
+    final cards = List.of(_session.cardQueue);
+    cards.shuffle();
+    replaceQueue(cards);
+  }
+
   // ---- Public methods -----------------------------------------------------
 
   /// Returns the aggregate display name for the deepest labeled position

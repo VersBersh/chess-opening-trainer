@@ -885,4 +885,93 @@ void main() {
       expect(cache.getDistinctLabels(), ['Open Game', 'Scandinavian']);
     });
   });
+
+  group('reshuffleQueue', () {
+    test('resets index and preserves card set', () {
+      // Build a 2-card engine with two white lines sharing the same opening.
+      Position pos = Chess.initial;
+      for (final san in ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4']) {
+        pos = pos.play(pos.parseSan(san)!);
+      }
+      final posAfterB5 = pos.play(pos.parseSan('b5')!);
+      final posAfterBb3 = posAfterB5.play(posAfterB5.parseSan('Bb3')!);
+
+      final b5Move = RepertoireMove(
+        id: 50,
+        repertoireId: 1,
+        parentMoveId: 7, // Ba4
+        fen: posAfterB5.fen,
+        san: 'b5',
+        sortOrder: 1,
+      );
+      final bb3Move = RepertoireMove(
+        id: 51,
+        repertoireId: 1,
+        parentMoveId: 50,
+        fen: posAfterBb3.fen,
+        san: 'Bb3',
+        sortOrder: 0,
+      );
+
+      final line2 = [...whiteLine9.sublist(0, 7), b5Move, bb3Move];
+      final allMoves = [...whiteLine9, b5Move, bb3Move];
+      final card1 = buildReviewCard(whiteLine9, cardId: 1);
+      final card2 = buildReviewCard(line2, cardId: 2);
+      final cache = RepertoireTreeCache.build(allMoves);
+      final engine = DrillEngine(
+        cards: [card1, card2],
+        treeCache: cache,
+        isExtraPractice: true,
+      );
+
+      // Advance through both cards
+      engine.startCard();
+      engine.submitMove('Ba4');
+      engine.submitMove('O-O');
+      engine.completeCard();
+
+      engine.startCard();
+      engine.submitMove('Ba4');
+      engine.submitMove('Bb3');
+      engine.completeCard();
+
+      expect(engine.isSessionComplete, true);
+
+      // Capture card IDs before reshuffle
+      final cardIdsBefore =
+          engine.session.cardQueue.map((c) => c.id).toSet();
+
+      // Reshuffle
+      engine.reshuffleQueue();
+
+      // Verify: totalCards unchanged, currentIndex == 0, isSessionComplete == false
+      expect(engine.totalCards, 2);
+      expect(engine.currentIndex, 0);
+      expect(engine.isSessionComplete, false);
+
+      // Verify: same card set preserved (order may differ)
+      final cardIdsAfter =
+          engine.session.cardQueue.map((c) => c.id).toSet();
+      expect(cardIdsAfter, cardIdsBefore);
+    });
+
+    test('can be called after session is complete', () {
+      final engine = buildEngine(whiteLine9, whiteLine9, isExtraPractice: true);
+      engine.startCard();
+      engine.submitMove('Ba4');
+      engine.submitMove('O-O');
+      engine.completeCard();
+
+      expect(engine.isSessionComplete, true);
+
+      // Call reshuffleQueue
+      engine.reshuffleQueue();
+
+      // Verify: isSessionComplete is false, can call startCard()
+      expect(engine.isSessionComplete, false);
+      expect(engine.totalCards, 1);
+      engine.startCard();
+      expect(engine.currentCardState, isNotNull);
+    });
+  });
 }

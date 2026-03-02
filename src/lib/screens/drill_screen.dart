@@ -144,6 +144,17 @@ class DrillSessionComplete extends DrillScreenState {
   const DrillSessionComplete({required this.summary});
 }
 
+/// Emitted when all cards in a Free Practice session have been reviewed
+/// but the user has not yet chosen to continue or exit.
+class DrillPassComplete extends DrillScreenState {
+  final int completedCards;
+  final int totalCards;
+  const DrillPassComplete({
+    required this.completedCards,
+    required this.totalCards,
+  });
+}
+
 /// Emitted when a label filter produces zero matching cards.
 /// Distinct from [DrillSessionComplete] (finished session) and
 /// [DrillCardStart] (which assumes a real current card exists).
@@ -176,6 +187,14 @@ class DrillController
   int _failedCount = 0;
   DateTime? _earliestNextDue;
   DateTime _sessionStartTime = DateTime.now();
+
+  // Cumulative counters across passes (free practice only)
+  int _cumulativeCompletedCards = 0;
+  int _cumulativeSkippedCards = 0;
+  int _cumulativePerfectCount = 0;
+  int _cumulativeHesitationCount = 0;
+  int _cumulativeStruggledCount = 0;
+  int _cumulativeFailedCount = 0;
   String _preMoveFen = '';
   bool _isDisposed = false;
   int _cardGeneration = 0; // incremented on each card start/skip to cancel stale async ops
@@ -433,12 +452,7 @@ class DrillController
       }
     }
     _completedCards++;
-
-    if (_engine.isSessionComplete) {
-      state = AsyncData(DrillSessionComplete(summary: _buildSummary()));
-    } else {
-      await _startNextCard();
-    }
+    await _advanceOrComplete();
   }
 
   // ---- Summary builder -----------------------------------------------------
@@ -461,12 +475,68 @@ class DrillController
   Future<void> skipCard() async {
     _engine.skipCard();
     _skippedCards++;
+    await _advanceOrComplete();
+  }
 
+  /// Shared logic for post-card-completion: either advance to the next card
+  /// or emit a terminal/pass-complete state.
+  Future<void> _advanceOrComplete() async {
     if (_engine.isSessionComplete) {
-      state = AsyncData(DrillSessionComplete(summary: _buildSummary()));
+      if (_isExtraPractice) {
+        _accumulatePassStats();
+        state = AsyncData(DrillPassComplete(
+          completedCards: _completedCards,
+          totalCards: _engine.totalCards,
+        ));
+      } else {
+        state = AsyncData(DrillSessionComplete(summary: _buildSummary()));
+      }
     } else {
       await _startNextCard();
     }
+  }
+
+  // ---- Pass accumulation / Keep Going (free practice only) ----------------
+
+  void _accumulatePassStats() {
+    _cumulativeCompletedCards += _completedCards;
+    _cumulativeSkippedCards += _skippedCards;
+    _cumulativePerfectCount += _perfectCount;
+    _cumulativeHesitationCount += _hesitationCount;
+    _cumulativeStruggledCount += _struggledCount;
+    _cumulativeFailedCount += _failedCount;
+  }
+
+  void _resetPassStats() {
+    _completedCards = 0;
+    _skippedCards = 0;
+    _perfectCount = 0;
+    _hesitationCount = 0;
+    _struggledCount = 0;
+    _failedCount = 0;
+    _earliestNextDue = null;
+  }
+
+  Future<void> keepGoing() async {
+    _engine.reshuffleQueue();
+    _resetPassStats();
+    await _startNextCard();
+  }
+
+  void finishSession() {
+    state = AsyncData(DrillSessionComplete(
+      summary: SessionSummary(
+        totalCards: _engine.totalCards,
+        completedCards: _cumulativeCompletedCards,
+        skippedCards: _cumulativeSkippedCards,
+        perfectCount: _cumulativePerfectCount,
+        hesitationCount: _cumulativeHesitationCount,
+        struggledCount: _cumulativeStruggledCount,
+        failedCount: _cumulativeFailedCount,
+        sessionDuration: DateTime.now().difference(_sessionStartTime),
+        isFreePractice: true,
+      ),
+    ));
   }
 
   // ---- Filter (free practice only) ----------------------------------------
@@ -515,6 +585,13 @@ class DrillController
     // Check staleness after async work — another filter change may have
     // occurred while we were fetching cards.
     if (_isStale(gen)) return;
+
+    // If we are transitioning out of DrillPassComplete (e.g. user changed
+    // filter between passes), reset per-pass counters so stats from the
+    // already-accumulated pass are not double-counted on the next pass.
+    if (state.valueOrNull is DrillPassComplete) {
+      _resetPassStats();
+    }
 
     _engine.replaceQueue(filteredCards);
 
@@ -606,6 +683,9 @@ class DrillScreen extends ConsumerWidget {
 
       case DrillSessionComplete():
         return _buildSessionComplete(context, drillState);
+
+      case DrillPassComplete():
+        return _buildPassComplete(context, ref, drillState);
 
       case DrillCardStart():
         return _buildDrillScaffold(
@@ -881,6 +961,56 @@ class DrillScreen extends ConsumerWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPassComplete(
+      BuildContext context, WidgetRef ref, DrillPassComplete drillState) {
+    final notifier =
+        ref.read(drillControllerProvider(config).notifier);
+    final filterWidget = _buildFilterBox(context, ref);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Free Practice')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.check_circle_outline,
+                size: 80,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Pass Complete',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '${drillState.completedCards} of ${drillState.totalCards} cards reviewed',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 48),
+              FilledButton(
+                onPressed: () => notifier.keepGoing(),
+                child: const Text('Keep Going'),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => notifier.finishSession(),
+                child: const Text('Finish'),
+              ),
+              if (filterWidget != null) ...[
+                const SizedBox(height: 24),
+                filterWidget,
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
