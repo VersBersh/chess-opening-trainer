@@ -8,6 +8,7 @@ import '../repositories/local/database.dart';
 import '../repositories/local/local_repertoire_repository.dart';
 import '../repositories/local/local_review_repository.dart';
 import '../services/line_entry_engine.dart';
+import 'import_screen.dart';
 import '../widgets/chessboard_controller.dart';
 import '../widgets/chessboard_widget.dart';
 import '../widgets/move_tree_widget.dart';
@@ -1027,6 +1028,21 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
             onPressed: _onEnterEditMode,
             icon: const Icon(Icons.edit, size: 18),
             label: const Text('Edit'),
+          ),
+
+          // Import button
+          TextButton.icon(
+            onPressed: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ImportScreen(
+                  db: widget.db,
+                  repertoireId: widget.repertoireId,
+                ),
+              ));
+              await _loadData(); // Rebuild tree cache
+            },
+            icon: const Icon(Icons.file_upload, size: 18),
+            label: const Text('Import'),
           ),
 
           // Label button
