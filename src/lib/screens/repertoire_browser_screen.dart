@@ -699,10 +699,12 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= 600;
 
-    if (isWide) {
-      return _buildWideContent(context, cache);
-    }
-    return _buildNarrowContent(context, cache);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: isWide
+          ? _buildWideContent(context, cache)
+          : _buildNarrowContent(context, cache),
+    );
   }
 
   Widget _buildNarrowContent(

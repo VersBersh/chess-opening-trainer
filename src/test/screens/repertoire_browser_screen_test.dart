@@ -815,7 +815,10 @@ void main() {
       // Nf3 should be visible (all nodes auto-expanded, no labels).
       expect(find.text('2. Nf3'), findsOneWidget);
 
-      // Select Nf3 (leaf).
+      // Select Nf3 (leaf). Scroll into view first — banner gap may push it
+      // just past the viewport edge in the test surface.
+      await tester.ensureVisible(find.text('2. Nf3'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('2. Nf3'));
       await tester.pump();
 
