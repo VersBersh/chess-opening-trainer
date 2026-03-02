@@ -201,6 +201,13 @@ class _AddLineScreenState extends State<AddLineScreen> {
     // No-op guard: skip if unchanged.
     if (labelToSave == move.label) return;
 
+    // Multi-line impact check: warn if the label change affects multiple lines.
+    final leafCount = cache.countDescendantLeaves(move.id);
+    if (leafCount > 1) {
+      final confirmed = await _showMultiLineWarningDialog(leafCount);
+      if (confirmed != true) return;
+    }
+
     await _controller.updateLabel(focusedIndex, labelToSave);
   }
 
@@ -342,6 +349,26 @@ class _AddLineScreenState extends State<AddLineScreen> {
           },
         );
       },
+    );
+  }
+
+  Future<bool?> _showMultiLineWarningDialog(int lineCount) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Label affects multiple lines'),
+        content: Text('This label applies to $lineCount lines. Continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
     );
   }
 

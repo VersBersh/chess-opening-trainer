@@ -124,6 +124,13 @@ class RepertoireTreeCache {
     return sorted;
   }
 
+  /// Counts the number of leaf nodes in the subtree rooted at [moveId].
+  /// A leaf is a node with no children. Returns 0 if [moveId] is not found.
+  int countDescendantLeaves(int moveId) {
+    final subtree = getSubtree(moveId);
+    return subtree.where((m) => isLeaf(m.id)).length;
+  }
+
   /// Returns the move and all its descendants.
   List<RepertoireMove> getSubtree(int moveId) {
     final result = <RepertoireMove>[];

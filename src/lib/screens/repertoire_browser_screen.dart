@@ -285,6 +285,13 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
     final currentLabel = move.label;
     if (labelToSave == currentLabel) return;
 
+    // Multi-line impact check: warn if the label change affects multiple lines.
+    final leafCount = cache.countDescendantLeaves(selectedId);
+    if (leafCount > 1) {
+      final confirmed = await _showMultiLineWarningDialog(leafCount);
+      if (confirmed != true) return;
+    }
+
     final repRepo = LocalRepertoireRepository(widget.db);
     await repRepo.updateMoveLabel(selectedId, labelToSave);
     await _loadData(); // Rebuild cache
@@ -428,6 +435,26 @@ class _RepertoireBrowserScreenState extends State<RepertoireBrowserScreen> {
           },
         );
       },
+    );
+  }
+
+  Future<bool?> _showMultiLineWarningDialog(int lineCount) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Label affects multiple lines'),
+        content: Text('This label applies to $lineCount lines. Continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
     );
   }
 

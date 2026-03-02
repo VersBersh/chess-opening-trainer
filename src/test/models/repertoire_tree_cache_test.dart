@@ -284,4 +284,120 @@ void main() {
       expect(cache.getMoveNotation(100), '1...c5');
     });
   });
+
+  group('countDescendantLeaves', () {
+    test('a leaf node returns 1 (itself)', () {
+      // 1. e4 e5 2. Nf3  -- Nf3 (id=3) is a leaf
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.countDescendantLeaves(3), 1);
+    });
+
+    test('a node with one child that is a leaf returns 1', () {
+      // 1. e4 e5  -- e4 (id=1) has one child e5 (id=2) which is a leaf
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.countDescendantLeaves(1), 1);
+    });
+
+    test('a node with two children that are both leaves returns 2', () {
+      // Main line: 1. e4 e5
+      final mainLine = buildLine(['e4', 'e5']);
+
+      // Branch from e4: 1. e4 c5
+      Position pos = Chess.initial;
+      pos = pos.play(pos.parseSan('e4')!);
+      final posAfterC5 = pos.play(pos.parseSan('c5')!);
+
+      final branchMove = RepertoireMove(
+        id: 100,
+        repertoireId: 1,
+        parentMoveId: 1, // e4
+        fen: posAfterC5.fen,
+        san: 'c5',
+        sortOrder: 1,
+      );
+
+      final allMoves = [...mainLine, branchMove];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      // e4 (id=1) has two children: e5 (leaf) and c5 (leaf)
+      expect(cache.countDescendantLeaves(1), 2);
+    });
+
+    test('deep tree with branches returns correct count', () {
+      // Main line: 1. e4 e5 2. Nf3
+      final mainLine = buildLine(['e4', 'e5', 'Nf3']);
+
+      // Branch from e4: 1. e4 c5 2. Nf3
+      // Must manually construct because buildLine always starts from initial.
+      Position pos = Chess.initial;
+      pos = pos.play(pos.parseSan('e4')!);
+      final posAfterC5 = pos.play(pos.parseSan('c5')!);
+      final posAfterC5Nf3 = posAfterC5.play(posAfterC5.parseSan('Nf3')!);
+
+      final branch = [
+        RepertoireMove(
+          id: 100,
+          repertoireId: 1,
+          parentMoveId: 1, // branch from e4
+          fen: posAfterC5.fen,
+          san: 'c5',
+          sortOrder: 1,
+        ),
+        RepertoireMove(
+          id: 101,
+          repertoireId: 1,
+          parentMoveId: 100,
+          fen: posAfterC5Nf3.fen,
+          san: 'Nf3',
+          sortOrder: 0,
+        ),
+      ];
+
+      // Second branch from e4: 1. e4 d5
+      final posAfterD5 = pos.play(pos.parseSan('d5')!);
+      final branch2 = [
+        RepertoireMove(
+          id: 200,
+          repertoireId: 1,
+          parentMoveId: 1, // branch from e4
+          fen: posAfterD5.fen,
+          san: 'd5',
+          sortOrder: 2,
+        ),
+      ];
+
+      final allMoves = [...mainLine, ...branch, ...branch2];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      // e4 has 3 descendant leaves: Nf3 (id=3), Nf3 (id=101), d5 (id=200)
+      expect(cache.countDescendantLeaves(1), 3);
+    });
+
+    test('root node of a multi-branch tree returns total number of leaves', () {
+      // Two lines from the root:
+      // Line 1: 1. e4 e5
+      // Line 2: 1. d4 d5
+      final line1 = buildLine(['e4', 'e5']);
+      final line2 = buildLine(['d4', 'd5'], startId: 100);
+
+      final allMoves = [...line1, ...line2];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      // e4 subtree has 1 leaf (e5), d4 subtree has 1 leaf (d5)
+      // Each root is independent, so check each root individually:
+      expect(cache.countDescendantLeaves(1), 1); // e4 -> e5 (leaf)
+      expect(cache.countDescendantLeaves(100), 1); // d4 -> d5 (leaf)
+    });
+
+    test('returns 0 for unknown moveId', () {
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      expect(cache.countDescendantLeaves(999), 0);
+    });
+  });
 }

@@ -328,6 +328,128 @@ void main() {
       expect(find.text('King Pawn'), findsAtLeastNWidgets(1));
     });
 
+    testWidgets(
+        'label on multi-line node: confirmation dialog appears, confirm persists label',
+        (tester) async {
+      // Tree: e4 -> e5 -> {Nf3, Bc4}  (e5 has 2 descendant leaves)
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+        ['e4', 'e5', 'Bc4'],
+      ]);
+
+      // Start at e5 (the branch point with 2 descendant leaves).
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: e5Id));
+      await tester.pumpAndSettle();
+
+      // e5 should be focused (last pill in existing path).
+      // Tap Label button.
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Label dialog should open.
+      expect(find.text('Add label'), findsOneWidget);
+
+      // Enter label text and save.
+      await tester.enterText(find.byType(TextField), 'Branch Point');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Multi-line warning dialog should appear.
+      expect(find.text('Label affects multiple lines'), findsOneWidget);
+      expect(find.text('This label applies to 2 lines. Continue?'),
+          findsOneWidget);
+
+      // Confirm the dialog.
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      // Verify the label was persisted.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e5Move = moves.firstWhere((m) => m.san == 'e5');
+      expect(e5Move.label, 'Branch Point');
+    });
+
+    testWidgets(
+        'label on multi-line node: cancel confirmation dialog does NOT persist label',
+        (tester) async {
+      // Tree: e4 -> e5 -> {Nf3, Bc4}  (e5 has 2 descendant leaves)
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+        ['e4', 'e5', 'Bc4'],
+      ]);
+
+      // Start at e5.
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: e5Id));
+      await tester.pumpAndSettle();
+
+      // Tap Label button.
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Enter label text and save.
+      await tester.enterText(find.byType(TextField), 'Branch Point');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // Multi-line warning dialog should appear.
+      expect(find.text('Label affects multiple lines'), findsOneWidget);
+
+      // Cancel the dialog.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Verify the label was NOT persisted.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e5Move = moves.firstWhere((m) => m.san == 'e5');
+      expect(e5Move.label, isNull);
+    });
+
+    testWidgets(
+        'label on leaf node: no confirmation dialog, label persists directly',
+        (tester) async {
+      // Tree: e4 -> e5 -> Nf3  (Nf3 is a leaf, 1 descendant leaf)
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      // Start at Nf3 (a leaf node).
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: nf3Id));
+      await tester.pumpAndSettle();
+
+      // Nf3 should be focused (last pill).
+      // Tap Label button.
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Label dialog should open.
+      expect(find.text('Add label'), findsOneWidget);
+
+      // Enter label text and save.
+      await tester.enterText(find.byType(TextField), 'Leaf Label');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // No confirmation dialog should appear.
+      expect(find.text('Label affects multiple lines'), findsNothing);
+
+      // Verify the label was persisted directly.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final nf3Move = moves.firstWhere((m) => m.san == 'Nf3');
+      expect(nf3Move.label, 'Leaf Label');
+    });
+
     testWidgets('PopScope warns on unsaved moves when navigating back',
         (tester) async {
       final repId = await seedRepertoire(db);
