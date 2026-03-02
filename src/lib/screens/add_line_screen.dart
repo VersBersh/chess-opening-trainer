@@ -453,8 +453,10 @@ class _AddLineScreenState extends State<AddLineScreen> {
     final isSavedPillFocused = focusedIndex != null &&
         focusedIndex < state.pills.length &&
         state.pills[focusedIndex].isSaved;
-    // Disable label editing while unsaved moves exist — updateLabel() calls
-    // loadData() which rebuilds engine state and would silently drop buffered moves.
+    // Label editing is enabled when a saved pill is focused and no unsaved
+    // moves exist (updateLabel() calls loadData() which would drop buffered
+    // moves). Board orientation is intentionally NOT a factor — labels are
+    // organizational metadata independent of line color (see add-line.md).
     final canEditLabel = isSavedPillFocused && !_controller.hasNewMoves;
 
     return Padding(

@@ -450,6 +450,94 @@ void main() {
       expect(nf3Move.label, 'Leaf Label');
     });
 
+    testWidgets(
+        'label button remains enabled after flipping the board',
+        (tester) async {
+      // Seed a repertoire with saved moves; start at Nf3 so a saved pill is
+      // focused and there are no unsaved/buffered moves.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: nf3Id));
+      await tester.pumpAndSettle();
+
+      // Label button should be enabled (saved pill focused, no new moves).
+      var labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNotNull);
+
+      // Flip the board to black.
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pump();
+
+      // Label button should still be enabled.
+      labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNotNull);
+
+      // Flip back to white.
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pump();
+
+      // Label button should still be enabled.
+      labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNotNull);
+    });
+
+    testWidgets(
+        'full label editing flow works with board flipped to black',
+        (tester) async {
+      // Seed a repertoire with saved moves; start at Nf3 (leaf node).
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: nf3Id));
+      await tester.pumpAndSettle();
+
+      // Flip the board to black orientation.
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pump();
+
+      // Verify board is now black.
+      final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.orientation, Side.black);
+
+      // Tap Label button — should be enabled.
+      final labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNotNull);
+
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      // Label dialog should open.
+      expect(find.text('Add label'), findsOneWidget);
+
+      // Enter label text and save.
+      await tester.enterText(find.byType(TextField), 'Flipped Label');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // No multi-line dialog (leaf node with 1 descendant leaf).
+      expect(find.text('Label affects multiple lines'), findsNothing);
+
+      // Verify the label was persisted to the database.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final nf3Move = moves.firstWhere((m) => m.san == 'Nf3');
+      expect(nf3Move.label, 'Flipped Label');
+    });
+
     testWidgets('PopScope warns on unsaved moves when navigating back',
         (tester) async {
       final repId = await seedRepertoire(db);
