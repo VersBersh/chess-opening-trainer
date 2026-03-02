@@ -7,6 +7,10 @@ import '../theme/pill_theme.dart';
 /// bottom edge; a negative value places the label *below* the Stack bounds.
 const double _kLabelBottomOffset = -14;
 
+/// Fixed width for every move pill, chosen to accommodate the longest common
+/// SAN notations (e.g. "Qxe7#", "Nxd4+") without truncation.
+const double _kPillWidth = 66;
+
 // ---------------------------------------------------------------------------
 // Pill data model
 // ---------------------------------------------------------------------------
@@ -159,6 +163,8 @@ class _MovePill extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
+        width: _kPillWidth,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(6),

@@ -296,6 +296,28 @@ void main() {
       expect(decoration.borderRadius, BorderRadius.circular(6));
     });
 
+    testWidgets('all pills have equal fixed width regardless of SAN length or label',
+        (tester) async {
+      final pills = [
+        const MovePillData(san: 'e4', isSaved: true),
+        const MovePillData(san: 'Nxd4+', isSaved: true),
+        const MovePillData(san: 'O-O', isSaved: false),
+        const MovePillData(san: 'Bb5', isSaved: true, label: 'Ruy Lopez'),
+      ];
+
+      await tester.pumpWidget(buildTestApp(pills: pills));
+
+      for (final pill in pills) {
+        final pillSize = tester.getSize(find.ancestor(
+          of: find.text(pill.san),
+          matching: find.byType(Container),
+        ).first);
+
+        // Every pill's Container width must equal the fixed-width constant (66).
+        expect(pillSize.width, 66);
+      }
+    });
+
     testWidgets('renders without PillTheme extension (fallback)',
         (tester) async {
       // Build without the PillTheme extension to verify the widget does not
