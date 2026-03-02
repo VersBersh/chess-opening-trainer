@@ -10,4 +10,5 @@ abstract class ReviewRepository {
   Future<List<ReviewCard>> getCardsForSubtree(int moveId,
       {bool dueOnly = false, DateTime? asOf});
   Future<List<ReviewCard>> getAllCardsForRepertoire(int repertoireId);
+  Future<int> getCardCountForRepertoire(int repertoireId);
 }

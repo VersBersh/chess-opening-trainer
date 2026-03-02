@@ -155,6 +155,10 @@ class FakeReviewRepository implements ReviewRepository {
   @override
   Future<List<ReviewCard>> getAllCardsForRepertoire(int repertoireId) async =>
       allCards.where((c) => c.repertoireId == repertoireId).toList();
+
+  @override
+  Future<int> getCardCountForRepertoire(int repertoireId) async =>
+      allCards.where((c) => c.repertoireId == repertoireId).length;
 }
 
 /// A repertoire repository that blocks [getAllRepertoires] on a completer so

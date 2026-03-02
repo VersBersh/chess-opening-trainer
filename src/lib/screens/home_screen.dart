@@ -58,12 +58,12 @@ class HomeController extends AutoDisposeAsyncNotifier<HomeState> {
     for (final repertoire in repertoires) {
       final dueCards =
           await reviewRepo.getDueCardsForRepertoire(repertoire.id);
-      final allCards =
-          await reviewRepo.getAllCardsForRepertoire(repertoire.id);
+      final totalCardCount =
+          await reviewRepo.getCardCountForRepertoire(repertoire.id);
       summaries.add(RepertoireSummary(
         repertoire: repertoire,
         dueCount: dueCards.length,
-        totalCardCount: allCards.length,
+        totalCardCount: totalCardCount,
       ));
       totalDue += dueCards.length;
     }

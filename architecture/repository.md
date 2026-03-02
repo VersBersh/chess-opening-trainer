@@ -65,6 +65,9 @@ abstract class ReviewRepository {
 
   /// Returns all cards for a repertoire regardless of schedule.
   Future<List<ReviewCard>> getAllCardsForRepertoire(int repertoireId);
+
+  /// Returns the total number of cards for a repertoire without loading card objects.
+  Future<int> getCardCountForRepertoire(int repertoireId);
 }
 ```
 

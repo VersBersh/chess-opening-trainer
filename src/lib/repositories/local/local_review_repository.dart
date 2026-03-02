@@ -96,4 +96,14 @@ class LocalReviewRepository implements ReviewRepository {
           ..where((c) => c.repertoireId.equals(repertoireId)))
         .get();
   }
+
+  @override
+  Future<int> getCardCountForRepertoire(int repertoireId) async {
+    final result = await _db.customSelect(
+      'SELECT COUNT(*) AS cnt FROM review_cards WHERE repertoire_id = ?',
+      variables: [Variable.withInt(repertoireId)],
+      readsFrom: {_db.reviewCards},
+    ).getSingle();
+    return result.read<int>('cnt');
+  }
 }
