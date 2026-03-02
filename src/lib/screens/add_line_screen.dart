@@ -371,8 +371,8 @@ class _AddLineScreenState extends State<AddLineScreen> {
 
     return Column(
       children: [
-        // Aggregate display name banner
-        if (displayName.isNotEmpty)
+        // Aggregate display name banner + gap
+        if (displayName.isNotEmpty) ...[
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(
@@ -389,6 +389,8 @@ class _AddLineScreenState extends State<AddLineScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(height: 12),
+        ],
 
         // Chessboard
         ConstrainedBox(
@@ -430,7 +432,7 @@ class _AddLineScreenState extends State<AddLineScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Flip board
           IconButton(
