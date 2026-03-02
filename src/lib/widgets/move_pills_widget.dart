@@ -5,11 +5,21 @@ import '../theme/pill_theme.dart';
 /// Vertical offset (in logical pixels) for the label positioned beneath a pill.
 /// Negative because `Positioned.bottom` is measured upward from the Stack's
 /// bottom edge; a negative value places the label *below* the Stack bounds.
-const double _kLabelBottomOffset = -14;
+///
+/// After introducing `_kPillMinTapTarget`, the Stack's height is 44 dp while
+/// the visible decoration is centred within it (~10 dp transparent padding on
+/// each side). The offset accounts for this gap so the label still appears
+/// just below the visible pill decoration.
+const double _kLabelBottomOffset = -4;
 
 /// Fixed width for every move pill, chosen to accommodate the longest common
 /// SAN notations (e.g. "Qxe7#", "Nxd4+") without truncation.
 const double _kPillWidth = 66;
+
+/// Minimum interactive height for each pill, per Material Design guidelines.
+/// The visible pill decoration may be shorter; the extra space is transparent
+/// but still responds to taps via [HitTestBehavior.opaque].
+const double _kPillMinTapTarget = 44;
 
 // ---------------------------------------------------------------------------
 // Pill data model
@@ -179,19 +189,25 @@ class _MovePill extends StatelessWidget {
     final pillBody = GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
+      child: SizedBox(
         width: _kPillWidth,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: borderColor, width: borderWidth),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: ExcludeSemantics(
-          child: Text(
-            data.san,
-            style: TextStyle(color: textColor),
+        height: _kPillMinTapTarget,
+        child: Center(
+          child: Container(
+            width: _kPillWidth,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: background,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: borderColor, width: borderWidth),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: ExcludeSemantics(
+              child: Text(
+                data.san,
+                style: TextStyle(color: textColor),
+              ),
+            ),
           ),
         ),
       ),

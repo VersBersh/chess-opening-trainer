@@ -406,5 +406,24 @@ void main() {
 
       handle.dispose();
     });
+
+    testWidgets('each pill tap target is at least 44 dp tall', (tester) async {
+      final pills = [
+        const MovePillData(san: 'e4', isSaved: true),
+        const MovePillData(san: 'Nf3', isSaved: false),
+        const MovePillData(san: 'Bb5', isSaved: true, label: 'Ruy Lopez'),
+      ];
+
+      await tester.pumpWidget(buildTestApp(pills: pills));
+
+      for (final pill in pills) {
+        final gestureDetector = find.ancestor(
+          of: find.text(pill.san),
+          matching: find.byType(GestureDetector),
+        ).first;
+        final size = tester.getSize(gestureDetector);
+        expect(size.height, greaterThanOrEqualTo(44));
+      }
+    });
   });
 }
