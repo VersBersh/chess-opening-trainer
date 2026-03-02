@@ -26,6 +26,14 @@ final reviewRepositoryProvider = Provider<ReviewRepository>((ref) {
 });
 
 // ---------------------------------------------------------------------------
+// Clock provider
+// ---------------------------------------------------------------------------
+
+/// Clock function provider. Returns the current time.
+/// Override in tests with a fixed or advancing clock.
+final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+// ---------------------------------------------------------------------------
 // Shared preferences provider
 // ---------------------------------------------------------------------------
 

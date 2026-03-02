@@ -225,6 +225,7 @@ Widget buildTestApp({
   required FakeReviewRepository reviewRepo,
   DrillConfig config = _defaultConfig,
   Size? viewportSize,
+  DateTime Function()? clock,
 }) {
   Widget home = DrillScreen(config: config);
   if (viewportSize != null) {
@@ -238,6 +239,7 @@ Widget buildTestApp({
       repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
       reviewRepositoryProvider.overrideWithValue(reviewRepo),
       sharedPreferencesProvider.overrideWithValue(_testPrefs),
+      if (clock != null) clockProvider.overrideWithValue(clock),
     ],
     child: MaterialApp(home: home),
   );
@@ -2064,6 +2066,54 @@ void main() {
 
       expect(
           find.byKey(const ValueKey('drill-filter-box')), findsOneWidget);
+    });
+  });
+
+  group('DrillScreen — deterministic clock', () {
+    testWidgets('summary shows correct elapsed time with injected clock',
+        (tester) async {
+      var now = DateTime(2026, 3, 1, 10, 0, 0);
+      DateTime advancingClock() => now;
+
+      final card = buildReviewCard(whiteLine9);
+      final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
+      final reviewRepo = FakeReviewRepository(dueCards: [card]);
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        clock: advancingClock,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Advance the clock by 2 minutes 30 seconds
+      now = DateTime(2026, 3, 1, 10, 2, 30);
+
+      // Complete the card
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(_defaultConfig).notifier);
+
+      var prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final ba4Move = prePos.parseSan('Ba4')! as NormalMove;
+      notifier.boardController.playMove(ba4Move);
+      unawaited(notifier.processUserMove(ba4Move));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+
+      prePos =
+          Chess.fromSetup(Setup.parseFen(notifier.boardController.fen));
+      final oOMove = prePos.parseSan('O-O')! as NormalMove;
+      notifier.boardController.playMove(oOMove);
+      unawaited(notifier.processUserMove(oOMove));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle(const Duration(seconds: 2));
+
+      // Verify the summary shows "2m 30s"
+      expect(find.text('2m 30s'), findsOneWidget);
     });
   });
 }

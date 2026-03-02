@@ -156,7 +156,8 @@ class DrillController
   int _struggledCount = 0;
   int _failedCount = 0;
   DateTime? _earliestNextDue;
-  DateTime _sessionStartTime = DateTime.now();
+  late DateTime Function() _clock;
+  late DateTime _sessionStartTime;
 
   // Cumulative counters across passes (free practice only)
   int _cumulativeCompletedCards = 0;
@@ -243,7 +244,8 @@ class DrillController
     // Start the first card and return the initial state.
     // _autoPlayIntro runs asynchronously after build returns, updating state
     // via the state setter as intro moves are played.
-    _sessionStartTime = DateTime.now();
+    _clock = ref.read(clockProvider);
+    _sessionStartTime = _clock();
     _engine.startCard();
     _currentLineLabel = _engine.getLineLabelName();
     boardController.resetToInitial();
@@ -435,7 +437,7 @@ class DrillController
     hesitationCount: _hesitationCount,
     struggledCount: _struggledCount,
     failedCount: _failedCount,
-    sessionDuration: DateTime.now().difference(_sessionStartTime),
+    sessionDuration: _clock().difference(_sessionStartTime),
     earliestNextDue: _earliestNextDue,
     isFreePractice: _isExtraPractice,
   );
@@ -503,7 +505,7 @@ class DrillController
         hesitationCount: _cumulativeHesitationCount,
         struggledCount: _cumulativeStruggledCount,
         failedCount: _cumulativeFailedCount,
-        sessionDuration: DateTime.now().difference(_sessionStartTime),
+        sessionDuration: _clock().difference(_sessionStartTime),
         isFreePractice: true,
       ),
     ));

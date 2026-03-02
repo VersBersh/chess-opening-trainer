@@ -248,12 +248,14 @@ Widget buildTestApp({
   required FakeRepertoireRepository repertoireRepo,
   required FakeReviewRepository reviewRepo,
   DrillConfig config = _freePracticeConfig,
+  DateTime Function()? clock,
 }) {
   return ProviderScope(
     overrides: [
       repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
       reviewRepositoryProvider.overrideWithValue(reviewRepo),
       sharedPreferencesProvider.overrideWithValue(_testPrefs),
+      if (clock != null) clockProvider.overrideWithValue(clock),
     ],
     child: MaterialApp(
       home: DrillScreen(config: config),

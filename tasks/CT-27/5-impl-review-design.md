@@ -1,0 +1,10 @@
+- **Verdict** — `Approved with Notes`
+- **Issues**
+1. **Minor — File Size / SRP drift**: [`drill_screen_test.dart`](C:\code\misc\chess-trainer-3\src\test\screens\drill_screen_test.dart#L1) is now 2116 lines, and this change adds more behavior into the same file ([`#L2069`](C:\code\misc\chess-trainer-3\src\test\screens\drill_screen_test.dart#L2069)). This makes test intent discovery and maintenance harder over time.  
+Suggested fix: split by concern (for example: timing/session summary, filtering, layout/orientation) into multiple test files with shared helpers.
+2. **Minor — File Size / cohesion**: [`drill_filter_test.dart`](C:\code\misc\chess-trainer-3\src\test\screens\drill_filter_test.dart#L1) is also >300 lines (729), and now includes additional wiring in a broad helper ([`#L244`](C:\code\misc\chess-trainer-3\src\test\screens\drill_filter_test.dart#L244)).  
+Suggested fix: extract common `buildTestApp`/fake-repo setup into a dedicated test utility module to keep scenario files focused.
+3. **Minor — Temporal coupling risk**: `DrillController` now depends on `late` initialization for `_clock` and `_sessionStartTime` ([`drill_controller.dart#L159`](C:\code\misc\chess-trainer-3\src\lib\controllers\drill_controller.dart#L159), [`#L247`](C:\code\misc\chess-trainer-3\src\lib\controllers\drill_controller.dart#L247)). Current call paths are valid, but correctness depends on `build()` always running before any method using them ([`#L440`](C:\code\misc\chess-trainer-3\src\lib\controllers\drill_controller.dart#L440), [`#L508`](C:\code\misc\chess-trainer-3\src\lib\controllers\drill_controller.dart#L508)).  
+Suggested fix: add a small guard (assert/explicit state check) before duration reads, or initialize with safe defaults to remove hidden ordering assumptions.
+
+Overall design direction is good: introducing [`clockProvider`](C:\code\misc\chess-trainer-3\src\lib\providers.dart#L34) improves dependency inversion and testability, and the new deterministic test validates the behavior directly.
