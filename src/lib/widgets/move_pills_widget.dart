@@ -130,58 +130,37 @@ class _MovePill extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final pillTheme = Theme.of(context).extension<PillTheme>();
 
-    // Determine visual state from saved/focused combination.
+    // Determine visual state from focused/unfocused (save state does not
+    // affect styling).
     final Color background;
     final Color textColor;
     final Color borderColor;
     final double borderWidth;
 
     if (pillTheme != null) {
-      if (data.isSaved && isFocused) {
-        background = pillTheme.savedColor;
-        textColor = pillTheme.textOnSavedColor;
-        borderColor = pillTheme.focusedBorderColor;
-        borderWidth = 2;
-      } else if (data.isSaved && !isFocused) {
-        background = pillTheme.savedColor;
-        textColor = pillTheme.textOnSavedColor;
-        borderColor = pillTheme.savedColor;
-        borderWidth = 1;
-      } else if (!data.isSaved && isFocused) {
-        background = pillTheme.unsavedColor;
-        textColor = colorScheme.onSurface;
+      if (isFocused) {
+        background = pillTheme.pillColor;
+        textColor = pillTheme.textOnPillColor;
         borderColor = pillTheme.focusedBorderColor;
         borderWidth = 2;
       } else {
-        // Unsaved + unfocused
-        background = pillTheme.unsavedColor;
-        textColor = colorScheme.onSurfaceVariant;
-        borderColor = pillTheme.unsavedColor;
+        background = pillTheme.pillColor;
+        textColor = pillTheme.textOnPillColor;
+        borderColor = pillTheme.pillColor;
         borderWidth = 1;
       }
     } else {
       // Fallback when PillTheme is not registered (e.g. in tests without the
-      // extension). Uses the original colorScheme-based colours.
-      if (data.isSaved && isFocused) {
+      // extension). Uses colorScheme-based colours.
+      if (isFocused) {
         background = colorScheme.primaryContainer;
         textColor = colorScheme.onPrimaryContainer;
         borderColor = colorScheme.primary;
         borderWidth = 2;
-      } else if (data.isSaved && !isFocused) {
+      } else {
         background = colorScheme.surfaceContainerHighest;
         textColor = colorScheme.onSurface;
         borderColor = colorScheme.outline;
-        borderWidth = 1;
-      } else if (!data.isSaved && isFocused) {
-        background = colorScheme.tertiaryContainer;
-        textColor = colorScheme.onTertiaryContainer;
-        borderColor = colorScheme.tertiary;
-        borderWidth = 2;
-      } else {
-        // Unsaved + unfocused
-        background = colorScheme.surfaceContainerHighest;
-        textColor = colorScheme.onSurfaceVariant;
-        borderColor = colorScheme.outlineVariant;
         borderWidth = 1;
       }
     }

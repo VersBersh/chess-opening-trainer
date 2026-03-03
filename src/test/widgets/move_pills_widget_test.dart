@@ -11,8 +11,7 @@ import 'package:chess_trainer/widgets/move_pills_widget.dart';
 // ---------------------------------------------------------------------------
 
 const _testPillTheme = PillTheme(
-  savedColor: Color(0xFF5B8FDB),
-  unsavedColor: Color(0xFFB0CBF0),
+  pillColor: Color(0xFF5B8FDB),
   focusedBorderColor: Color(0xFF1A56A8),
 );
 
@@ -94,8 +93,7 @@ void main() {
       expect(tappedIndex, 1);
     });
 
-    testWidgets('focused saved pill has savedColor background',
-        (tester) async {
+    testWidgets('focused pill has pillColor background', (tester) async {
       final pills = [
         const MovePillData(san: 'e4', isSaved: true),
         const MovePillData(san: 'e5', isSaved: true),
@@ -115,10 +113,10 @@ void main() {
         ).first,
       );
       final decoration = focusedPillContainer.decoration! as BoxDecoration;
-      expect(decoration.color, _testPillTheme.savedColor);
+      expect(decoration.color, _testPillTheme.pillColor);
     });
 
-    testWidgets('focused unsaved pill has unsavedColor background',
+    testWidgets('focused unsaved pill has pillColor background',
         (tester) async {
       final pills = [
         const MovePillData(san: 'e4', isSaved: true),
@@ -137,10 +135,10 @@ void main() {
         ).first,
       );
       final decoration = focusedPillContainer.decoration! as BoxDecoration;
-      expect(decoration.color, _testPillTheme.unsavedColor);
+      expect(decoration.color, _testPillTheme.pillColor);
     });
 
-    testWidgets('saved vs unsaved pills have different styling',
+    testWidgets('saved and unsaved pills have identical styling',
         (tester) async {
       final pills = [
         const MovePillData(san: 'e4', isSaved: true),
@@ -167,17 +165,22 @@ void main() {
       final savedDecoration = savedContainer.decoration! as BoxDecoration;
       final unsavedDecoration = unsavedContainer.decoration! as BoxDecoration;
 
-      // Saved and unsaved pills should have different background colours.
-      expect(savedDecoration.color, _testPillTheme.savedColor);
-      expect(unsavedDecoration.color, _testPillTheme.unsavedColor);
-      expect(savedDecoration.color, isNot(unsavedDecoration.color));
+      // Saved and unsaved pills should have the same background colour.
+      expect(savedDecoration.color, _testPillTheme.pillColor);
+      expect(unsavedDecoration.color, _testPillTheme.pillColor);
+      expect(savedDecoration.color, unsavedDecoration.color);
 
-      // Border colours: unfocused saved uses savedColor, unfocused unsaved
-      // uses unsavedColor (blends with background).
+      // Border colours should be identical (both use pillColor when unfocused).
       final savedBorder = savedDecoration.border! as Border;
       final unsavedBorder = unsavedDecoration.border! as Border;
-      expect(savedBorder.top.color, _testPillTheme.savedColor);
-      expect(unsavedBorder.top.color, _testPillTheme.unsavedColor);
+      expect(savedBorder.top.color, _testPillTheme.pillColor);
+      expect(unsavedBorder.top.color, _testPillTheme.pillColor);
+      expect(savedBorder.top.color, unsavedBorder.top.color);
+
+      // Text colours should be identical.
+      final savedText = tester.widget<Text>(find.text('e4'));
+      final unsavedText = tester.widget<Text>(find.text('Nf3'));
+      expect(savedText.style?.color, unsavedText.style?.color);
     });
 
     testWidgets('label displayed beneath pill when present', (tester) async {
@@ -340,7 +343,7 @@ void main() {
       expect(find.text('e5'), findsOneWidget);
 
       // Verify it falls back to colorScheme colours (primaryContainer for
-      // focused saved pill).
+      // focused pill).
       final colorScheme = ColorScheme.fromSeed(seedColor: Colors.indigo);
       final container = tester.widget<Container>(
         find.ancestor(
