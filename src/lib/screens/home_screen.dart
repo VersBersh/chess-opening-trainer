@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../controllers/home_controller.dart';
 import '../widgets/home_empty_state.dart';
-import '../widgets/repertoire_card.dart';
-import 'add_line_screen.dart';
 import 'drill_screen.dart';
 import 'repertoire_browser_screen.dart';
 import 'settings_screen.dart';
@@ -45,16 +43,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         )
-        .then((_) => ref.read(homeControllerProvider.notifier).refresh());
-  }
-
-  void _onAddLineTap(int repertoireId) {
-    Navigator.of(context)
-        .push(MaterialPageRoute(
-          builder: (_) => AddLineScreen(
-            repertoireId: repertoireId,
-          ),
-        ))
         .then((_) => ref.read(homeControllerProvider.notifier).refresh());
   }
 
@@ -108,70 +96,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Future<String?> _showRenameRepertoireDialog(String currentName) {
-    final controller = TextEditingController(text: currentName);
-    return showDialog<String>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final trimmed = controller.text.trim();
-            final isValid = trimmed.isNotEmpty && trimmed.length <= 100;
-
-            return AlertDialog(
-              title: const Text('Rename repertoire'),
-              content: TextField(
-                controller: controller,
-                autofocus: true,
-                maxLength: 100,
-                decoration: const InputDecoration(labelText: 'Name'),
-                onChanged: (_) => setDialogState(() {}),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(null),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: isValid
-                      ? () => Navigator.of(context).pop(trimmed)
-                      : null,
-                  child: const Text('Rename'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<bool?> _showDeleteRepertoireDialog(String repertoireName) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete repertoire'),
-        content: Text(
-          'Delete $repertoireName? This will remove all lines and '
-          'review history. This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final asyncState = ref.watch(homeControllerProvider);
@@ -221,66 +145,71 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       body: homeState.repertoires.isEmpty
           ? HomeEmptyState(onCreateFirstRepertoire: _onCreateFirstRepertoire)
-          : _buildRepertoireList(context, homeState),
-      floatingActionButton: homeState.repertoires.isNotEmpty
-          ? FloatingActionButton(
-              onPressed: () async {
-                final name = await _showCreateRepertoireDialog();
-                if (name != null) {
-                  await ref
-                      .read(homeControllerProvider.notifier)
-                      .createRepertoire(name);
-                }
-              },
-              tooltip: 'Create repertoire',
-              child: const Icon(Icons.add),
-            )
-          : null,
+          : _buildActionButtons(context, homeState),
     );
   }
 
   // -------------------------------------------------------------------------
-  // Per-repertoire card list
+  // Three-button action layout
   // -------------------------------------------------------------------------
 
-  Widget _buildRepertoireList(BuildContext context, HomeState homeState) {
+  Widget _buildActionButtons(BuildContext context, HomeState homeState) {
+    final theme = Theme.of(context);
+    final summary = homeState.repertoires.first;
+    final repertoireId = summary.repertoire.id;
+    final hasDueCards = summary.dueCount > 0;
+    final hasCards = summary.totalCardCount > 0;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '${homeState.totalDueCount} cards due',
-            style: Theme.of(context).textTheme.headlineMedium,
+            '${summary.dueCount} cards due',
+            style: theme.textTheme.headlineMedium,
           ),
           const SizedBox(height: 16),
-          for (final summary in homeState.repertoires)
-            RepertoireCard(
-              summary: summary,
-              onStartDrill: () => _startDrill(summary.repertoire.id),
-              onFreePractice: () =>
-                  _startFreePractice(summary.repertoire.id),
-              onAddLine: () => _onAddLineTap(summary.repertoire.id),
-              onTapName: () => _onRepertoireTap(summary.repertoire.id),
-              onRename: () async {
-                final newName = await _showRenameRepertoireDialog(
-                    summary.repertoire.name);
-                if (newName != null) {
-                  await ref
-                      .read(homeControllerProvider.notifier)
-                      .renameRepertoire(summary.repertoire.id, newName);
-                }
-              },
-              onDelete: () async {
-                final confirmed = await _showDeleteRepertoireDialog(
-                    summary.repertoire.name);
-                if (confirmed == true) {
-                  await ref
-                      .read(homeControllerProvider.notifier)
-                      .deleteRepertoire(summary.repertoire.id);
-                }
-              },
+          FilledButton.icon(
+            onPressed: () {
+              if (hasDueCards) {
+                _startDrill(repertoireId);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                        'No cards due for review. Come back later!'),
+                  ),
+                );
+              }
+            },
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              backgroundColor: hasDueCards
+                  ? null
+                  : theme.colorScheme.primary.withValues(alpha: 0.38),
             ),
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Start Drill'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: hasCards ? () => _startFreePractice(repertoireId) : null,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+            ),
+            icon: const Icon(Icons.fitness_center),
+            label: const Text('Free Practice'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _onRepertoireTap(repertoireId),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+            ),
+            icon: const Icon(Icons.library_books),
+            label: const Text('Manage Repertoire'),
+          ),
         ],
       ),
     );

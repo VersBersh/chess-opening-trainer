@@ -1,6 +1,7 @@
 import '../repositories/local/database.dart';
 
 abstract class RepertoireRepository {
+  /// Returns all repertoires ordered by creation order (ascending ID).
   Future<List<Repertoire>> getAllRepertoires();
   Future<Repertoire> getRepertoire(int id);
   Future<int> saveRepertoire(RepertoiresCompanion repertoire);

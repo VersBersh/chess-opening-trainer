@@ -10,7 +10,9 @@ class LocalRepertoireRepository implements RepertoireRepository {
 
   @override
   Future<List<Repertoire>> getAllRepertoires() {
-    return _db.select(_db.repertoires).get();
+    return (_db.select(_db.repertoires)
+          ..orderBy([(r) => OrderingTerm.asc(r.id)]))
+        .get();
   }
 
   @override
