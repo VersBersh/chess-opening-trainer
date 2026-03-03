@@ -410,7 +410,7 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('each pill tap target is at least 44 dp tall', (tester) async {
+    testWidgets('each pill tap target is at least 36 dp tall', (tester) async {
       final pills = [
         const MovePillData(san: 'e4', isSaved: true),
         const MovePillData(san: 'Nf3', isSaved: false),
@@ -425,7 +425,7 @@ void main() {
           matching: find.byType(GestureDetector),
         ).first;
         final size = tester.getSize(gestureDetector);
-        expect(size.height, greaterThanOrEqualTo(44));
+        expect(size.height, greaterThanOrEqualTo(36));
       }
     });
   });

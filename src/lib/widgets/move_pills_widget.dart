@@ -6,20 +6,20 @@ import '../theme/pill_theme.dart';
 /// Negative because `Positioned.bottom` is measured upward from the Stack's
 /// bottom edge; a negative value places the label *below* the Stack bounds.
 ///
-/// After introducing `_kPillMinTapTarget`, the Stack's height is 44 dp while
-/// the visible decoration is centred within it (~10 dp transparent padding on
+/// After introducing `_kPillMinTapTarget`, the Stack's height is 36 dp while
+/// the visible decoration is centred within it (~3 dp transparent padding on
 /// each side). The offset accounts for this gap so the label still appears
 /// just below the visible pill decoration.
-const double _kLabelBottomOffset = -4;
+const double _kLabelBottomOffset = -8;
 
 /// Fixed width for every move pill, chosen to accommodate the longest common
 /// SAN notations (e.g. "Qxe7#", "Nxd4+") without truncation.
 const double _kPillWidth = 66;
 
-/// Minimum interactive height for each pill, per Material Design guidelines.
-/// The visible pill decoration may be shorter; the extra space is transparent
-/// but still responds to taps via [HitTestBehavior.opaque].
-const double _kPillMinTapTarget = 44;
+/// Minimum interactive height for each pill. Smaller than the Material Design
+/// 48 dp recommendation, but sufficient for this dense chess UI where the
+/// 66 dp pill width provides ample horizontal tap area.
+const double _kPillMinTapTarget = 36;
 
 // ---------------------------------------------------------------------------
 // Pill data model
@@ -83,7 +83,7 @@ class MovePillsWidget extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Wrap(
         spacing: 4,
-        runSpacing: 4,
+        runSpacing: 10,
         clipBehavior: Clip.none, // labels may paint outside pill bounds
         children: [
           for (var i = 0; i < pills.length; i++)
