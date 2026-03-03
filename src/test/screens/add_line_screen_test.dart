@@ -2013,4 +2013,111 @@ void main() {
       expect(find.text('King Pawn'), findsOneWidget);
     });
   });
+
+  group('Existing line info text', () {
+    testWidgets('shows "Existing line" text when following existing line',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      // Follow existing moves e4, e5, Nf3 via test board controller.
+      final testBoard = ChessboardController();
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      await tester.pump();
+
+      // "Existing line" info text should be visible.
+      expect(find.text('Existing line'), findsOneWidget);
+    });
+
+    testWidgets('shows "Existing line" text immediately with startingMoveId',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: e4Id));
+      await tester.pumpAndSettle();
+
+      // Starting from mid-tree, existing path pills are visible immediately.
+      expect(find.text('Existing line'), findsOneWidget);
+    });
+
+    testWidgets('hides "Existing line" text at starting position',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // No moves played, at starting position.
+      expect(find.text('Existing line'), findsNothing);
+    });
+
+    testWidgets('hides "Existing line" text after playing a new move',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      // Follow existing moves e4, e5, Nf3 via test board controller.
+      final testBoard = ChessboardController();
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      await tester.pump();
+
+      // Verify info text shows first.
+      expect(find.text('Existing line'), findsOneWidget);
+
+      // Play a new move Nc6 (buffered).
+      final nc6Move = sanToNormalMove(currentFen, 'Nc6');
+      testBoard.playMove(nc6Move);
+      controller.onBoardMove(nc6Move, testBoard);
+      await tester.pump();
+
+      // Info text should disappear.
+      expect(find.text('Existing line'), findsNothing);
+    });
+  });
 }

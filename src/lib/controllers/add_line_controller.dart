@@ -281,6 +281,13 @@ class AddLineController extends ChangeNotifier {
   /// Whether there are new (buffered) moves to persist.
   bool get hasNewMoves => _state.engine?.hasNewMoves ?? false;
 
+  /// Whether the current pill list represents an existing line with no new moves.
+  ///
+  /// True when pills are visible (the user has navigated/followed moves) but
+  /// there are no buffered (new) moves to persist. This is the condition
+  /// where Confirm is disabled but the user needs an explanation why.
+  bool get isExistingLine => _state.pills.isNotEmpty && !hasNewMoves;
+
   /// Whether any move along the current line's path has a label.
   ///
   /// Returns `true` when any pill (saved or unsaved) has a label assigned.

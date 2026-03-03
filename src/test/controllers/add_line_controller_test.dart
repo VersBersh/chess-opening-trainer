@@ -1710,4 +1710,133 @@ void main() {
       boardController.dispose();
     });
   });
+
+  group('isExistingLine', () {
+    test('is false at starting position with no pills', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      expect(controller.state.pills, isEmpty);
+      expect(controller.isExistingLine, false);
+
+      controller.dispose();
+    });
+
+    test('is true when following existing moves without new moves', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all existing moves: e4, e5, Nf3.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      expect(controller.hasNewMoves, false);
+      expect(controller.state.pills.isNotEmpty, true);
+      expect(controller.isExistingLine, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('is false when new moves are buffered', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all existing moves: e4, e5, Nf3.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Play an additional new move Nc6 (buffered).
+      final nc6Move = sanToNormalMove(currentFen, 'Nc6');
+      boardController.playMove(nc6Move);
+      controller.onBoardMove(nc6Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.isExistingLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('is true when starting from a mid-tree position', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      // Find e4's move ID to use as startingMoveId.
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId,
+          startingMoveId: e4Id);
+      await controller.loadData();
+
+      // After loadData with startingMoveId, pills should be non-empty
+      // (existingPath contains moves from root to e4) and hasNewMoves
+      // should be false.
+      expect(controller.state.pills.isNotEmpty, true);
+      expect(controller.hasNewMoves, false);
+      expect(controller.isExistingLine, true);
+
+      controller.dispose();
+    });
+
+    test('becomes false after playing a new move', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all existing moves: e4, e5, Nf3.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Verify isExistingLine is true before playing a new move.
+      expect(controller.isExistingLine, true);
+
+      // Play a new move Nc6 (buffered).
+      final nc6Move = sanToNormalMove(currentFen, 'Nc6');
+      boardController.playMove(nc6Move);
+      controller.onBoardMove(nc6Move, boardController);
+
+      // isExistingLine should flip to false.
+      expect(controller.isExistingLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
 }

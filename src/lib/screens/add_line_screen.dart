@@ -400,6 +400,10 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
           // Inline parity warning
           if (_parityWarning != null) _buildParityWarning(_parityWarning!),
 
+          // Existing line info
+          if (_controller.isExistingLine)
+            _buildExistingLineInfo(context),
+
           // Action bar
           _buildActionBar(context, state),
         ],
@@ -550,6 +554,19 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
             child: Text('Flip and confirm as $expectedSide'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildExistingLineInfo(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Text(
+        'Existing line',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
       ),
     );
   }
