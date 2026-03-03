@@ -248,6 +248,93 @@ class LocalRepertoireRepository implements RepertoireRepository {
   }
 
   @override
+  Future<List<int>> extendLineWithLabelUpdates(
+    int oldLeafMoveId,
+    List<RepertoireMovesCompanion> newMoves,
+    List<PendingLabelUpdate> labelUpdates,
+  ) {
+    return _db.transaction(() async {
+      // Apply pending label updates first.
+      for (final update in labelUpdates) {
+        await (_db.update(_db.repertoireMoves)
+              ..where((m) => m.id.equals(update.moveId)))
+            .write(RepertoireMovesCompanion(label: Value(update.label)));
+      }
+
+      // Then perform the existing extendLine logic (inline, not calling
+      // extendLine() which would try to open a nested transaction).
+      await (_db.delete(_db.reviewCards)
+            ..where((c) => c.leafMoveId.equals(oldLeafMoveId)))
+          .go();
+
+      final insertedIds = <int>[];
+      int parentId = oldLeafMoveId;
+      for (final move in newMoves) {
+        final insertedId = await _db.into(_db.repertoireMoves).insert(
+              move.copyWith(parentMoveId: Value(parentId)),
+            );
+        insertedIds.add(insertedId);
+        parentId = insertedId;
+      }
+
+      if (insertedIds.isNotEmpty) {
+        final newLeaf = await getMove(insertedIds.last);
+        if (newLeaf != null) {
+          await _db.into(_db.reviewCards).insert(
+                ReviewCardsCompanion.insert(
+                  repertoireId: newLeaf.repertoireId,
+                  leafMoveId: newLeaf.id,
+                  nextReviewDate: DateTime.now(),
+                ),
+              );
+        }
+      }
+
+      return insertedIds;
+    });
+  }
+
+  @override
+  Future<List<int>> saveBranchWithLabelUpdates(
+    int? parentMoveId,
+    List<RepertoireMovesCompanion> newMoves,
+    List<PendingLabelUpdate> labelUpdates,
+  ) {
+    assert(newMoves.isNotEmpty);
+    return _db.transaction(() async {
+      // Apply pending label updates first.
+      for (final update in labelUpdates) {
+        await (_db.update(_db.repertoireMoves)
+              ..where((m) => m.id.equals(update.moveId)))
+            .write(RepertoireMovesCompanion(label: Value(update.label)));
+      }
+
+      // Then perform the existing saveBranch logic.
+      int? parentId = parentMoveId;
+      final insertedIds = <int>[];
+      for (final move in newMoves) {
+        final withParent = parentId != null
+            ? move.copyWith(parentMoveId: Value(parentId))
+            : move;
+        parentId = await _db.into(_db.repertoireMoves).insert(withParent);
+        insertedIds.add(parentId);
+      }
+      // Create review card for the new leaf.
+      final newLeaf = await getMove(insertedIds.last);
+      if (newLeaf != null) {
+        await _db.into(_db.reviewCards).insert(
+              ReviewCardsCompanion.insert(
+                repertoireId: newLeaf.repertoireId,
+                leafMoveId: newLeaf.id,
+                nextReviewDate: DateTime.now(),
+              ),
+            );
+      }
+      return insertedIds;
+    });
+  }
+
+  @override
   Future<int> countLeavesInSubtree(int moveId) async {
     final result = await _db.customSelect(
       '''

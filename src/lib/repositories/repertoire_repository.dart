@@ -1,5 +1,17 @@
 import '../repositories/local/database.dart';
 
+// ---------------------------------------------------------------------------
+// Data types
+// ---------------------------------------------------------------------------
+
+/// A pending label change for an already-saved move, to be persisted
+/// atomically alongside new moves during confirm.
+class PendingLabelUpdate {
+  final int moveId;
+  final String? label;
+  const PendingLabelUpdate({required this.moveId, required this.label});
+}
+
 abstract class RepertoireRepository {
   /// Returns all repertoires ordered by creation order (ascending ID).
   Future<List<Repertoire>> getAllRepertoires();
@@ -31,6 +43,20 @@ abstract class RepertoireRepository {
   Future<void> undoExtendLine(
       int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard);
   Future<void> undoNewLine(List<int> insertedMoveIds);
+
+  /// Extends a line AND applies pending label updates in one transaction.
+  Future<List<int>> extendLineWithLabelUpdates(
+    int oldLeafMoveId,
+    List<RepertoireMovesCompanion> newMoves,
+    List<PendingLabelUpdate> labelUpdates,
+  );
+
+  /// Saves a branch AND applies pending label updates in one transaction.
+  Future<List<int>> saveBranchWithLabelUpdates(
+    int? parentMoveId,
+    List<RepertoireMovesCompanion> newMoves,
+    List<PendingLabelUpdate> labelUpdates,
+  );
   Future<int> countLeavesInSubtree(int moveId);
   Future<List<RepertoireMove>> getOrphanedLeaves(int repertoireId);
   Future<void> pruneOrphans(int repertoireId);

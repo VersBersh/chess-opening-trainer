@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/local/local_repertoire_repository.dart';
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
+import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/services/line_entry_engine.dart';
 import 'package:chess_trainer/services/line_persistence_service.dart';
 
@@ -354,6 +355,129 @@ void main() {
       final movesAfter = await repRepo.getMovesForRepertoire(repId);
       final d5Move = movesAfter.firstWhere((m) => m.san == 'd5');
       expect(d5Move.label, 'Scandinavian');
+    });
+  });
+
+  group('Persistence with pending label updates', () {
+    test('persistNewMoves with label updates calls extendLineWithLabelUpdates',
+        () async {
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = allMoves.first;
+
+      final fens = computeFens(['e4', 'e5']);
+
+      final confirmData = ConfirmData(
+        parentMoveId: e4Move.id,
+        newMoves: [BufferedMove(san: 'e5', fen: fens[1])],
+        isExtension: true,
+        repertoireId: repId,
+        sortOrder: 0,
+      );
+
+      // Update e4's label atomically alongside the extension.
+      final labelUpdates = [
+        PendingLabelUpdate(moveId: e4Move.id, label: 'King Pawn'),
+      ];
+
+      final result = await service.persistNewMoves(
+        confirmData,
+        pendingLabelUpdates: labelUpdates,
+      );
+
+      expect(result.isExtension, true);
+      expect(result.insertedMoveIds.length, 1);
+
+      // Verify both the new move and the label update were persisted.
+      final movesAfter = await repRepo.getMovesForRepertoire(repId);
+      expect(movesAfter.length, 2);
+
+      final e4After = movesAfter.firstWhere((m) => m.san == 'e4');
+      expect(e4After.label, 'King Pawn');
+
+      final e5After = movesAfter.firstWhere((m) => m.san == 'e5');
+      expect(e5After, isNotNull);
+    });
+
+    test('persistNewMoves with label updates calls saveBranchWithLabelUpdates',
+        () async {
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'e5'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = allMoves.firstWhere((m) => m.san == 'e4');
+
+      final fens = computeFens(['e4', 'd5']);
+
+      final confirmData = ConfirmData(
+        parentMoveId: e4Move.id,
+        newMoves: [BufferedMove(san: 'd5', fen: fens[1])],
+        isExtension: false,
+        repertoireId: repId,
+        sortOrder: 1,
+      );
+
+      // Update e4's label atomically alongside the branch save.
+      final labelUpdates = [
+        PendingLabelUpdate(moveId: e4Move.id, label: 'King Pawn'),
+      ];
+
+      final result = await service.persistNewMoves(
+        confirmData,
+        pendingLabelUpdates: labelUpdates,
+      );
+
+      expect(result.isExtension, false);
+      expect(result.insertedMoveIds.length, 1);
+
+      // Verify both the new move and the label update were persisted.
+      final movesAfter = await repRepo.getMovesForRepertoire(repId);
+      final e4After = movesAfter.firstWhere((m) => m.san == 'e4');
+      expect(e4After.label, 'King Pawn');
+
+      final d5After = movesAfter.firstWhere((m) => m.san == 'd5');
+      expect(d5After, isNotNull);
+    });
+
+    test('persistNewMoves without label updates uses original methods',
+        () async {
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = allMoves.first;
+
+      final fens = computeFens(['e4', 'e5']);
+
+      final confirmData = ConfirmData(
+        parentMoveId: e4Move.id,
+        newMoves: [BufferedMove(san: 'e5', fen: fens[1])],
+        isExtension: true,
+        repertoireId: repId,
+        sortOrder: 0,
+      );
+
+      // No pending label updates -- should use the original extendLine path.
+      final result = await service.persistNewMoves(confirmData);
+
+      expect(result.isExtension, true);
+      expect(result.insertedMoveIds.length, 1);
+
+      // Verify e4 label unchanged (null).
+      final movesAfter = await repRepo.getMovesForRepertoire(repId);
+      final e4After = movesAfter.firstWhere((m) => m.san == 'e4');
+      expect(e4After.label, isNull);
     });
   });
 }

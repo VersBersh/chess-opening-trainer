@@ -85,6 +85,13 @@ class FakeRepertoireRepository implements RepertoireRepository {
       [];
 
   @override
+  Future<List<int>> extendLineWithLabelUpdates(
+          int oldLeafMoveId,
+          List<RepertoireMovesCompanion> newMoves,
+          List<PendingLabelUpdate> labelUpdates) async =>
+      [];
+
+  @override
   Future<void> undoExtendLine(
           int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) async {}
 
@@ -105,6 +112,13 @@ class FakeRepertoireRepository implements RepertoireRepository {
     int? parentMoveId,
     List<RepertoireMovesCompanion> newMoves,
   ) async =>
+      [];
+
+  @override
+  Future<List<int>> saveBranchWithLabelUpdates(
+          int? parentMoveId,
+          List<RepertoireMovesCompanion> newMoves,
+          List<PendingLabelUpdate> labelUpdates) async =>
       [];
 }
 

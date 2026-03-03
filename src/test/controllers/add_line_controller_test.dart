@@ -725,8 +725,8 @@ void main() {
     });
   });
 
-  group('Label update', () {
-    test('focus a saved pill, call updateLabel, verify label persisted',
+  group('Label update (deferred persistence)', () {
+    test('updateLabel stores pending label in _pendingLabels map',
         () async {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5'],
@@ -744,19 +744,44 @@ void main() {
       expect(controller.state.pills[0].isSaved, true);
       expect(controller.state.pills[0].label, isNull);
 
-      // Get the focused pill index (should be 0).
-      expect(controller.state.focusedPillIndex, 0);
+      // Update the label (now synchronous, deferred).
+      controller.updateLabel(0, 'Sicilian');
 
-      // Update the label.
-      await controller.updateLabel(0, 'Sicilian');
+      // Verify the label is in pendingLabels, NOT in the DB.
+      expect(controller.pendingLabels[0], 'Sicilian');
+      expect(controller.state.pills[0].label, 'Sicilian');
 
-      // After updateLabel, loadData is called internally.
-      // The controller state should be rebuilt.
-      // Verify the label is persisted in the DB.
+      // DB should still have the original null label.
       final repRepo = LocalRepertoireRepository(db);
       final allMoves = await repRepo.getMovesForRepertoire(repId);
-      final e4Move2 = allMoves.firstWhere((m) => m.san == 'e4');
-      expect(e4Move2.label, 'Sicilian');
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Db.label, isNull);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('updateLabel with original value removes entry from _pendingLabels',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ], labelsOnSan: {'e4': 'King Pawn'});
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Change label to something different.
+      controller.updateLabel(0, 'Sicilian');
+      expect(controller.pendingLabels[0], 'Sicilian');
+
+      // Revert to original value.
+      controller.updateLabel(0, 'King Pawn');
+      expect(controller.pendingLabels.containsKey(0), false);
 
       controller.dispose();
       boardController.dispose();
@@ -788,8 +813,8 @@ void main() {
       expect(controller.state.focusedPillIndex, 1);
       expect(controller.state.currentFen, fens[1]);
 
-      // Update label on pill 1.
-      await controller.updateLabel(1, 'Sicilian');
+      // Update label on pill 1 (now synchronous).
+      controller.updateLabel(1, 'Sicilian');
 
       // Assert: navigation state preserved.
       expect(controller.state.focusedPillIndex, 1);
@@ -805,7 +830,7 @@ void main() {
       boardController.dispose();
     });
 
-    test('updateLabel does not break subsequent branching', () async {
+    test('updateLabel does not break subsequent branching and clears pending labels', () async {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5', 'Nf3'],
       ]);
@@ -829,8 +854,9 @@ void main() {
       // Tap pill at index 1 (e5) to focus it.
       controller.onPillTapped(1, boardController);
 
-      // Update label.
-      await controller.updateLabel(1, 'Sicilian');
+      // Update label (synchronous, deferred).
+      controller.updateLabel(1, 'Sicilian');
+      expect(controller.pendingLabels[1], 'Sicilian');
 
       // After updateLabel, no new moves but take-back is possible (followed
       // moves are still visible).
@@ -849,6 +875,8 @@ void main() {
       // Because focusedPillIndex (1) is not at the end (pills.length was 3),
       // onBoardMove triggers branch mode: creates a new engine from e5's
       // move ID, drops the tail (Nf3), and adds d4 as buffered.
+      // Pending labels should be cleared on branch.
+      expect(controller.pendingLabels, isEmpty);
       expect(controller.state.pills.length, 3);
       expect(controller.hasNewMoves, true);
       expect(controller.canTakeBack, true);
@@ -888,8 +916,8 @@ void main() {
       controller.onPillTapped(0, boardController);
       expect(controller.state.focusedPillIndex, 0);
 
-      // Update label on pill 0.
-      await controller.updateLabel(0, 'King Pawn');
+      // Update label on pill 0 (synchronous).
+      controller.updateLabel(0, 'King Pawn');
 
       // Assert: pills preserved, label updated, focus preserved.
       expect(controller.state.pills.length, 2);
@@ -927,16 +955,17 @@ void main() {
       // Focus pill 0 (the saved e4 pill) before editing.
       controller.onPillTapped(0, boardController);
 
-      // Update label while hasNewMoves is true.
-      await controller.updateLabel(0, 'Test');
+      // Update label while hasNewMoves is true (now synchronous).
+      controller.updateLabel(0, 'Test');
 
-      // Assert: label IS persisted in the DB.
+      // Assert: label is in pendingLabels, NOT yet in DB.
+      expect(controller.pendingLabels[0], 'Test');
       final repRepo = LocalRepertoireRepository(db);
       final allMoves = await repRepo.getMovesForRepertoire(repId);
-      final e4Move2 = allMoves.firstWhere((m) => m.san == 'e4');
-      expect(e4Move2.label, 'Test');
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Db.label, isNull);
 
-      // Assert: hasNewMoves remains true (buffered moves preserved).
+      // Assert: hasNewMoves remains true (buffered moves trivially preserved).
       expect(controller.hasNewMoves, true);
 
       // Assert: pills list still has 2 items.
@@ -948,6 +977,47 @@ void main() {
       // Assert: focusedPillIndex and currentFen are preserved.
       expect(controller.state.focusedPillIndex, 0);
       expect(controller.state.currentFen, fens[0]);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('_buildPillsList overlays pending labels onto saved pill data only', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 and e5 (both saved).
+      final fens = computeFens(['e4', 'e5', 'Nf3']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      // Buffer Nf3 (unsaved).
+      final nf3Move = sanToNormalMove(fens[1], 'Nf3');
+      boardController.playMove(nf3Move);
+      controller.onBoardMove(nf3Move, boardController);
+
+      expect(controller.state.pills.length, 3);
+
+      // Update label on pill 0 (saved).
+      controller.updateLabel(0, 'King Pawn');
+
+      // Pill 0 should show the pending label.
+      expect(controller.state.pills[0].label, 'King Pawn');
+      // Pill 1 should show original (null).
+      expect(controller.state.pills[1].label, isNull);
+      // Pill 2 (buffered) should show BufferedMove.label (null).
+      expect(controller.state.pills[2].label, isNull);
+      expect(controller.state.pills[2].isSaved, false);
 
       controller.dispose();
       boardController.dispose();
@@ -988,14 +1058,11 @@ void main() {
       controller.onPillTapped(0, boardController);
       expect(controller.canEditLabel, true);
 
-      // Update label on pill 0.
-      await controller.updateLabel(0, 'King Pawn');
+      // Update label on pill 0 (synchronous).
+      controller.updateLabel(0, 'King Pawn');
 
-      // Assert: label is persisted in DB.
-      final repRepo = LocalRepertoireRepository(db);
-      final allMoves = await repRepo.getMovesForRepertoire(repId);
-      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
-      expect(e4Db.label, 'King Pawn');
+      // Assert: label is in pendingLabels.
+      expect(controller.pendingLabels[0], 'King Pawn');
 
       // Assert: pills list has 4 items with correct saved/unsaved status.
       expect(controller.state.pills.length, 4);
@@ -1521,6 +1588,45 @@ void main() {
       controller.dispose();
       boardController.dispose();
     });
+
+    test('returns true when pending label is set on a saved pill', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow existing moves e4, e5.
+      final moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Buffer a new move Nf3.
+      final nf3Move = sanToNormalMove(currentFen, 'Nf3');
+      boardController.playMove(nf3Move);
+      controller.onBoardMove(nf3Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.hasLineLabel, false);
+
+      // Set a pending label on saved pill 0.
+      controller.updateLabel(0, 'King Pawn');
+      expect(controller.hasLineLabel, true);
+
+      // Revert the pending label.
+      controller.updateLabel(0, null);
+      expect(controller.hasLineLabel, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
   });
 
   group('unsaved pill label editing', () {
@@ -1660,11 +1766,12 @@ void main() {
       expect(controller.state.pills[2].label, 'Italian');
       expect(controller.state.pills[2].isSaved, false);
 
-      // Focus on pill 0 (e4, saved) and update its label.
+      // Focus on pill 0 (e4, saved) and update its label (now synchronous).
       controller.onPillTapped(0, boardController);
-      await controller.updateLabel(0, 'King Pawn');
+      controller.updateLabel(0, 'King Pawn');
 
-      // The buffered label on Nf3 should still be preserved.
+      // The buffered label on Nf3 should still be preserved (trivially,
+      // since updateLabel no longer reloads the engine).
       expect(controller.state.pills.length, 3);
       expect(controller.state.pills[0].label, 'King Pawn');
       expect(controller.state.pills[0].isSaved, true);
@@ -1927,6 +2034,234 @@ void main() {
       expect(controller.state.pills[1].san, 'd5');
       expect(controller.state.pills[1].isSaved, false);
       expect(controller.hasNewMoves, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('getEffectiveLabelAtPillIndex', () {
+    test('returns pending label when one exists', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Set pending label.
+      controller.updateLabel(0, 'King Pawn');
+
+      expect(controller.getEffectiveLabelAtPillIndex(0), 'King Pawn');
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('returns DB label when no pending edit', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ], labelsOnSan: {'e4': 'King Pawn'});
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // No pending edit -- should return DB label.
+      expect(controller.getEffectiveLabelAtPillIndex(0), 'King Pawn');
+      expect(controller.pendingLabels, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('returns BufferedMove.label for unsaved pills', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Buffer e4.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Label it via updateBufferedLabel.
+      controller.updateBufferedLabel(0, 'Test');
+
+      expect(controller.getEffectiveLabelAtPillIndex(0), 'Test');
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('Pending labels and confirm', () {
+    test('confirmAndPersist persists pending labels alongside moves atomically',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ], createCards: true);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (leaf), then play e5 (new).
+      final fens = computeFens(['e4', 'e5']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+
+      // Set a pending label on the saved e4 pill.
+      controller.onPillTapped(0, boardController);
+      controller.updateLabel(0, 'King Pawn');
+      expect(controller.pendingLabels[0], 'King Pawn');
+
+      // Flip board for parity (2-ply = even = black expected).
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // Verify that the pending label was persisted to the DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Db.label, 'King Pawn');
+
+      // Verify new move was also persisted.
+      expect(allMoves.any((m) => m.san == 'e5'), true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('pending labels are cleared after successful confirm (via loadData)',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ], createCards: true);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4, buffer e5.
+      final fens = computeFens(['e4', 'e5']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      // Set pending label.
+      controller.onPillTapped(0, boardController);
+      controller.updateLabel(0, 'Test');
+      expect(controller.pendingLabels, isNotEmpty);
+
+      // Flip and confirm.
+      controller.flipBoard();
+      await controller.confirmAndPersist();
+
+      // After confirm + loadData, pendingLabels should be empty.
+      expect(controller.pendingLabels, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('pending labels are discarded when screen is abandoned (controller disposed)',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Set pending label.
+      controller.updateLabel(0, 'Test');
+      expect(controller.pendingLabels[0], 'Test');
+
+      // Verify DB label is unchanged.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Db.label, isNull);
+
+      // Dispose simulates abandoning the screen.
+      controller.dispose();
+      boardController.dispose();
+
+      // DB label is still null -- pending was never persisted.
+      final allMoves2 = await repRepo.getMovesForRepertoire(repId);
+      final e4Db2 = allMoves2.firstWhere((m) => m.san == 'e4');
+      expect(e4Db2.label, isNull);
+    });
+
+    test('pending labels are cleared on branch (via onBoardMove branching path)',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all existing moves.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final fens = computeFens(moves);
+
+      // Set a pending label on pill 0.
+      controller.updateLabel(0, 'King Pawn');
+      expect(controller.pendingLabels, isNotEmpty);
+
+      // Focus pill 1 and branch.
+      controller.onPillTapped(1, boardController);
+      final d4Move = sanToNormalMove(fens[1], 'd4');
+      boardController.setPosition(fens[1]);
+      boardController.playMove(d4Move);
+      final result = controller.onBoardMove(d4Move, boardController);
+
+      expect(result, isA<MoveAccepted>());
+      // Pending labels should be cleared after branching.
+      expect(controller.pendingLabels, isEmpty);
 
       controller.dispose();
       boardController.dispose();

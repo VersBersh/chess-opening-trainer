@@ -99,8 +99,22 @@ class FakeRepertoireRepository implements RepertoireRepository {
       [];
 
   @override
+  Future<List<int>> extendLineWithLabelUpdates(
+          int oldLeafMoveId,
+          List<RepertoireMovesCompanion> newMoves,
+          List<PendingLabelUpdate> labelUpdates) async =>
+      [];
+
+  @override
   Future<List<int>> saveBranch(int? parentMoveId,
           List<RepertoireMovesCompanion> newMoves) async =>
+      [];
+
+  @override
+  Future<List<int>> saveBranchWithLabelUpdates(
+          int? parentMoveId,
+          List<RepertoireMovesCompanion> newMoves,
+          List<PendingLabelUpdate> labelUpdates) async =>
       [];
 
   @override

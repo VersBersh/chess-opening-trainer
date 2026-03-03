@@ -48,20 +48,29 @@ class LinePersistenceService {
   /// Delegates to the extension path (atomic [extendLine]) or the branch path
   /// (sequential [saveMove] + card creation) based on [ConfirmData.isExtension].
   ///
+  /// When [pendingLabelUpdates] is non-empty, label changes are applied
+  /// atomically in the same transaction as the move inserts.
+  ///
   /// Throws [ArgumentError] if [confirmData] has invalid preconditions
   /// (e.g. extension without a parentMoveId, or empty newMoves).
-  Future<PersistResult> persistNewMoves(ConfirmData confirmData) async {
+  Future<PersistResult> persistNewMoves(
+    ConfirmData confirmData, {
+    List<PendingLabelUpdate> pendingLabelUpdates = const [],
+  }) async {
     if (confirmData.newMoves.isEmpty) {
       throw ArgumentError('confirmData.newMoves must not be empty');
     }
     if (confirmData.isExtension) {
-      return _persistExtension(confirmData);
+      return _persistExtension(confirmData, pendingLabelUpdates: pendingLabelUpdates);
     } else {
-      return _persistBranch(confirmData);
+      return _persistBranch(confirmData, pendingLabelUpdates: pendingLabelUpdates);
     }
   }
 
-  Future<PersistResult> _persistExtension(ConfirmData confirmData) async {
+  Future<PersistResult> _persistExtension(
+    ConfirmData confirmData, {
+    List<PendingLabelUpdate> pendingLabelUpdates = const [],
+  }) async {
     final oldLeafMoveId = confirmData.parentMoveId;
     if (oldLeafMoveId == null) {
       throw ArgumentError(
@@ -82,8 +91,15 @@ class LinePersistenceService {
         sortOrder: i == 0 ? confirmData.sortOrder : 0,
       ));
     }
-    final insertedMoveIds =
-        await _repertoireRepo.extendLine(oldLeafMoveId, companions);
+
+    final List<int> insertedMoveIds;
+    if (pendingLabelUpdates.isNotEmpty) {
+      insertedMoveIds = await _repertoireRepo.extendLineWithLabelUpdates(
+        oldLeafMoveId, companions, pendingLabelUpdates);
+    } else {
+      insertedMoveIds =
+          await _repertoireRepo.extendLine(oldLeafMoveId, companions);
+    }
 
     return PersistResult(
       isExtension: true,
@@ -93,7 +109,10 @@ class LinePersistenceService {
     );
   }
 
-  Future<PersistResult> _persistBranch(ConfirmData confirmData) async {
+  Future<PersistResult> _persistBranch(
+    ConfirmData confirmData, {
+    List<PendingLabelUpdate> pendingLabelUpdates = const [],
+  }) async {
     final companions = <RepertoireMovesCompanion>[];
     for (var i = 0; i < confirmData.newMoves.length; i++) {
       final buffered = confirmData.newMoves[i];
@@ -109,10 +128,14 @@ class LinePersistenceService {
     }
 
     // Atomic: inserts all moves + review card in a single transaction.
-    final insertedIds = await _repertoireRepo.saveBranch(
-      confirmData.parentMoveId,
-      companions,
-    );
+    final List<int> insertedIds;
+    if (pendingLabelUpdates.isNotEmpty) {
+      insertedIds = await _repertoireRepo.saveBranchWithLabelUpdates(
+        confirmData.parentMoveId, companions, pendingLabelUpdates);
+    } else {
+      insertedIds = await _repertoireRepo.saveBranch(
+        confirmData.parentMoveId, companions);
+    }
 
     return PersistResult(
       isExtension: false,

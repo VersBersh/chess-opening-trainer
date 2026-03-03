@@ -127,6 +127,13 @@ class AddLineController extends ChangeNotifier {
   final int? _startingMoveId;
   final LinePersistenceService _persistenceService;
 
+  /// Pending label changes for saved pills only, keyed by pill index.
+  /// Values are nullable strings: a String sets/updates the label, null removes it.
+  /// Entries are present only for pills whose labels have been edited in this session.
+  /// Buffered (unsaved) pills are NOT tracked here -- they use BufferedMove.label
+  /// via updateBufferedLabel(), which is already deferred.
+  final Map<int, String?> _pendingLabels = {};
+
   AddLineState _state = const AddLineState();
 
   /// Generation counter for invalidating stale undo snackbars.
@@ -138,10 +145,15 @@ class AddLineController extends ChangeNotifier {
   /// Current undo generation for snackbar invalidation.
   int get undoGeneration => _undoGeneration;
 
+  /// Read-only view of pending label changes for testing.
+  Map<int, String?> get pendingLabels => Map.unmodifiable(_pendingLabels);
+
   // ---- Data loading -------------------------------------------------------
 
   /// Loads repertoire data, builds the tree cache, and creates the engine.
   Future<void> loadData() async {
+    _pendingLabels.clear();
+
     // 1. Load the repertoire name.
     final repertoire = await _repertoireRepo.getRepertoire(_repertoireId);
 
@@ -166,7 +178,7 @@ class AddLineController extends ChangeNotifier {
     }
 
     // 5. Compute display name.
-    final displayName = engine.getCurrentDisplayName();
+    final displayName = _computeDisplayNameWithPending(engine);
 
     // 6. Build pills list.
     final pills = _buildPillsList(engine);
@@ -190,29 +202,29 @@ class AddLineController extends ChangeNotifier {
 
   List<MovePillData> _buildPillsList(LineEntryEngine engine) {
     final pills = <MovePillData>[];
+    var index = 0;
 
     for (final move in engine.existingPath) {
-      pills.add(MovePillData(
-        san: move.san,
-        isSaved: true,
-        label: move.label,
-      ));
+      final label = _pendingLabels.containsKey(index)
+          ? _pendingLabels[index]
+          : move.label;
+      pills.add(MovePillData(san: move.san, isSaved: true, label: label));
+      index++;
     }
 
     for (final move in engine.followedMoves) {
-      pills.add(MovePillData(
-        san: move.san,
-        isSaved: true,
-        label: move.label,
-      ));
+      final label = _pendingLabels.containsKey(index)
+          ? _pendingLabels[index]
+          : move.label;
+      pills.add(MovePillData(san: move.san, isSaved: true, label: label));
+      index++;
     }
 
     for (final buffered in engine.bufferedMoves) {
-      pills.add(MovePillData(
-        san: buffered.san,
-        isSaved: false,
-        label: buffered.label,
-      ));
+      // Buffered moves use BufferedMove.label set via updateBufferedLabel().
+      // _pendingLabels is not consulted here.
+      pills.add(MovePillData(san: buffered.san, isSaved: false, label: buffered.label));
+      index++;
     }
 
     return pills;
@@ -271,6 +283,32 @@ class AddLineController extends ChangeNotifier {
       return engine.followedMoves[index - existingLen];
     }
     return null; // Buffered moves are not RepertoireMove
+  }
+
+  /// Returns the effective label at a pill index, considering pending edits.
+  /// For saved pills, returns the pending label if one exists, otherwise the
+  /// DB label. For unsaved pills, returns BufferedMove.label.
+  String? getEffectiveLabelAtPillIndex(int index) {
+    if (_pendingLabels.containsKey(index)) {
+      return _pendingLabels[index];
+    }
+    final engine = _state.engine;
+    if (engine == null) return null;
+
+    final existingLen = engine.existingPath.length;
+    final followedLen = engine.followedMoves.length;
+
+    if (index < existingLen) {
+      return engine.existingPath[index].label;
+    } else if (index < existingLen + followedLen) {
+      return engine.followedMoves[index - existingLen].label;
+    } else {
+      final bufferedIndex = index - existingLen - followedLen;
+      if (bufferedIndex < engine.bufferedMoves.length) {
+        return engine.bufferedMoves[bufferedIndex].label;
+      }
+    }
+    return null;
   }
 
   // ---- Computed properties ------------------------------------------------
@@ -360,8 +398,9 @@ class AddLineController extends ChangeNotifier {
       );
       newEngine.acceptMove(san, resultingFen);
 
+      _pendingLabels.clear();
       final newPills = _buildPillsList(newEngine);
-      final displayName = newEngine.getCurrentDisplayName();
+      final displayName = _computeDisplayNameWithPending(newEngine);
 
       _state = AddLineState(
         treeCache: _state.treeCache,
@@ -384,7 +423,7 @@ class AddLineController extends ChangeNotifier {
 
     // 5. Rebuild pills and update state.
     final newPills = _buildPillsList(engine);
-    final displayName = engine.getCurrentDisplayName();
+    final displayName = _computeDisplayNameWithPending(engine);
 
     _state = AddLineState(
       treeCache: _state.treeCache,
@@ -462,7 +501,7 @@ class AddLineController extends ChangeNotifier {
     }
 
     final newPills = _buildPillsList(engine);
-    final displayName = engine.getCurrentDisplayName();
+    final displayName = _computeDisplayNameWithPending(engine);
 
     _state = AddLineState(
       treeCache: _state.treeCache,
@@ -542,8 +581,20 @@ class AddLineController extends ChangeNotifier {
   Future<ConfirmResult> _persistMoves(LineEntryEngine engine) async {
     final confirmData = engine.getConfirmData();
 
+    // Build pending label updates for saved moves.
+    final labelUpdates = <PendingLabelUpdate>[];
+    for (final entry in _pendingLabels.entries) {
+      final moveId = getMoveIdAtPillIndex(entry.key);
+      if (moveId != null) {
+        labelUpdates.add(PendingLabelUpdate(moveId: moveId, label: entry.value));
+      }
+    }
+
     try {
-      final result = await _persistenceService.persistNewMoves(confirmData);
+      final result = await _persistenceService.persistNewMoves(
+        confirmData,
+        pendingLabelUpdates: labelUpdates,
+      );
 
       // Rebuild tree cache and reset engine.
       await loadData();
@@ -604,9 +655,9 @@ class AddLineController extends ChangeNotifier {
   /// Whether label editing is permitted.
   ///
   /// Label editing is allowed whenever any pill is focused, regardless of
-  /// whether it is saved or unsaved. For saved pills, `updateLabel()` persists
-  /// to the DB. For unsaved pills, `updateBufferedLabel()` mutates the
-  /// in-memory `BufferedMove.label`.
+  /// whether it is saved or unsaved. For saved pills, `updateLabel()` stores
+  /// changes in [_pendingLabels]. For unsaved pills, `updateBufferedLabel()`
+  /// mutates the in-memory `BufferedMove.label`.
   bool get canEditLabel {
     final focusedIndex = _state.focusedPillIndex;
     if (focusedIndex == null) return false;
@@ -614,87 +665,98 @@ class AddLineController extends ChangeNotifier {
     return true;
   }
 
-  /// Updates the label on the move at the given pill index.
+  /// Updates the label on a saved move at the given pill index.
   ///
-  /// Preserves navigation state (focusedPillIndex, currentFen, preMoveFen,
-  /// boardOrientation) instead of doing a full reset via [loadData].
-  /// Any buffered (unsaved) moves are replayed onto the rebuilt engine so
-  /// they are not lost.
-  Future<void> updateLabel(int pillIndex, String? newLabel) async {
-    final moveId = getMoveIdAtPillIndex(pillIndex);
-    if (moveId == null) return;
+  /// Stores the change in [_pendingLabels] instead of writing to the DB.
+  /// The pending label is persisted atomically alongside new moves when
+  /// [confirmAndPersist] is called.
+  void updateLabel(int pillIndex, String? newLabel) {
+    final engine = _state.engine;
+    if (engine == null) return;
 
-    // Capture engine state before any async gaps, so the replay uses a
-    // consistent snapshot even if _state changes during the awaits below.
-    final savedBufferedMoves = List.of(_state.engine?.bufferedMoves ?? []);
-    final savedBufferedLabels = savedBufferedMoves.map((b) => b.label).toList().cast<String?>();
-    final savedLastExistingMoveId = _state.engine?.lastExistingMoveId;
+    // Guard: only saved pills (existingPath + followedMoves) are tracked here.
+    // Buffered pills use updateBufferedLabel() instead.
+    final savedCount =
+        engine.existingPath.length + engine.followedMoves.length;
+    if (pillIndex < 0 || pillIndex >= savedCount) return;
 
-    // Save navigation state before refresh.
-    final savedFocusedPillIndex = _state.focusedPillIndex;
-    final savedCurrentFen = _state.currentFen;
-    final savedPreMoveFen = _state.preMoveFen;
-    final savedBoardOrientation = _state.boardOrientation;
-
-    await _repertoireRepo.updateMoveLabel(moveId, newLabel);
-
-    // Reload repertoire name, all moves, and rebuild cache (same as loadData
-    // steps 1-2).
-    final repertoire = await _repertoireRepo.getRepertoire(_repertoireId);
-    final allMoves =
-        await _repertoireRepo.getMovesForRepertoire(_repertoireId);
-    final cache = RepertoireTreeCache.build(allMoves);
-
-    // Create a new engine with startingMoveId set to the snapshotted
-    // lastExistingMoveId. Buffered moves are preserved via replay below
-    // rather than being lost during the engine rebuild.
-    final engine = LineEntryEngine(
-      treeCache: cache,
-      repertoireId: _repertoireId,
-      startingMoveId: savedLastExistingMoveId,
-    );
-
-    // Replay buffered moves onto the fresh engine. Since only a label was
-    // changed (no structural tree modification), acceptMove() will correctly
-    // re-buffer them.
-    for (final buffered in savedBufferedMoves) {
-      engine.acceptMove(buffered.san, buffered.fen);
+    // Determine the original label from the engine data.
+    final originalLabel = _getOriginalLabel(pillIndex);
+    if (newLabel == originalLabel) {
+      _pendingLabels.remove(pillIndex);
+    } else {
+      _pendingLabels[pillIndex] = newLabel;
     }
 
-    // Reapply labels after replay — acceptMove creates fresh BufferedMove
-    // instances without labels, so we restore the snapshot.
-    engine.reapplyBufferedLabels(savedBufferedLabels);
-
-    // Rebuild pills and display name from the fresh engine/cache.
+    // Rebuild pills with pending overlay and recompute display name.
     final pills = _buildPillsList(engine);
-    final displayName = engine.getCurrentDisplayName();
-
-    // Clamp focusedPillIndex to stay within bounds (should be unchanged
-    // after a label-only update, but defensive).
-    final clampedFocusedIndex = savedFocusedPillIndex != null && pills.isNotEmpty
-        ? savedFocusedPillIndex.clamp(0, pills.length - 1)
-        : savedFocusedPillIndex;
+    final displayName = _computeDisplayNameWithPending(engine);
 
     _state = AddLineState(
-      treeCache: cache,
+      treeCache: _state.treeCache,
       engine: engine,
-      boardOrientation: savedBoardOrientation,
-      focusedPillIndex: clampedFocusedIndex,
-      currentFen: savedCurrentFen,
-      preMoveFen: savedPreMoveFen,
+      boardOrientation: _state.boardOrientation,
+      focusedPillIndex: _state.focusedPillIndex,
+      currentFen: _state.currentFen,
+      preMoveFen: _state.preMoveFen,
       aggregateDisplayName: displayName,
       isLoading: false,
-      repertoireName: repertoire.name,
+      repertoireName: _state.repertoireName,
       pills: pills,
     );
     notifyListeners();
   }
 
+  /// Returns the original (DB) label at a pill index for saved pills.
+  String? _getOriginalLabel(int pillIndex) {
+    final engine = _state.engine;
+    if (engine == null) return null;
+
+    final existingLen = engine.existingPath.length;
+    final followedLen = engine.followedMoves.length;
+
+    if (pillIndex < existingLen) {
+      return engine.existingPath[pillIndex].label;
+    } else if (pillIndex < existingLen + followedLen) {
+      return engine.followedMoves[pillIndex - existingLen].label;
+    }
+    return null; // Buffered pill -- not handled here.
+  }
+
+  /// Computes the aggregate display name overlaying pending labels.
+  String _computeDisplayNameWithPending(LineEntryEngine engine) {
+    final labels = <String>[];
+    var index = 0;
+
+    for (final move in engine.existingPath) {
+      final label = _pendingLabels.containsKey(index)
+          ? _pendingLabels[index]
+          : move.label;
+      if (label != null && label.isNotEmpty) labels.add(label);
+      index++;
+    }
+
+    for (final move in engine.followedMoves) {
+      final label = _pendingLabels.containsKey(index)
+          ? _pendingLabels[index]
+          : move.label;
+      if (label != null && label.isNotEmpty) labels.add(label);
+      index++;
+    }
+
+    for (final buffered in engine.bufferedMoves) {
+      final label = buffered.label;
+      if (label != null && label.isNotEmpty) labels.add(label);
+      index++;
+    }
+
+    return labels.join(' \u2014 ');
+  }
+
   /// Updates the label on a buffered (unsaved) move at the given pill index.
   ///
-  /// Unlike [updateLabel], which persists to the DB and rebuilds the engine,
-  /// this method simply mutates the in-memory [BufferedMove.label] and
-  /// rebuilds pills.
+  /// Mutates the in-memory [BufferedMove.label] and rebuilds pills.
+  /// Buffered labels are carried through to [ConfirmData] automatically.
   void updateBufferedLabel(int pillIndex, String? newLabel) {
     final engine = _state.engine;
     if (engine == null) return;
@@ -710,7 +772,7 @@ class AddLineController extends ChangeNotifier {
     engine.setBufferedLabel(bufferedIndex, newLabel);
 
     final pills = _buildPillsList(engine);
-    final displayName = engine.getCurrentDisplayName();
+    final displayName = _computeDisplayNameWithPending(engine);
 
     _state = AddLineState(
       treeCache: _state.treeCache,

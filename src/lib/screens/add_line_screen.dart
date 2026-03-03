@@ -434,9 +434,11 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     final cache = state.treeCache;
     if (cache == null) return const SizedBox.shrink();
 
+    final effectiveLabel = _controller.getEffectiveLabelAtPillIndex(focusedIndex);
+
     return InlineLabelEditor(
       key: ValueKey('label-editor-${move.id}'),
-      currentLabel: move.label,
+      currentLabel: effectiveLabel,
       moveId: move.id,
       descendantLeafCount: cache.countDescendantLeaves(move.id),
       previewDisplayName: (text) =>
@@ -452,15 +454,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
             throw LabelChangeCancelledException();
           }
         }
-        await _controller.updateLabel(focusedIndex, label);
-        if (mounted) {
-          final fen = _controller.state.currentFen;
-          if (fen == kInitialFEN) {
-            _boardController.resetToInitial();
-          } else {
-            _boardController.setPosition(fen);
-          }
-        }
+        _controller.updateLabel(focusedIndex, label);
+        // No board reset needed -- no tree reload occurred.
       },
       onClose: () {
         if (mounted) {

@@ -155,6 +155,13 @@ class SpyRepertoireRepository implements RepertoireRepository {
           int oldLeafMoveId, List<RepertoireMovesCompanion> newMoves) =>
       _delegate.extendLine(oldLeafMoveId, newMoves);
   @override
+  Future<List<int>> extendLineWithLabelUpdates(
+          int oldLeafMoveId,
+          List<RepertoireMovesCompanion> newMoves,
+          List<PendingLabelUpdate> labelUpdates) =>
+      _delegate.extendLineWithLabelUpdates(
+          oldLeafMoveId, newMoves, labelUpdates);
+  @override
   Future<void> undoExtendLine(
           int oldLeafMoveId, List<int> insertedMoveIds, ReviewCard oldCard) =>
       _delegate.undoExtendLine(oldLeafMoveId, insertedMoveIds, oldCard);
@@ -174,6 +181,13 @@ class SpyRepertoireRepository implements RepertoireRepository {
   Future<List<int>> saveBranch(
           int? parentMoveId, List<RepertoireMovesCompanion> newMoves) =>
       _delegate.saveBranch(parentMoveId, newMoves);
+  @override
+  Future<List<int>> saveBranchWithLabelUpdates(
+          int? parentMoveId,
+          List<RepertoireMovesCompanion> newMoves,
+          List<PendingLabelUpdate> labelUpdates) =>
+      _delegate.saveBranchWithLabelUpdates(
+          parentMoveId, newMoves, labelUpdates);
 }
 
 // ---------------------------------------------------------------------------
