@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../controllers/repertoire_browser_controller.dart';
 import '../providers.dart';
+import '../repositories/local/database.dart';
 import '../theme/board_theme.dart';
 import 'add_line_screen.dart';
 import 'import_screen.dart';
@@ -40,6 +41,10 @@ class _RepertoireBrowserScreenState
   late final RepertoireBrowserController _controller;
   late final ChessboardController _boardController;
   int? _labelEditorMoveId;
+
+  /// Non-null while the branch chooser is open. Holds the candidates for the
+  /// pending move so they can be shown in the bottom sheet.
+  List<RepertoireMove>? _pendingMoveCandidates;
 
   @override
   void initState() {
@@ -79,6 +84,10 @@ class _RepertoireBrowserScreenState
   // ---- Event handlers -----------------------------------------------------
 
   void _onNodeSelected(int moveId) {
+    // Clear pending chooser state (the sheet closes itself via its own pop).
+    if (_pendingMoveCandidates != null) {
+      setState(() => _pendingMoveCandidates = null);
+    }
     if (_labelEditorMoveId != null && moveId != _labelEditorMoveId) {
       setState(() => _labelEditorMoveId = null);
     }
@@ -95,20 +104,124 @@ class _RepertoireBrowserScreenState
   }
 
   void _onNavigateBack() {
+    // Dismiss any open branch chooser before navigating.
+    if (_pendingMoveCandidates != null) {
+      setState(() => _pendingMoveCandidates = null);
+      Navigator.of(context).maybePop();
+    }
     setState(() => _labelEditorMoveId = null);
     final fen = _controller.navigateBack();
     if (fen != null) _boardController.setPosition(fen);
   }
 
   void _onNavigateForward() {
+    // Dismiss any open branch chooser before navigating.
+    if (_pendingMoveCandidates != null) {
+      setState(() => _pendingMoveCandidates = null);
+      Navigator.of(context).maybePop();
+    }
     setState(() => _labelEditorMoveId = null);
     final fen = _controller.navigateForward();
     if (fen != null) _boardController.setPosition(fen);
   }
 
-  void _onSquareTapped(Square square) {
-    final moveId = _controller.getChildMoveIdByDestSquare(square);
-    if (moveId != null) _onNodeSelected(moveId);
+  /// Called after the user plays a legal move on the board.
+  ///
+  /// Resolves the move against the current repertoire children via
+  /// [getCandidatesForMove]:
+  /// - Zero candidates: shows a snackbar and resets the board to the
+  ///   pre-move position (the controller's confirmed FEN).
+  /// - Exactly one candidate: navigates directly via [_onNodeSelected].
+  /// - Two or more candidates: opens the branch chooser bottom sheet.
+  void _onMovePlayed(NormalMove move) {
+    final candidates = _controller.getCandidatesForMove(move);
+
+    if (candidates.isEmpty) {
+      // Not in repertoire — reset board and show feedback.
+      _resetBoardToSelection();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Not in repertoire')),
+        );
+      }
+      return;
+    }
+
+    if (candidates.length == 1) {
+      // Single match — navigate immediately.
+      _onNodeSelected(candidates.first.id);
+      return;
+    }
+
+    // Multiple candidates — reset the board to the pre-move position and
+    // show the branch chooser so the user can pick which line to enter.
+    _resetBoardToSelection();
+    _showBranchChooser(candidates);
+  }
+
+  /// Resets the board to the position of the currently confirmed selection
+  /// (or the initial position when nothing is selected).
+  void _resetBoardToSelection() {
+    final selectedId = _controller.state.selectedMoveId;
+    final cache = _controller.state.treeCache;
+    if (selectedId != null && cache != null) {
+      final move = cache.movesById[selectedId];
+      if (move != null) {
+        _boardController.setPosition(move.fen);
+        return;
+      }
+    }
+    _boardController.setPosition(kInitialFEN);
+  }
+
+  /// Opens a modal bottom sheet listing [candidates] by notation and label.
+  ///
+  /// Selecting a candidate calls [_onNodeSelected]. Dismissing without
+  /// selecting is a no-op — the board was already reset to the pre-move FEN
+  /// by [_onMovePlayed].
+  void _showBranchChooser(List<RepertoireMove> candidates) {
+    setState(() => _pendingMoveCandidates = candidates);
+
+    final cache = _controller.state.treeCache;
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  'Choose a line',
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                ),
+              ),
+              ...candidates.map((candidate) {
+                final notation = cache?.getMoveNotation(candidate.id);
+                final label = candidate.label;
+                return ListTile(
+                  title: Text(notation ?? candidate.san),
+                  subtitle: label != null ? Text(label) : null,
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _onNodeSelected(candidate.id);
+                  },
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    ).whenComplete(() {
+      // Clear pending state when the sheet is dismissed for any reason
+      // (cancel via drag-down or hardware back).
+      if (mounted) {
+        setState(() => _pendingMoveCandidates = null);
+      }
+    });
   }
 
   // ---- Label editing -------------------------------------------------------
@@ -316,7 +429,7 @@ class _RepertoireBrowserScreenState
                   onEditLabelForMove: _onEditLabelForMove,
                   inlineLabelEditor: _buildInlineLabelEditor(),
                   shapes: _controller.getChildArrows(),
-                  onSquareTapped: _onSquareTapped,
+                  onMovePlayed: _onMovePlayed,
                 ),
     );
   }

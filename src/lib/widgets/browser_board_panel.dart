@@ -14,8 +14,13 @@ import 'chessboard_widget.dart';
 /// A thin wrapper around [ChessboardWidget] for the repertoire browser.
 ///
 /// Reads board orientation from the provided [orientation] and renders the
-/// board in non-interactive mode (`PlayerSide.none`). The caller passes
-/// [ChessboardSettings] so this widget stays free of Riverpod dependencies.
+/// board in interactive mode (`PlayerSide.both`) so the user can play moves
+/// to explore repertoire branches. The caller passes [ChessboardSettings] so
+/// this widget stays free of Riverpod dependencies.
+///
+/// When [onMove] is provided, it is called after a legal move has been played
+/// on the board. The screen uses this to resolve the move against repertoire
+/// candidates.
 class BrowserChessboard extends StatelessWidget {
   const BrowserChessboard({
     super.key,
@@ -24,6 +29,7 @@ class BrowserChessboard extends StatelessWidget {
     required this.settings,
     this.shapes,
     this.onTouchedSquare,
+    this.onMove,
   });
 
   final ChessboardController controller;
@@ -32,15 +38,19 @@ class BrowserChessboard extends StatelessWidget {
   final ISet<Shape>? shapes;
   final void Function(Square)? onTouchedSquare;
 
+  /// Called after the user plays a legal move on the board.
+  final void Function(NormalMove)? onMove;
+
   @override
   Widget build(BuildContext context) {
     return ChessboardWidget(
       controller: controller,
       orientation: orientation,
-      playerSide: PlayerSide.none,
+      playerSide: PlayerSide.both,
       settings: settings,
       shapes: shapes,
       onTouchedSquare: onTouchedSquare,
+      onMove: onMove,
     );
   }
 }

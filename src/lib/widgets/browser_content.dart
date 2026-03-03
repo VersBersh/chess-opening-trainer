@@ -42,6 +42,7 @@ class BrowserContent extends StatelessWidget {
     this.inlineLabelEditor,
     this.shapes,
     this.onSquareTapped,
+    this.onMovePlayed,
   });
 
   final RepertoireBrowserState state;
@@ -70,6 +71,10 @@ class BrowserContent extends StatelessWidget {
 
   /// Callback fired when a square on the board is touched.
   final void Function(Square)? onSquareTapped;
+
+  /// Callback fired after the user plays a legal move on the board.
+  /// The screen uses this to resolve the move against repertoire candidates.
+  final void Function(NormalMove)? onMovePlayed;
 
   // ---- Derived values -------------------------------------------------------
 
@@ -125,6 +130,7 @@ class BrowserContent extends StatelessWidget {
                 settings: boardSettings,
                 shapes: shapes,
                 onTouchedSquare: onSquareTapped,
+                onMove: onMovePlayed,
               ),
             ),
           ),
@@ -166,6 +172,7 @@ class BrowserContent extends StatelessWidget {
                         settings: boardSettings,
                         shapes: shapes,
                         onTouchedSquare: onSquareTapped,
+                        onMove: onMovePlayed,
                       ),
                     ),
                   ),

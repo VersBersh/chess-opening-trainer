@@ -323,6 +323,96 @@ class RepertoireBrowserController extends ChangeNotifier {
     return null;
   }
 
+  /// Returns all repertoire candidates that match [move] from the current
+  /// position.
+  ///
+  /// Priority order:
+  /// 1. Node-local children (children of the selected node, or root moves when
+  ///    nothing is selected) are checked first.
+  /// 2. If the node-local set is empty, falls back to all children of any node
+  ///    at the same normalized position key (transposition lookup).
+  ///
+  /// The combined candidate list is deduplicated by (from, to, promotion). When
+  /// two candidates map to the same (from, to, promotion) triple, the one with
+  /// the lower [RepertoireMove.sortOrder] is kept. Node-local candidates are
+  /// always preferred over transposition-only candidates (they appear first
+  /// before deduplication, so their sortOrder wins ties).
+  ///
+  /// Returns an empty list when [move] matches no repertoire child.
+  List<RepertoireMove> getCandidatesForMove(NormalMove move) {
+    final cache = _state.treeCache;
+    if (cache == null) return [];
+
+    final selectedId = _state.selectedMoveId;
+    final selectedMove =
+        selectedId != null ? cache.movesById[selectedId] : null;
+    if (selectedId != null && selectedMove == null) return [];
+
+    final parentFen = selectedMove?.fen ?? kInitialFEN;
+    final parentPosition = Chess.fromSetup(Setup.parseFen(parentFen));
+
+    // --- Primary: node-local children ---
+    final primaryChildren = selectedId != null
+        ? cache.getChildren(selectedId)
+        : cache.getRootMoves();
+
+    List<RepertoireMove> candidates = _filterByMove(
+      primaryChildren,
+      parentPosition,
+      move,
+    );
+
+    // --- Fallback: transposition lookup ---
+    if (candidates.isEmpty) {
+      final positionKey = RepertoireTreeCache.normalizePositionKey(parentFen);
+      final transpositionChildren = cache.getChildrenAtPosition(positionKey);
+      candidates = _filterByMove(
+        transpositionChildren,
+        parentPosition,
+        move,
+      );
+    }
+
+    if (candidates.isEmpty) return [];
+
+    // --- Deduplication by (from, to, promotion) with sortOrder tiebreak ---
+    // Node-local results arrive first and already have the lower sortOrder
+    // preference by virtue of appearing earlier in the candidate list.
+    final seen = <String, RepertoireMove>{};
+    for (final candidate in candidates) {
+      final candidateMove = sanToMove(parentPosition, candidate.san);
+      if (candidateMove == null) continue;
+      final key = '${candidateMove.from.name}-'
+          '${candidateMove.to.name}-'
+          '${candidateMove.promotion?.name ?? ""}';
+      final existing = seen[key];
+      if (existing == null ||
+          candidate.sortOrder < existing.sortOrder) {
+        seen[key] = candidate;
+      }
+    }
+    return seen.values.toList();
+  }
+
+  /// Filters [children] to those whose SAN resolves to [move] in [position].
+  List<RepertoireMove> _filterByMove(
+    List<RepertoireMove> children,
+    Position position,
+    NormalMove move,
+  ) {
+    final result = <RepertoireMove>[];
+    for (final child in children) {
+      final childMove = sanToMove(position, child.san);
+      if (childMove == null) continue;
+      if (childMove.from == move.from &&
+          childMove.to == move.to &&
+          childMove.promotion == move.promotion) {
+        result.add(child);
+      }
+    }
+    return result;
+  }
+
   /// Resets the loading state for retry.
   void setLoading() {
     _state = _state.copyWith(isLoading: true, errorMessage: () => null);
