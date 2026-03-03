@@ -63,8 +63,10 @@ class ChessTrainerApp extends ConsumerWidget {
         drillFeedbackThemeLight,
       ],
       appBarTheme: AppBarTheme(
-        backgroundColor: lightColorScheme.inversePrimary,
+        backgroundColor: lightColorScheme.surface,
         foregroundColor: lightColorScheme.onSurface,
+        titleTextStyle: Typography.material2021().black.titleMedium
+            ?.copyWith(color: lightColorScheme.onSurface),
       ),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
@@ -79,8 +81,10 @@ class ChessTrainerApp extends ConsumerWidget {
         drillFeedbackThemeDark,
       ],
       appBarTheme: AppBarTheme(
-        backgroundColor: darkColorScheme.inversePrimary,
+        backgroundColor: darkColorScheme.surface,
         foregroundColor: darkColorScheme.onSurface,
+        titleTextStyle: Typography.material2021().white.titleMedium
+            ?.copyWith(color: darkColorScheme.onSurface),
       ),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

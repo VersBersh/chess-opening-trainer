@@ -363,7 +363,6 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
         child: Scaffold(
           appBar: AppBar(
             title: const Text('Add Line'),
-            backgroundColor: Theme.of(context).colorScheme.inversePrimary,
           ),
           body: state.isLoading
               ? const Center(child: CircularProgressIndicator())
