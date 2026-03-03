@@ -2,16 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/pill_theme.dart';
 
-/// Vertical offset (in logical pixels) for the label positioned beneath a pill.
-/// Negative because `Positioned.bottom` is measured upward from the Stack's
-/// bottom edge; a negative value places the label *below* the Stack bounds.
-///
-/// After introducing `_kPillMinTapTarget`, the Stack's height is 36 dp while
-/// the visible decoration is centred within it (~3 dp transparent padding on
-/// each side). The offset accounts for this gap so the label still appears
-/// just below the visible pill decoration.
-const double _kLabelBottomOffset = -8;
-
 /// Fixed width for every move pill, chosen to accommodate the longest common
 /// SAN notations (e.g. "Qxe7#", "Nxd4+") without truncation.
 const double _kPillWidth = 66;
@@ -20,6 +10,11 @@ const double _kPillWidth = 66;
 /// 48 dp recommendation, but sufficient for this dense chess UI where the
 /// 66 dp pill width provides ample horizontal tap area.
 const double _kPillMinTapTarget = 36;
+
+/// Fixed height reserved for the label slot beneath every pill, whether or not
+/// a label is present. Sized to accommodate one line of 10 sp text (~14 dp)
+/// while keeping the slot height uniform across all pills in a Wrap row.
+const double _kLabelSlotHeight = 14;
 
 // ---------------------------------------------------------------------------
 // Pill data model
@@ -83,8 +78,7 @@ class MovePillsWidget extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Wrap(
         spacing: 4,
-        runSpacing: 10,
-        clipBehavior: Clip.none, // labels may paint outside pill bounds
+        runSpacing: 4,
         children: [
           for (var i = 0; i < pills.length; i++)
             _MovePill(
@@ -192,17 +186,10 @@ class _MovePill extends StatelessWidget {
       ),
     );
 
-    final Widget content;
-    if (data.label == null) {
-      content = pillBody;
-    } else {
-      content = Stack(
-        clipBehavior: Clip.none,
-        children: [
-          pillBody,
-          Positioned(
-            left: 0,
-            bottom: _kLabelBottomOffset,
+    final Widget labelSlot = data.label != null
+        ? SizedBox(
+            width: _kPillWidth,
+            height: _kLabelSlotHeight,
             child: ExcludeSemantics(
               child: Text(
                 data.label!,
@@ -211,19 +198,24 @@ class _MovePill extends StatelessWidget {
                   color: colorScheme.primary,
                 ),
                 maxLines: 1,
-                overflow: TextOverflow.visible,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
             ),
-          ),
-        ],
-      );
-    }
+          )
+        : SizedBox(width: _kPillWidth, height: _kLabelSlotHeight);
 
     return Semantics(
       label: _semanticLabel,
       button: true,
       selected: isFocused,
-      child: content,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          pillBody,
+          labelSlot,
+        ],
+      ),
     );
   }
 }
