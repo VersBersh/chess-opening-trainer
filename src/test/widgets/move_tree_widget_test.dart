@@ -915,5 +915,64 @@ void main() {
       // The chain row should display "3 due" from the middle move.
       expect(find.text('3 due'), findsOneWidget);
     });
+
+    testWidgets('tapping the row text does not call onNodeToggleExpand',
+        (tester) async {
+      int? toggledId;
+      int? selectedId;
+      // Build a branch tree so chevron is shown (e4 has two children: e5, c5).
+      // Tap the e5 row text — should fire onNodeSelected, not onNodeToggleExpand.
+      final mainLine = buildLine(['e4', 'e5', 'Nf3']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {1},
+        onNodeSelected: (id) => selectedId = id,
+        onNodeToggleExpand: (id) => toggledId = id,
+      ));
+
+      // Tap the e5 chain row text (e5 has one child Nf3, collapses into chain).
+      // The chain's tail is Nf3 (id=3), so selectedId must be 3.
+      await tester.tap(find.text('1...e5 2. Nf3'));
+      expect(selectedId, 3);
+      expect(toggledId, isNull);
+    });
+
+    testWidgets('tapping chevron icon does not call onNodeSelected',
+        (tester) async {
+      int? toggledId;
+      int? selectedId;
+      // Build a branch tree so chevron is shown (e4 has two children: e5, c5).
+      final mainLine = buildLine(['e4', 'e5', 'Nf3']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+        onNodeSelected: (id) => selectedId = id,
+        onNodeToggleExpand: (id) => toggledId = id,
+      ));
+
+      // e4 is collapsed (chevron_right shown). Tap the chevron icon.
+      // e4 is the branch node (id=1), so toggledId must be 1.
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      expect(toggledId, 1);
+      expect(selectedId, isNull);
+    });
   });
 }

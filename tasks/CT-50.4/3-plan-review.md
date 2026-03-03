@@ -1,0 +1,11 @@
+**Verdict** — `Needs Revision`
+
+**Issues**
+1. **Major (Step 2 / overall plan specificity):** The plan is too abstract to implement safely. It does not name concrete target edits per step (except a generic mention of `move_tree_widget.dart`), and it doesn’t define what code will actually change. In the current code, row tap and chevron tap are already separated in [`src/lib/widgets/move_tree_widget.dart`](C:\code\misc\chess-trainer-3\src\lib\widgets\move_tree_widget.dart), so this plan risks becoming a no-op without clarifying the real defect.  
+   **Suggested fix:** Rewrite steps with explicit file-level changes and intended deltas (for example: exact hit-test/gesture behavior changes in `MoveTreeWidget`, exact constraints for target size, and any callback/selection rules).
+
+2. **Major (Step 4 completeness):** Callback flow validation is incomplete because the plan omits [`src/lib/widgets/browser_content.dart`](C:\code\misc\chess-trainer-3\src\lib\widgets\browser_content.dart), which is the actual pass-through layer wiring `onNodeSelected` and `onNodeToggleExpand` between screen and tree widget.  
+   **Suggested fix:** Add `browser_content.dart` to context/steps and explicitly verify/update this wiring path: `MoveTreeWidget -> BrowserContent -> RepertoireBrowserScreen -> RepertoireBrowserController`.
+
+3. **Major (Steps 3–5, regression risk):** The plan does not include test updates despite interaction determinism and navigation stability being acceptance criteria. Existing tests already cover much of this behavior in [`src/test/widgets/move_tree_widget_test.dart`](C:\code\misc\chess-trainer-3\src\test\widgets\move_tree_widget_test.dart), [`src/test/screens/repertoire_browser_screen_test.dart`](C:\code\misc\chess-trainer-3\src\test\screens\repertoire_browser_screen_test.dart), and [`src/test/controllers/repertoire_browser_controller_test.dart`](C:\code\misc\chess-trainer-3\src\test\controllers\repertoire_browser_controller_test.dart), but the plan doesn’t state what new/changed tests will prove the fix.  
+   **Suggested fix:** Add explicit test tasks (or explicit “no code change, tests only” path if behavior is already correct) covering: chevron-only expand, row-only select+board sync, chain-row tail behavior, and no regression to back/forward/board gesture navigation.

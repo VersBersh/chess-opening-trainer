@@ -600,6 +600,67 @@ void main() {
 
       expect(find.widgetWithText(TextButton, 'Focus'), findsNothing);
     });
+
+    testWidgets('tapping expand chevron does not change board position',
+        (tester) async {
+      // Seed: e4 with two children (e5, c5) so chevron appears on e4.
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+          ['e4', 'c5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // e4 is a branch point with children visible (expand_more shown).
+      // Capture board FEN before the chevron tap.
+      final boardBefore =
+          tester.widget<Chessboard>(find.byType(Chessboard)).fen;
+
+      await tester.tap(find.byIcon(Icons.expand_more).first);
+      await tester.pump();
+
+      // Board FEN must be unchanged after the collapse.
+      final boardAfter =
+          tester.widget<Chessboard>(find.byType(Chessboard)).fen;
+      expect(boardAfter, boardBefore,
+          reason: 'Expand/collapse must not alter board position');
+    });
+
+    testWidgets('chain-row tap syncs board to tail (last move) FEN',
+        (tester) async {
+      // Seed: e4 -> e5 -> Nf3, all single-child -> one chain row.
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // The entire line collapses into one chain row.
+      await tester.tap(find.text('1. e4 e5 2. Nf3'));
+      await tester.pump();
+
+      // Board should reflect the position after 1. e4 e5 2. Nf3 (the tail).
+      // Compute the expected FEN by replaying the line from the initial position.
+      // play() returns Position, so cast back to Chess at each step to call parseSan.
+      final p0 = Chess.fromSetup(Setup.parseFen(kInitialFEN));
+      final p1 = p0.play(p0.parseSan('e4')!) as Chess;
+      final p2 = p1.play(p1.parseSan('e5')!) as Chess;
+      final p3 = p2.play(p2.parseSan('Nf3')!);
+      final tailFen = p3.fen;
+
+      final chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.fen, tailFen,
+          reason: 'Board must sync to tail move (Nf3) FEN, not an intermediate position');
+    });
   });
 
   group('Label editing', () {
