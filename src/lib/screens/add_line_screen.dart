@@ -352,8 +352,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Aggregate display name banner + gap
-          if (displayName.isNotEmpty) ...[
+          // Aggregate display name banner
+          if (displayName.isNotEmpty)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(
@@ -370,8 +370,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(height: kBannerGap),
-          ],
+
+          const SizedBox(height: kBoardFrameTopGap),
 
           // Chessboard
           ConstrainedBox(

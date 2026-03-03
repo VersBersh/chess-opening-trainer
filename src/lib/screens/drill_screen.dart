@@ -234,48 +234,51 @@ class DrillScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: isWide
-          ? LayoutBuilder(
-              builder: (context, constraints) {
-                final maxBoardWidth = constraints.maxWidth * 0.6;
-                return Row(
-                  children: [
-                    SizedBox(
-                      width: maxBoardWidth,
-                      height: constraints.maxHeight,
-                      child: Column(
-                        children: [
-                          Flexible(
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: boardWidget,
+      body: Padding(
+        padding: kBoardFrameTopInsets,
+        child: isWide
+            ? LayoutBuilder(
+                builder: (context, constraints) {
+                  final maxBoardWidth = constraints.maxWidth * 0.6;
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: maxBoardWidth,
+                        height: constraints.maxHeight,
+                        child: Column(
+                          children: [
+                            Flexible(
+                              child: AspectRatio(
+                                aspectRatio: 1,
+                                child: boardWidget,
+                              ),
                             ),
-                          ),
-                          lineLabelWidget,
-                        ],
+                            lineLabelWidget,
+                          ],
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Center(child: statusWidget),
-                          ?filterWidget,
-                        ],
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Center(child: statusWidget),
+                            ?filterWidget,
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
-            )
-          : Column(
-              children: [
-                Expanded(child: boardWidget),
-                lineLabelWidget,
-                statusWidget,
-                ?filterWidget,
-              ],
-            ),
+                    ],
+                  );
+                },
+              )
+            : Column(
+                children: [
+                  Expanded(child: boardWidget),
+                  lineLabelWidget,
+                  statusWidget,
+                  ?filterWidget,
+                ],
+              ),
+      ),
     );
   }
 

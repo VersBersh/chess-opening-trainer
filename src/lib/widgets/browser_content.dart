@@ -100,7 +100,7 @@ class BrowserContent extends StatelessWidget {
     final isWide = screenWidth >= 600;
 
     return Padding(
-      padding: kBannerGapInsets,
+      padding: kBoardFrameTopInsets,
       child: isWide ? _buildWide(context) : _buildNarrow(context),
     );
   }
