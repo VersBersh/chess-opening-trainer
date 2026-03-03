@@ -10,3 +10,13 @@ NormalMove? sanToMove(Position position, String san) {
   final move = position.parseSan(san);
   return move is NormalMove ? move : null;
 }
+
+/// Returns the canonical form of [move] within [position].
+///
+/// For castling moves expressed as king-to-king-destination (e.g. e1→g1),
+/// this returns the king-to-rook form that dartchess uses internally
+/// (e.g. e1→h1). For all other moves, the move is returned unchanged.
+NormalMove normalizeMoveForPosition(Position position, NormalMove move) {
+  final normalized = position.normalizeMove(move);
+  return normalized is NormalMove ? normalized : move;
+}

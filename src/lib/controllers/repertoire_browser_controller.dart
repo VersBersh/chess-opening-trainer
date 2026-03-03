@@ -351,6 +351,11 @@ class RepertoireBrowserController extends ChangeNotifier {
     final parentFen = selectedMove?.fen ?? kInitialFEN;
     final parentPosition = Chess.fromSetup(Setup.parseFen(parentFen));
 
+    // Normalize castling gestures (e.g. king-to-g1) to canonical form
+    // (king-to-rook, e.g. king-to-h1) so the comparison matches the
+    // king-to-rook form produced by sanToMove / parseSan.
+    final normalizedMove = normalizeMoveForPosition(parentPosition, move);
+
     // --- Primary: node-local children ---
     final primaryChildren = selectedId != null
         ? cache.getChildren(selectedId)
@@ -359,7 +364,7 @@ class RepertoireBrowserController extends ChangeNotifier {
     List<RepertoireMove> candidates = _filterByMove(
       primaryChildren,
       parentPosition,
-      move,
+      normalizedMove,
     );
 
     // --- Fallback: transposition lookup ---
@@ -369,7 +374,7 @@ class RepertoireBrowserController extends ChangeNotifier {
       candidates = _filterByMove(
         transpositionChildren,
         parentPosition,
-        move,
+        normalizedMove,
       );
     }
 

@@ -824,5 +824,33 @@ void main() {
 
       controller.dispose();
     });
+
+    test(
+        'resolves O-O king-to-destination gesture (e1→g1) to the castling node',
+        () async {
+      // Seed a line where white castles kingside after 1.e4 e5 2.Nf3 Nc6
+      // 3.Bc4 Bc5 4.O-O. The node to select before O-O is the one with
+      // SAN 'Bc5' (black's third move).
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'O-O'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      // Select the Bc5 node so that O-O is a direct child.
+      final bc5Id = await getMoveIdBySan(db, repId, 'Bc5');
+      controller.selectNode(bc5Id!);
+
+      // The board emits the king-to-destination form: e1→g1.
+      final castlingGesture = NormalMove(from: Square.e1, to: Square.g1);
+      final candidates = controller.getCandidatesForMove(castlingGesture);
+
+      expect(candidates.length, 1);
+      final ooId = await getMoveIdBySan(db, repId, 'O-O');
+      expect(candidates.first.id, ooId);
+
+      controller.dispose();
+    });
   });
 }

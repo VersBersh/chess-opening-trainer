@@ -75,4 +75,42 @@ void main() {
       expect(move.to, Square.h1);
     });
   });
+
+  group('normalizeMoveForPosition', () {
+    test('normalizes O-O gesture (e1→g1) to king-to-rook (e1→h1)', () {
+      // Position where white can castle kingside
+      const fen =
+          'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4';
+      final position = Chess.fromSetup(Setup.parseFen(fen));
+      final gesture = NormalMove(from: Square.e1, to: Square.g1);
+
+      final normalized = normalizeMoveForPosition(position, gesture);
+
+      expect(normalized.from, Square.e1);
+      expect(normalized.to, Square.h1);
+    });
+
+    test('normalizes O-O-O gesture (e1→c1) to king-to-rook (e1→a1)', () {
+      // Minimal position where white can castle queenside
+      const fen = '4k3/8/8/8/8/8/8/R3K3 w Q - 0 1';
+      final position = Chess.fromSetup(Setup.parseFen(fen));
+      final gesture = NormalMove(from: Square.e1, to: Square.c1);
+
+      final normalized = normalizeMoveForPosition(position, gesture);
+
+      expect(normalized.from, Square.e1);
+      expect(normalized.to, Square.a1);
+    });
+
+    test('passes through a normal pawn move unchanged', () {
+      final position = Chess.initial;
+      final pawnMove = NormalMove(from: Square.e2, to: Square.e4);
+
+      final normalized = normalizeMoveForPosition(position, pawnMove);
+
+      expect(normalized.from, Square.e2);
+      expect(normalized.to, Square.e4);
+      expect(normalized.promotion, isNull);
+    });
+  });
 }
