@@ -31,6 +31,13 @@ In Free Practice mode (not regular Drill mode), a **filter box** is shown at the
 - Clearing the filter returns to all cards.
 - The filter is always visible during the session — the user can adjust it between cards.
 
+### Inline Filter Dropdown Behavior
+
+- Because the filter lives near the bottom of the screen, suggestion menus should prefer opening **upward** when there is insufficient space below.
+- The suggestion overlay must be anchored to the input field and must not obscure the typed input text.
+- If there is enough space below (e.g., larger screens), the menu may open downward.
+- The direction choice is a layout behavior only; filtering logic is unchanged.
+
 ## Spaced Repetition
 
 - Free practice sessions **do not affect the spaced repetition schedule**. No review dates, ease factors, or intervals are updated.

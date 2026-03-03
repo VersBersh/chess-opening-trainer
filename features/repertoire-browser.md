@@ -60,6 +60,7 @@ Nodes with labels serve as section headers in the tree:
 ### Expand / Collapse
 
 - Subtrees can be expanded or collapsed by tapping the branch indicator.
+- On mobile, expand/collapse is a **chevron-only** action with its own hit target. Row taps never toggle expansion.
 - On initial load, the tree is collapsed to the first level of labeled nodes (or the root level if no nodes are labeled). This prevents overwhelming the user with a fully expanded deep tree.
 - The user can expand individual subtrees to drill into specific variations.
 - For chain-collapsed rows, the expand chevron controls the **tail** node's children. Expanding reveals the children at one indentation level deeper than the chain row.
@@ -71,6 +72,7 @@ Nodes with labels serve as section headers in the tree:
 - Tapping a node selects it. The selected node is visually highlighted (e.g., background color change).
 - Only one node can be selected at a time.
 - Selecting a node updates the board display (see Board Sync below).
+- Tapping a row always means "select and sync board." Expansion is controlled only by the chevron affordance.
 
 ### Keyboard / Gesture Navigation
 
@@ -96,7 +98,12 @@ A chessboard widget shows the position at the currently selected node.
 
 ### Board Interaction
 
-The board is **read-only** in the repertoire manager. The user cannot play moves on the board while browsing. To add moves, the user navigates to the [Add Line](add-line.md) screen. This prevents accidental line creation.
+The board supports **exploration moves** in the repertoire manager:
+
+- Playing a move on the board navigates to that child position when the move is valid in the repertoire from the current node.
+- If multiple valid repertoire moves exist from the current position, the UI must offer a branch choice (for example, inline chips or a bottom sheet) instead of forcing only one path.
+- Playing a move that is not present in the repertoire does not create data and should show lightweight feedback (for example, "Not in repertoire").
+- Exploration moves never persist changes. Creating new moves still requires [Add Line](add-line.md).
 
 ### Line Display Name
 

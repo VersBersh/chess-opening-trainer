@@ -26,7 +26,9 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 
 - Pills are shown in order: e.g. `e4` → `e5` → `Nf3` → `Nc6` → ...
 - As the user makes moves on the board, new pills are appended to the row.
-- If a pill's move exists in the database and has a **label**, the label is shown beneath the pill as **flat text** (not angled/slanted). The label may overflow underneath neighboring pills — this is acceptable since it's unlikely adjacent pills will both have labels.
+- If a pill's move exists in the database and has a **label**, the label is shown beneath the pill as **flat text** (not angled/slanted).
+- Label placement must avoid overlap with neighboring pills and neighboring labels. Relative offsets that cause collisions are not acceptable.
+- The layout should reserve enough vertical space per wrapped row so labels remain legible across dense move sequences.
 - All pills use the same styling regardless of whether the move is already saved in the database or is new/unsaved.
 - **Equal width:** All pills have the **same width**, regardless of the SAN text length. This provides a clean, uniform appearance.
 - **Styling:** Pills use a blue fill, modest border radius (not full stadium shape), per [design/ui-guidelines.md](../design/ui-guidelines.md).
@@ -86,6 +88,12 @@ Line parity validation on confirm follows [line-management.md](line-management.m
 - The user can read the warning and then either continue editing the line, flip the board, or confirm anyway.
 - The inline warning is dismissible and non-blocking — it does not interrupt the user's flow.
 - See [design/ui-guidelines.md](../design/ui-guidelines.md) for the inline warning convention.
+
+## Undo Feedback Lifetime
+
+- Undo feedback for "line added" actions should be scoped to the Add Line screen route.
+- The undo message duration should be short (about 4-6 seconds) and should not remain visible after navigating to another screen.
+- If the user leaves Add Line, any active undo feedback is dismissed.
 
 ## Aggregate Name Preview
 

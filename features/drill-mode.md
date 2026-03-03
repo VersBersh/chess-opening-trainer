@@ -6,6 +6,11 @@ Drill mode is the core training loop. The user reviews due cards from their repe
 
 Uses **ReviewCard**, **RepertoireMove**, **DrillSession**, and **DrillCardState** from [architecture/models.md](../architecture/models.md).
 
+## Layout Consistency
+
+- The board container alignment (horizontal padding, top spacing, and label slot spacing) must match the shared rules in [architecture/board-layout-consistency.md](../architecture/board-layout-consistency.md).
+- Drill mode and Free Practice mode use the same board frame so board position does not "jump" between these modes.
+
 ## Card Selection
 
 - A **review card** corresponds to a specific line (root-to-leaf path) in the repertoire.

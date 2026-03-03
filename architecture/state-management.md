@@ -146,6 +146,14 @@ This keeps the UI decoupled from the database schema and allows the controller t
 
 For screens where rapid database changes could cause excessive rebuilds (e.g., importing many lines), the controller should debounce the stream. A short debounce window (100-200ms) prevents the UI from rebuilding on every individual row insert during a batch operation.
 
+## Transient UI State
+
+Transient UI state (snackbars, inline toasts, overlay menus) should be scoped to the owning route/screen controller and cleared on route disposal.
+
+- A transient message created in one screen must not remain visible after navigating to another screen.
+- Overlay direction/placement decisions (for example, opening a bottom-area dropdown upward) belong to the view layer, but the state holder should expose enough context to keep interactions stable during rebuilds.
+- Transient UI state should not be persisted in repositories.
+
 ## Drill Session State Ownership
 
 ### Controller Scope
