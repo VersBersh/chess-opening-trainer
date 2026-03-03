@@ -29,6 +29,26 @@ Each node in the tree shows:
 - **Label** — if the node has a label (e.g., "Najdorf"), it is displayed prominently alongside or below the SAN move. The full aggregate display name (e.g., "Sicilian — Najdorf") is shown in a header or breadcrumb when the node is selected.
 - **Branch indicator** — nodes with multiple children are visually distinct (e.g., a fork icon or expanded/collapsed chevron) to signal branch points.
 
+### Compact Rows
+
+Rows use dense spacing (~28-32dp height) similar to a file explorer, rather than the default Material touch-target height (48dp). Touch targets for chevrons and label icons are correspondingly smaller. This maximizes the number of visible rows and reduces scrolling in large repertoires.
+
+### Chain Collapsing
+
+When a node has exactly one child, and that child is **unlabeled**, the child is absorbed into the same row. This continues recursively until a **branch point** (2+ children), **leaf** (0 children), or **labeled node** is reached. The resulting row displays the full chain notation (e.g., `"1...c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4"`).
+
+Chain collapsing rules:
+
+- Only unlabeled single-child nodes are absorbed. Labeled nodes always get their own row.
+- A chain's first node may itself be labeled — the label displays on the chain row.
+- The chain stops **before** a labeled child (the labeled child becomes a separate row).
+
+Chain interaction:
+
+- **Tapping** a chain row selects the **last** (tail) move. The board shows the position after the tail move.
+- The **expand chevron** controls the tail node's children.
+- **Back/forward navigation** through intermediate chain positions highlights the chain row. The chain row is highlighted whenever any move in the chain is the selected move.
+
 ### Labeled Node Highlighting
 
 Nodes with labels serve as section headers in the tree:
@@ -42,6 +62,7 @@ Nodes with labels serve as section headers in the tree:
 - Subtrees can be expanded or collapsed by tapping the branch indicator.
 - On initial load, the tree is collapsed to the first level of labeled nodes (or the root level if no nodes are labeled). This prevents overwhelming the user with a fully expanded deep tree.
 - The user can expand individual subtrees to drill into specific variations.
+- For chain-collapsed rows, the expand chevron controls the **tail** node's children. Expanding reveals the children at one indentation level deeper than the chain row.
 
 ## Navigation
 
