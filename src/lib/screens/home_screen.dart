@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../controllers/home_controller.dart';
 import '../widgets/home_empty_state.dart';
+import 'add_line_screen.dart';
 import 'drill_screen.dart';
 import 'repertoire_browser_screen.dart';
 import 'settings_screen.dart';
@@ -50,6 +51,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Navigator.of(context)
         .push(MaterialPageRoute(
           builder: (_) => RepertoireBrowserScreen(
+            repertoireId: repertoireId,
+          ),
+        ))
+        .then((_) => ref.read(homeControllerProvider.notifier).refresh());
+  }
+
+  void _onAddLine(int repertoireId) {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) => AddLineScreen(
             repertoireId: repertoireId,
           ),
         ))
@@ -200,6 +211,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             icon: const Icon(Icons.fitness_center),
             label: const Text('Free Practice'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _onAddLine(repertoireId),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+            ),
+            icon: const Icon(Icons.add),
+            label: const Text('Add Line'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(

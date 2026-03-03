@@ -12,6 +12,7 @@ import 'package:chess_trainer/repositories/local/local_repertoire_repository.dar
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/repositories/review_repository.dart';
+import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/screens/drill_screen.dart';
 import 'package:chess_trainer/controllers/home_controller.dart';
 import 'package:chess_trainer/screens/home_screen.dart';
@@ -255,7 +256,7 @@ void main() {
   });
 
   group('HomeScreen - three-button layout', () {
-    testWidgets('shows Start Drill, Free Practice, and Manage Repertoire buttons',
+    testWidgets('shows Start Drill, Free Practice, Add Line, and Manage Repertoire buttons',
         (tester) async {
       final repertoireRepo = FakeRepertoireRepository();
       final reviewRepo = FakeReviewRepository(dueCards: []);
@@ -268,6 +269,7 @@ void main() {
 
       expect(find.text('Start Drill'), findsOneWidget);
       expect(find.text('Free Practice'), findsOneWidget);
+      expect(find.text('Add Line'), findsOneWidget);
       expect(find.text('Manage Repertoire'), findsOneWidget);
     });
 
@@ -315,6 +317,38 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(RepertoireBrowserScreen), findsOneWidget);
+
+      await db.close();
+    });
+
+    testWidgets('Add Line navigates to AddLineScreen', (tester) async {
+      // Seed the in-memory DB so AddLineScreen can initialise.
+      final db = AppDatabase(NativeDatabase.memory());
+      await db.into(db.repertoires).insert(
+            RepertoiresCompanion.insert(name: 'Test'),
+          );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            repertoireRepositoryProvider
+                .overrideWithValue(LocalRepertoireRepository(db)),
+            reviewRepositoryProvider
+                .overrideWithValue(LocalReviewRepository(db)),
+            sharedPreferencesProvider.overrideWithValue(_testPrefs),
+          ],
+          child: const MaterialApp(
+            home: HomeScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Add Line'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AddLineScreen), findsOneWidget);
 
       await db.close();
     });
@@ -736,6 +770,7 @@ void main() {
       // No action buttons in empty state
       expect(find.text('Start Drill'), findsNothing);
       expect(find.text('Free Practice'), findsNothing);
+      expect(find.text('Add Line'), findsNothing);
       expect(find.text('Manage Repertoire'), findsNothing);
     });
 
