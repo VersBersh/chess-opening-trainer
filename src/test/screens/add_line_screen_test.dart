@@ -1469,6 +1469,58 @@ void main() {
       expect(cards.first.leafMoveId, moves.first.id);
     });
 
+    testWidgets(
+        '"Line saved" snackbar is dismissed when user plays first move of new line',
+        (tester) async {
+      final result = await pumpWithNewLine(tester, db);
+
+      // Confirm the new line (e4 is now saved).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Line saved'), findsOneWidget);
+
+      // Play d4 — a new move not yet in the tree (e4 was just saved).
+      // This is the first move of a new branching line.
+      final newBoard = ChessboardController();
+      addTearDown(newBoard.dispose);
+      final d4Move = sanToNormalMove(kInitialFEN, 'd4');
+      newBoard.playMove(d4Move);
+      result.controller.onBoardMove(d4Move, newBoard);
+      await tester.pumpAndSettle();
+
+      // Snackbar should have been dismissed.
+      expect(find.text('Line saved'), findsNothing);
+    });
+
+    testWidgets(
+        '"Line extended" snackbar is dismissed when user plays first move of new line',
+        (tester) async {
+      final result = await pumpWithExtendingMove(tester, db);
+
+      // Confirm the extension (e4→e5 is now saved, starting position is e4).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Line extended'), findsOneWidget);
+
+      // The post-confirm position is the e4 FEN (black to move).
+      // Play d5 — a new move not yet in the tree (e5 was just saved).
+      final postConfirmFen = result.controller.state.currentFen;
+      final newBoard = ChessboardController();
+      addTearDown(newBoard.dispose);
+      newBoard.setPosition(postConfirmFen);
+      final d5Move = sanToNormalMove(postConfirmFen, 'd5');
+      newBoard.playMove(d5Move);
+      result.controller.onBoardMove(d5Move, newBoard);
+      await tester.pumpAndSettle();
+
+      // Snackbar should have been dismissed.
+      expect(find.text('Line extended'), findsNothing);
+    });
+
     testWidgets('board FEN and pills preserved after label save',
         (tester) async {
       // Seed tree with e4, e5, Nf3.

@@ -47,6 +47,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
   late final bool _ownsController;
   bool _isLabelEditorVisible = false;
   ParityMismatch? _parityWarning;
+  bool _dismissSnackBarOnNextMove = false;
+  bool _prevHasNewMoves = false;
 
   final GlobalKey<ScaffoldMessengerState> _localMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
@@ -112,6 +114,15 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
   }
 
   void _onControllerChanged() {
+    final nowHasNewMoves = _controller.hasNewMoves;
+    // Dismiss "line saved/extended" feedback on the first move of a new line.
+    // _dismissSnackBarOnNextMove is armed by _handleConfirmSuccess; it fires
+    // once on the false→true hasNewMoves transition (first buffered move).
+    if (_dismissSnackBarOnNextMove && nowHasNewMoves && !_prevHasNewMoves) {
+      _dismissSnackBarOnNextMove = false;
+      _localMessengerKey.currentState?.clearSnackBars();
+    }
+    _prevHasNewMoves = nowHasNewMoves;
     setState(() {});
   }
 
@@ -215,8 +226,10 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
         result.insertedMoveIds,
         result.oldCard!,
       );
+      _dismissSnackBarOnNextMove = true;
     } else if (!result.isExtension && result.insertedMoveIds.isNotEmpty) {
       _showNewLineUndoSnackbar(result.insertedMoveIds);
+      _dismissSnackBarOnNextMove = true;
     }
   }
 
