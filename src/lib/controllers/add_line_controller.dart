@@ -434,7 +434,8 @@ class AddLineController extends ChangeNotifier {
 
   // ---- Take-back ----------------------------------------------------------
 
-  /// Removes the last buffered move and reverts the board.
+  /// Removes the last visible pill (buffered, followed, or existing-path
+  /// move) and reverts the board to the previous position.
   void onTakeBack(ChessboardController boardController) {
     final engine = _state.engine;
     if (engine == null || !engine.canTakeBack()) return;

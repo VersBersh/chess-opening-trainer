@@ -86,7 +86,7 @@ class ConfirmData {
 /// Pure business-logic service that manages line entry state.
 ///
 /// Tracks which moves follow existing tree branches vs. new buffered moves,
-/// handles take-back within the buffer, validates parity, and produces the
+/// handles take-back across all visible moves, validates parity, and produces the
 /// data needed to persist a new line.
 ///
 /// Has no database access, no Flutter dependencies, and no UI awareness.
@@ -158,41 +158,84 @@ class LineEntryEngine {
     return NewMoveBuffered(buffered);
   }
 
-  /// Whether take-back is possible (only buffered moves can be removed).
-  bool canTakeBack() => _bufferedMoves.isNotEmpty;
-
-  /// Removes the last buffered move and returns the FEN to revert to.
+  /// Whether take-back is possible.
   ///
-  /// Returns `null` if the buffer is already empty.
+  /// Returns `true` when any visible pill can be removed — buffered moves,
+  /// followed moves, or existing-path moves.
+  bool canTakeBack() =>
+      _bufferedMoves.isNotEmpty ||
+      _followedMoves.isNotEmpty ||
+      _existingPath.isNotEmpty;
+
+  /// Removes the last visible pill and returns the FEN to revert to.
+  ///
+  /// Pops from the three internal lists in reverse order:
+  /// 1. **Buffer** — removes the last buffered move; resets `_hasDiverged`
+  ///    when the buffer becomes empty.
+  /// 2. **Followed moves** — when the buffer is empty, removes the last
+  ///    followed move and updates `_lastExistingMoveId`.
+  /// 3. **Existing path** — when both are empty, removes the last existing-
+  ///    path move and updates `_lastExistingMoveId`.
+  ///
+  /// Returns `null` only when all three lists are empty (nothing to undo).
   TakeBackResult? takeBack() {
-    if (_bufferedMoves.isEmpty) return null;
-
-    _bufferedMoves.removeLast();
-
-    // If buffer is now empty, reset divergence so the user can re-follow
-    // existing branches from the current position.
-    if (_bufferedMoves.isEmpty) {
-      _hasDiverged = false;
-    }
-
+    // Phase 1: pop from buffer.
     if (_bufferedMoves.isNotEmpty) {
-      return TakeBackResult(fen: _bufferedMoves.last.fen);
+      _bufferedMoves.removeLast();
+
+      // If buffer is now empty, reset divergence so the user can re-follow
+      // existing branches from the current position.
+      if (_bufferedMoves.isEmpty) {
+        _hasDiverged = false;
+      }
+
+      if (_bufferedMoves.isNotEmpty) {
+        return TakeBackResult(fen: _bufferedMoves.last.fen);
+      }
+
+      // Buffer is now empty — fall through to determine the revert FEN from
+      // followed or existing-path moves.
+      if (_followedMoves.isNotEmpty) {
+        return TakeBackResult(fen: _followedMoves.last.fen);
+      }
+      if (_existingPath.isNotEmpty) {
+        return TakeBackResult(fen: _existingPath.last.fen);
+      }
+      return const TakeBackResult(fen: kInitialFEN);
     }
 
-    // Buffer is now empty. If we followed existing moves, revert to last
-    // followed move's FEN.
+    // Phase 2: pop from followed moves.
     if (_followedMoves.isNotEmpty) {
-      return TakeBackResult(fen: _followedMoves.last.fen);
+      _followedMoves.removeLast();
+
+      // Update _lastExistingMoveId to the new tail of the followed chain,
+      // or fall back to the existing path tip, or null.
+      if (_followedMoves.isNotEmpty) {
+        _lastExistingMoveId = _followedMoves.last.id;
+        return TakeBackResult(fen: _followedMoves.last.fen);
+      }
+      if (_existingPath.isNotEmpty) {
+        _lastExistingMoveId = _existingPath.last.id;
+        return TakeBackResult(fen: _existingPath.last.fen);
+      }
+      _lastExistingMoveId = null;
+      return const TakeBackResult(fen: kInitialFEN);
     }
 
-    // No followed moves either. If there is an existing path (started from
-    // a specific node), revert to that node's FEN.
+    // Phase 3: pop from existing path.
     if (_existingPath.isNotEmpty) {
-      return TakeBackResult(fen: _existingPath.last.fen);
+      _existingPath.removeLast();
+
+      if (_existingPath.isNotEmpty) {
+        _lastExistingMoveId = _existingPath.last.id;
+        return TakeBackResult(fen: _existingPath.last.fen);
+      }
+      _lastExistingMoveId = null;
+      return const TakeBackResult(fen: kInitialFEN);
     }
 
-    // Starting from root with no followed moves -- revert to initial position.
-    return const TakeBackResult(fen: kInitialFEN);
+    // All three lists are empty — nothing to undo.
+    return null;
   }
 
   /// Total ply count of the line so far.

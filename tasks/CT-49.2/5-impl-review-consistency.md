@@ -1,0 +1,11 @@
+- **Verdict** — `Approved`
+- **Progress**
+  - [x] **Done** — Step 1: `canTakeBack()` now checks buffered + followed + existing path (`src/lib/services/line_entry_engine.dart`).
+  - [x] **Done** — Step 2: `takeBack()` now pops in 3 phases (buffer → followed → existing path), returns correct FENs, and maintains `_lastExistingMoveId`.
+  - [x] **Done** — Step 3: Engine test “Take-back removes buffered moves only” updated to continue take-back through followed move.
+  - [x] **Done** — Step 4: Engine test “Take-back at branch boundary” updated for followed-move take-back behavior.
+  - [x] **Done** — Step 5: New engine test group “Take-back through all pill types” added with all 4 planned scenarios.
+  - [x] **Done** — Step 6: Controller test expectation updated (`canTakeBack` now `true` after followed-only path in updateLabel flow).
+  - [x] **Done** — Step 7: New controller tests for take-back through followed moves added (pills/FEN shrink + branch after take-back).
+- **Issues**
+  1. None. Implementation matches the plan, changes are coherent, and no regressions or unplanned risky code changes were identified from code review.

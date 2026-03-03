@@ -832,9 +832,10 @@ void main() {
       // Update label.
       await controller.updateLabel(1, 'Sicilian');
 
-      // After updateLabel, no new moves and no take-back possible.
+      // After updateLabel, no new moves but take-back is possible (followed
+      // moves are still visible).
       expect(controller.hasNewMoves, false);
-      expect(controller.canTakeBack, false);
+      expect(controller.canTakeBack, true);
 
       // Play a new move (d4) from the e5 position. Black played e5, so
       // it's white to move at fens[1]. d4 is legal.
@@ -1834,6 +1835,98 @@ void main() {
 
       // isExistingLine should flip to false.
       expect(controller.isExistingLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('Take-back through followed moves', () {
+    test('take-back through followed moves shrinks pills and updates board',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 and e5.
+      final moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final fens = computeFens(moves);
+
+      expect(controller.state.pills.length, 2);
+      expect(controller.canTakeBack, true);
+
+      // Take back e5 (followed).
+      controller.onTakeBack(boardController);
+      expect(controller.state.pills.length, 1);
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.currentFen, fens[0]);
+      expect(boardController.fen, fens[0]);
+
+      // Take back e4 (followed).
+      controller.onTakeBack(boardController);
+      expect(controller.state.pills, isEmpty);
+      expect(controller.state.currentFen, kInitialFEN);
+      expect(boardController.fen, kInitialFEN);
+      expect(controller.canTakeBack, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('take-back through followed moves then new move creates branch',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all 3 existing moves.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      expect(controller.state.pills.length, 3);
+
+      // Take back Nf3 (followed) and e5 (followed).
+      controller.onTakeBack(boardController);
+      controller.onTakeBack(boardController);
+      expect(controller.state.pills.length, 1);
+      expect(controller.state.pills[0].san, 'e4');
+
+      final fensAfterE4 = computeFens(['e4']);
+
+      // Play d5 (new move, not in tree as child of e4's child is e5).
+      final d5Move = sanToNormalMove(fensAfterE4[0], 'd5');
+      boardController.playMove(d5Move);
+      controller.onBoardMove(d5Move, boardController);
+
+      // e4 is saved (followed), d5 is unsaved (buffered).
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.pills[0].isSaved, true);
+      expect(controller.state.pills[1].san, 'd5');
+      expect(controller.state.pills[1].isSaved, false);
+      expect(controller.hasNewMoves, true);
 
       controller.dispose();
       boardController.dispose();

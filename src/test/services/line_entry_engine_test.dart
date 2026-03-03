@@ -260,13 +260,19 @@ void main() {
       expect(r3!.fen, line[0].fen);
       expect(engine.bufferedMoves, isEmpty);
 
-      // No more take-backs
+      // Followed move e4 is still visible — can still take back.
+      expect(engine.canTakeBack(), true);
+
+      // Take back e4 (followed move) -> revert to initial position.
+      final r4 = engine.takeBack();
+      expect(r4!.fen, kInitialFEN);
+      expect(engine.followedMoves, isEmpty);
       expect(engine.canTakeBack(), false);
     });
   });
 
   group('Take-back at branch boundary', () {
-    test('canTakeBack is false when only following existing moves', () {
+    test('canTakeBack is true when only following existing moves', () {
       final line = buildLine(['e4', 'e5']);
       final cache = RepertoireTreeCache.build(line);
       final engine = LineEntryEngine(
@@ -279,7 +285,166 @@ void main() {
       engine.acceptMove('e4', line[0].fen);
       engine.acceptMove('e5', line[1].fen);
 
+      expect(engine.canTakeBack(), true);
+
+      // Take back e5 (followed) -> revert to e4 FEN.
+      final r1 = engine.takeBack();
+      expect(r1!.fen, line[0].fen);
+      expect(engine.followedMoves.length, 1);
+      expect(engine.lastExistingMoveId, line[0].id);
+      expect(engine.canTakeBack(), true);
+
+      // Take back e4 (followed) -> revert to initial.
+      final r2 = engine.takeBack();
+      expect(r2!.fen, kInitialFEN);
+      expect(engine.followedMoves, isEmpty);
+      expect(engine.lastExistingMoveId, isNull);
       expect(engine.canTakeBack(), false);
+    });
+  });
+
+  group('Take-back through all pill types', () {
+    test('take-back through followed moves updates lastExistingMoveId', () {
+      // Tree: 1. e4 e5 2. Nf3
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // Follow all 3 moves.
+      engine.acceptMove('e4', line[0].fen);
+      engine.acceptMove('e5', line[1].fen);
+      engine.acceptMove('Nf3', line[2].fen);
+
+      expect(engine.followedMoves.length, 3);
+      expect(engine.lastExistingMoveId, line[2].id);
+
+      // Take back Nf3.
+      final r1 = engine.takeBack();
+      expect(r1!.fen, line[1].fen);
+      expect(engine.followedMoves.length, 2);
+      expect(engine.lastExistingMoveId, line[1].id);
+
+      // Take back e5.
+      final r2 = engine.takeBack();
+      expect(r2!.fen, line[0].fen);
+      expect(engine.followedMoves.length, 1);
+      expect(engine.lastExistingMoveId, line[0].id);
+
+      // Take back e4.
+      final r3 = engine.takeBack();
+      expect(r3!.fen, kInitialFEN);
+      expect(engine.followedMoves, isEmpty);
+      expect(engine.lastExistingMoveId, isNull);
+      expect(engine.canTakeBack(), false);
+    });
+
+    test('take-back through existing path', () {
+      // Tree: 1. e4 e5 2. Nf3 Nc6 3. Bb5
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      // Start from Nc6 (id=4). existingPath = [e4, e5, Nf3, Nc6].
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: 4,
+      );
+
+      expect(engine.existingPath.length, 4);
+
+      // Follow Bb5.
+      engine.acceptMove('Bb5', line[4].fen);
+      expect(engine.followedMoves.length, 1);
+
+      // Take back Bb5 (followed).
+      final r1 = engine.takeBack();
+      expect(r1!.fen, line[3].fen); // Nc6 FEN
+      expect(engine.followedMoves, isEmpty);
+      expect(engine.lastExistingMoveId, line[3].id); // Nc6
+
+      // Take back Nc6 (existing path).
+      final r2 = engine.takeBack();
+      expect(r2!.fen, line[2].fen); // Nf3 FEN
+      expect(engine.existingPath.length, 3);
+      expect(engine.lastExistingMoveId, line[2].id); // Nf3
+
+      // Take back Nf3 (existing path).
+      final r3 = engine.takeBack();
+      expect(r3!.fen, line[1].fen); // e5 FEN
+      expect(engine.existingPath.length, 2);
+      expect(engine.lastExistingMoveId, line[1].id); // e5
+
+      // Take back e5 (existing path).
+      final r4 = engine.takeBack();
+      expect(r4!.fen, line[0].fen); // e4 FEN
+      expect(engine.existingPath.length, 1);
+      expect(engine.lastExistingMoveId, line[0].id); // e4
+
+      // Take back e4 (existing path).
+      final r5 = engine.takeBack();
+      expect(r5!.fen, kInitialFEN);
+      expect(engine.existingPath, isEmpty);
+      expect(engine.lastExistingMoveId, isNull);
+      expect(engine.canTakeBack(), false);
+    });
+
+    test('take-back then play new move creates branch', () {
+      // Tree: 1. e4 e5 2. Nf3
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // Follow all 3 moves.
+      engine.acceptMove('e4', line[0].fen);
+      engine.acceptMove('e5', line[1].fen);
+      engine.acceptMove('Nf3', line[2].fen);
+
+      // Take back Nf3.
+      engine.takeBack();
+      expect(engine.followedMoves.length, 2);
+      expect(engine.lastExistingMoveId, line[1].id); // e5
+
+      // Play d4 (not in tree as child of e5 — it diverges).
+      final d4Fens = computeFens(['e4', 'e5', 'd4']);
+      final result = engine.acceptMove('d4', d4Fens[2]);
+
+      expect(result, isA<NewMoveBuffered>());
+      expect(engine.hasDiverged, true);
+      expect(engine.bufferedMoves.length, 1);
+      expect(engine.bufferedMoves.first.san, 'd4');
+    });
+
+    test('canTakeBack false only at starting position', () {
+      // Empty tree.
+      final cache = RepertoireTreeCache.build([]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // No pills at all — cannot take back.
+      expect(engine.canTakeBack(), false);
+
+      // Buffer one move.
+      final fens = computeFens(['e4']);
+      engine.acceptMove('e4', fens[0]);
+      expect(engine.canTakeBack(), true);
+
+      // Take it back.
+      engine.takeBack();
+      expect(engine.canTakeBack(), false);
+
+      // Null returned when already at starting position.
+      expect(engine.takeBack(), isNull);
     });
   });
 
