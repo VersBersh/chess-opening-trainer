@@ -13,6 +13,7 @@ import '../widgets/inline_label_editor.dart';
 import '../theme/spacing.dart';
 import '../widgets/label_conflict_dialog.dart';
 import '../widgets/move_pills_widget.dart';
+import '../navigation/route_observers.dart';
 import '../widgets/repertoire_dialogs.dart';
 
 // ---------------------------------------------------------------------------
@@ -39,12 +40,33 @@ class AddLineScreen extends ConsumerStatefulWidget {
   ConsumerState<AddLineScreen> createState() => _AddLineScreenState();
 }
 
-class _AddLineScreenState extends ConsumerState<AddLineScreen> {
+class _AddLineScreenState extends ConsumerState<AddLineScreen>
+    with RouteAware {
   late final AddLineController _controller;
   late final ChessboardController _boardController;
   late final bool _ownsController;
   bool _isLabelEditorVisible = false;
   ParityMismatch? _parityWarning;
+
+  final GlobalKey<ScaffoldMessengerState> _localMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
+  static const Duration _undoSnackbarDuration = Duration(seconds: 4);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      addLineRouteObserver.subscribe(this, route);
+    }
+  }
+
+  // RouteAware: called when a new route is pushed on top of this one.
+  @override
+  void didPushNext() {
+    _localMessengerKey.currentState?.clearSnackBars();
+  }
 
   @override
   void initState() {
@@ -79,6 +101,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
 
   @override
   void dispose() {
+    addLineRouteObserver.unsubscribe(this);
+    _localMessengerKey.currentState?.clearSnackBars();
     _controller.removeListener(_onControllerChanged);
     if (_ownsController) {
       _controller.dispose();
@@ -97,7 +121,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     setState(() => _isLabelEditorVisible = false);
     final result = _controller.onBoardMove(move, _boardController);
     if (result is MoveBranchBlocked) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      _localMessengerKey.currentState?.showSnackBar(
         const SnackBar(
           content: Text('Save or discard new moves before branching'),
           behavior: SnackBarBehavior.floating,
@@ -162,7 +186,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
         _handleConfirmSuccess(result);
 
       case ConfirmError(:final userMessage):
-        ScaffoldMessenger.of(context).showSnackBar(
+        _localMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: Text(userMessage),
             behavior: SnackBarBehavior.floating,
@@ -203,10 +227,10 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   ) {
     final capturedGeneration = _controller.undoGeneration;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    _localMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: const Text('Line extended'),
-        duration: const Duration(seconds: 8),
+        duration: _undoSnackbarDuration,
         behavior: SnackBarBehavior.floating,
         action: SnackBarAction(
           label: 'Undo',
@@ -235,10 +259,10 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   void _showNewLineUndoSnackbar(List<int> insertedMoveIds) {
     final capturedGeneration = _controller.undoGeneration;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    _localMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: const Text('Line saved'),
-        duration: const Duration(seconds: 8),
+        duration: _undoSnackbarDuration,
         behavior: SnackBarBehavior.floating,
         action: SnackBarAction(
           label: 'Undo',
@@ -277,7 +301,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     if (result is ConfirmSuccess) {
       _handleConfirmSuccess(result);
     } else if (result is ConfirmError) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      _localMessengerKey.currentState?.showSnackBar(
         SnackBar(
           content: Text(result.userMessage),
           behavior: SnackBarBehavior.floating,
@@ -334,14 +358,17 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     return PopScope(
       canPop: !_controller.hasNewMoves,
       onPopInvokedWithResult: _handlePopWithUnsavedMoves,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Add Line'),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      child: ScaffoldMessenger(
+        key: _localMessengerKey,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Add Line'),
+            backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          ),
+          body: state.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _buildContent(context, state),
         ),
-        body: state.isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _buildContent(context, state),
       ),
     );
   }

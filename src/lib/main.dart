@@ -7,6 +7,7 @@ import 'providers.dart';
 import 'repositories/local/database.dart';
 import 'repositories/local/local_repertoire_repository.dart';
 import 'repositories/local/local_review_repository.dart';
+import 'navigation/route_observers.dart';
 import 'screens/home_screen.dart';
 import 'services/dev_seed.dart';
 import 'theme/app_theme_mode.dart';
@@ -91,6 +92,7 @@ class ChessTrainerApp extends ConsumerWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: themeMode,
+      navigatorObservers: [addLineRouteObserver],
       home: const HomeScreen(),
     );
   }
