@@ -516,11 +516,11 @@ void main() {
         onEditLabel: (id) => editedId = id,
       ));
 
-      // The label icon is 18px but sits inside a 48x48 SizedBox.
-      // Tap 20px above the icon center — inside the 48dp box but outside
-      // the 18px visual icon.
+      // The label icon is 14px but sits inside a 28x28 SizedBox.
+      // Tap 10px above the icon center — inside the 28dp box but outside
+      // the 14px visual icon.
       final iconCenter = tester.getCenter(find.byIcon(Icons.label_outline));
-      await tester.tapAt(iconCenter + const Offset(0, -20));
+      await tester.tapAt(iconCenter + const Offset(0, -10));
 
       expect(editedId, 1);
       expect(selectedId, isNull);
@@ -541,11 +541,11 @@ void main() {
         onNodeToggleExpand: (id) => toggledId = id,
       ));
 
-      // The chevron icon is 20px but sits inside a 48x48 SizedBox.
-      // Tap 20px above the icon center — inside the 48dp box but outside
-      // the 20px visual icon.
+      // The chevron icon is 16px but sits inside a 28x28 SizedBox.
+      // Tap 10px above the icon center — inside the 28dp box but outside
+      // the 16px visual icon.
       final chevronCenter = tester.getCenter(find.byIcon(Icons.chevron_right));
-      await tester.tapAt(chevronCenter + const Offset(0, -20));
+      await tester.tapAt(chevronCenter + const Offset(0, -10));
 
       expect(toggledId, 1);
       expect(selectedId, isNull);

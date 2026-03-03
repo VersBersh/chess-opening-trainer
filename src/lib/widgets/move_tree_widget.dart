@@ -177,12 +177,12 @@ class _MoveTreeNodeTile extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: EdgeInsets.only(
-            left: 16.0 + node.depth * 24.0,
+            left: 8.0 + node.depth * 20.0,
             right: 8.0,
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(
-              minHeight: kMinInteractiveDimension,
+              minHeight: 28,
             ),
             child: Row(
               children: [
@@ -192,21 +192,21 @@ class _MoveTreeNodeTile extends StatelessWidget {
                   onTap: onToggleExpand,
                   behavior: HitTestBehavior.opaque,
                   child: SizedBox(
-                    width: kMinInteractiveDimension,
-                    height: kMinInteractiveDimension,
+                    width: 28,
+                    height: 28,
                     child: Center(
                       child: Icon(
                         isExpanded
                             ? Icons.expand_more
                             : Icons.chevron_right,
-                        size: 20,
+                        size: 16,
                         color: colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ),
                 )
               else
-                const SizedBox(width: kMinInteractiveDimension),
+                const SizedBox(width: 28),
 
               // Move notation
               Expanded(
@@ -248,14 +248,14 @@ class _MoveTreeNodeTile extends StatelessWidget {
                   onTap: onEditLabel,
                   behavior: HitTestBehavior.opaque,
                   child: SizedBox(
-                    width: kMinInteractiveDimension,
-                    height: kMinInteractiveDimension,
+                    width: 28,
+                    height: 28,
                     child: Center(
                       child: Tooltip(
                         message: 'Label',
                         child: Icon(
                           Icons.label_outline,
-                          size: 18,
+                          size: 14,
                           color: hasLabel
                               ? colorScheme.primary
                               : colorScheme.onSurfaceVariant,
