@@ -24,6 +24,7 @@ class ChessboardWidget extends StatefulWidget {
     this.shapes,
     this.annotations,
     this.settings,
+    this.onTouchedSquare,
   });
 
   /// Source of truth for the current chess position.
@@ -52,6 +53,11 @@ class ChessboardWidget extends StatefulWidget {
   /// Optional board theme / behaviour settings. Falls back to
   /// `const ChessboardSettings()` when `null`.
   final ChessboardSettings? settings;
+
+  /// Callback fired when any square is touched (pointer-down), regardless
+  /// of [playerSide]. Useful for non-interactive boards that still need
+  /// to respond to taps (e.g. arrow-based branch selection).
+  final void Function(Square)? onTouchedSquare;
 
   @override
   State<ChessboardWidget> createState() => _ChessboardWidgetState();
@@ -149,6 +155,7 @@ class _ChessboardWidgetState extends State<ChessboardWidget> {
           lastMove: effectiveLastMove,
           shapes: widget.shapes,
           annotations: widget.annotations,
+          onTouchedSquare: widget.onTouchedSquare,
           game: GameData(
             playerSide: widget.playerSide,
             sideToMove: controller.sideToMove,

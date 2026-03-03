@@ -1,10 +1,15 @@
+import 'dart:ui' show Color;
+
+import 'package:chessground/chessground.dart' show Arrow, Shape;
 import 'package:dartchess/dartchess.dart';
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
 import '../repositories/repertoire_repository.dart';
 import '../repositories/review_repository.dart';
+import '../services/chess_utils.dart';
 import '../services/deletion_service.dart';
 
 export '../services/deletion_service.dart' show OrphanChoice, BranchDeleteInfo;
@@ -198,37 +203,124 @@ class RepertoireBrowserController extends ChangeNotifier {
   }
 
   /// Navigates to the parent of the currently selected node.
-  /// Returns the FEN for the board to display, or null if no parent.
+  /// Returns the FEN for the board to display, or null if navigation is
+  /// not possible (nothing selected).
+  ///
+  /// When the selected move is a root move (no parent), clears the
+  /// selection and returns the initial FEN.
   String? navigateBack() {
     final selectedId = _state.selectedMoveId;
     if (selectedId == null) return null;
 
     final move = _state.treeCache?.movesById[selectedId];
-    if (move == null || move.parentMoveId == null) return null;
+    if (move == null) return null;
+
+    if (move.parentMoveId == null) {
+      // Root move — clear selection and return to initial position.
+      _state = _state.copyWith(selectedMoveId: () => null);
+      notifyListeners();
+      return kInitialFEN;
+    }
 
     return selectNode(move.parentMoveId!);
   }
 
-  /// Navigates forward from the currently selected node.
-  /// Returns the FEN if a single child was auto-selected, or null if
-  /// the node was expanded (multiple children) or has no children.
+  /// Navigates forward from the currently selected node (or the initial
+  /// position when nothing is selected).
+  ///
+  /// Always selects the first child — at branch points the default line is
+  /// followed. Multi-child nodes are also expanded so the sidebar stays
+  /// useful.
   String? navigateForward() {
+    final cache = _state.treeCache;
+    if (cache == null) return null;
+
     final selectedId = _state.selectedMoveId;
-    if (selectedId == null) return null;
 
-    final children = _state.treeCache?.getChildren(selectedId);
-    if (children == null || children.isEmpty) return null;
+    // From the initial position (no selection), pick the first root move.
+    if (selectedId == null) {
+      final roots = cache.getRootMoves();
+      if (roots.isEmpty) return null;
+      return selectNode(roots.first.id);
+    }
 
-    if (children.length == 1) {
-      return selectNode(children.first.id);
-    } else {
-      // Multiple children -- expand the node instead of selecting.
+    final children = cache.getChildren(selectedId);
+    if (children.isEmpty) return null;
+
+    // Expand the node so the sidebar shows all branches.
+    if (children.length > 1) {
       _state = _state.copyWith(
         expandedNodeIds: {..._state.expandedNodeIds, selectedId},
       );
-      notifyListeners();
-      return null;
+      // No need to notifyListeners — selectNode below will do so.
     }
+
+    return selectNode(children.first.id);
+  }
+
+  // ---- Arrow / branch helpers -----------------------------------------------
+
+  /// Returns arrow shapes for all children of the currently selected node
+  /// (or root moves when nothing is selected).
+  ///
+  /// The first child's arrow is darker to indicate the default line.
+  ISet<Shape> getChildArrows() {
+    final cache = _state.treeCache;
+    if (cache == null) return const ISetConst({});
+
+    final selectedId = _state.selectedMoveId;
+    final children = selectedId != null
+        ? cache.getChildren(selectedId)
+        : cache.getRootMoves();
+    if (children.isEmpty) return const ISetConst({});
+
+    final selectedMove =
+        selectedId != null ? cache.movesById[selectedId] : null;
+    if (selectedId != null && selectedMove == null) {
+      return const ISetConst({});
+    }
+    final parentFen = selectedMove?.fen ?? kInitialFEN;
+    final parentPosition = Chess.fromSetup(Setup.parseFen(parentFen));
+
+    final shapes = <Shape>{};
+    var isFirstArrow = true;
+    for (var i = 0; i < children.length; i++) {
+      final move = sanToMove(parentPosition, children[i].san);
+      if (move == null) continue;
+
+      final color = isFirstArrow
+          ? const Color(0x60000000)
+          : const Color(0x30000000);
+      isFirstArrow = false;
+      shapes.add(Arrow(color: color, orig: move.from, dest: move.to));
+    }
+    return ISet(shapes);
+  }
+
+  /// Returns the move ID of the child whose destination square matches [dest],
+  /// or `null` if no match is found.
+  int? getChildMoveIdByDestSquare(Square dest) {
+    final cache = _state.treeCache;
+    if (cache == null) return null;
+
+    final selectedId = _state.selectedMoveId;
+    final children = selectedId != null
+        ? cache.getChildren(selectedId)
+        : cache.getRootMoves();
+    if (children.isEmpty) return null;
+
+    final selectedMove =
+        selectedId != null ? cache.movesById[selectedId] : null;
+    if (selectedId != null && selectedMove == null) return null;
+    final parentFen = selectedMove?.fen ?? kInitialFEN;
+    final parentPosition = Chess.fromSetup(Setup.parseFen(parentFen));
+
+    for (final child in children) {
+      final move = sanToMove(parentPosition, child.san);
+      if (move == null) continue;
+      if (move.to == dest) return child.id;
+    }
+    return null;
   }
 
   /// Resets the loading state for retry.

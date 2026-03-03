@@ -1,3 +1,6 @@
+import 'dart:ui' show Color;
+
+import 'package:chessground/chessground.dart' show Arrow;
 import 'package:dartchess/dartchess.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
@@ -252,7 +255,7 @@ void main() {
       controller.dispose();
     });
 
-    test('returns null when no parent', () async {
+    test('clears selection and returns initial FEN for root move', () async {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5'],
       ]);
@@ -264,7 +267,8 @@ void main() {
       controller.selectNode(e4Id!);
 
       final fen = controller.navigateBack();
-      expect(fen, isNull);
+      expect(fen, kInitialFEN);
+      expect(controller.state.selectedMoveId, isNull);
 
       controller.dispose();
     });
@@ -291,7 +295,7 @@ void main() {
       controller.dispose();
     });
 
-    test('expands node with multiple children and returns null', () async {
+    test('selects first child at branch point and expands node', () async {
       final repId = await seedRepertoire(db, lines: [
         ['e4', 'e5'],
         ['e4', 'c5'],
@@ -304,8 +308,173 @@ void main() {
       controller.selectNode(e4Id!);
 
       final fen = controller.navigateForward();
-      expect(fen, isNull);
+      expect(fen, isNotNull);
       expect(controller.state.expandedNodeIds.contains(e4Id), true);
+
+      // First child (by sortOrder) should be selected.
+      // c5 has sortOrder=0 (second line resets counter, e4 is skipped via
+      // continue), while e5 has sortOrder=1 — so c5 is the default child.
+      final c5Id = await getMoveIdBySan(db, repId, 'c5');
+      expect(controller.state.selectedMoveId, c5Id);
+
+      controller.dispose();
+    });
+
+    test('selects first root move when nothing is selected', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['d4', 'd5'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      // No selection initially
+      expect(controller.state.selectedMoveId, isNull);
+
+      final fen = controller.navigateForward();
+      expect(fen, isNotNull);
+
+      // First root move (by sortOrder) should be selected.
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      expect(controller.state.selectedMoveId, e4Id);
+
+      controller.dispose();
+    });
+  });
+
+  group('getChildArrows', () {
+    test('returns arrows for children of selected node', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['e4', 'c5'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      controller.selectNode(e4Id!);
+
+      final arrows = controller.getChildArrows();
+      expect(arrows.length, 2);
+      expect(arrows.every((s) => s is Arrow), true);
+
+      controller.dispose();
+    });
+
+    test('returns arrows for root moves when no selection', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['d4', 'd5'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      // No selection
+      expect(controller.state.selectedMoveId, isNull);
+
+      final arrows = controller.getChildArrows();
+      expect(arrows.length, 2);
+      expect(arrows.every((s) => s is Arrow), true);
+
+      controller.dispose();
+    });
+
+    test('first child arrow is darker color', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['e4', 'c5'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      controller.selectNode(e4Id!);
+
+      final arrows = controller.getChildArrows().toList();
+      final firstArrow = arrows[0] as Arrow;
+      final secondArrow = arrows[1] as Arrow;
+      expect(firstArrow.color, const Color(0x60000000));
+      expect(secondArrow.color, const Color(0x30000000));
+
+      controller.dispose();
+    });
+
+    test('returns empty set when no children', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      controller.selectNode(e4Id!);
+
+      final arrows = controller.getChildArrows();
+      expect(arrows.isEmpty, true);
+
+      controller.dispose();
+    });
+  });
+
+  group('getChildMoveIdByDestSquare', () {
+    test('returns correct move ID for a child destination square', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['e4', 'c5'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      controller.selectNode(e4Id!);
+
+      // e5 move goes to square e5
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+      final result = controller.getChildMoveIdByDestSquare(Square.e5);
+      expect(result, e5Id);
+
+      controller.dispose();
+    });
+
+    test('returns null for non-child squares', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      controller.selectNode(e4Id!);
+
+      // a3 is not a destination of any child move
+      final result = controller.getChildMoveIdByDestSquare(Square.a3);
+      expect(result, isNull);
+
+      controller.dispose();
+    });
+
+    test('returns correct move ID for root move destinations', () async {
+      // Verifies destination lookup works for root moves (no selection).
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+        ['d4'],
+      ]);
+
+      final controller = createController(db, repId);
+      await controller.loadData();
+
+      // No selection — query root moves
+      // e4 goes to square e4
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+      final result = controller.getChildMoveIdByDestSquare(Square.e4);
+      expect(result, e4Id);
 
       controller.dispose();
     });

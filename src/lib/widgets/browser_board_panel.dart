@@ -1,5 +1,6 @@
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 
 import 'chessboard_controller.dart';
@@ -20,11 +21,15 @@ class BrowserChessboard extends StatelessWidget {
     required this.controller,
     required this.orientation,
     required this.settings,
+    this.shapes,
+    this.onTouchedSquare,
   });
 
   final ChessboardController controller;
   final Side orientation;
   final ChessboardSettings settings;
+  final ISet<Shape>? shapes;
+  final void Function(Square)? onTouchedSquare;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +38,8 @@ class BrowserChessboard extends StatelessWidget {
       orientation: orientation,
       playerSide: PlayerSide.none,
       settings: settings,
+      shapes: shapes,
+      onTouchedSquare: onTouchedSquare,
     );
   }
 }

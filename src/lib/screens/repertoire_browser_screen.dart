@@ -1,3 +1,4 @@
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -103,6 +104,11 @@ class _RepertoireBrowserScreenState
     setState(() => _labelEditorMoveId = null);
     final fen = _controller.navigateForward();
     if (fen != null) _boardController.setPosition(fen);
+  }
+
+  void _onSquareTapped(Square square) {
+    final moveId = _controller.getChildMoveIdByDestSquare(square);
+    if (moveId != null) _onNodeSelected(moveId);
   }
 
   // ---- Label editing -------------------------------------------------------
@@ -309,6 +315,8 @@ class _RepertoireBrowserScreenState
                   onNodeToggleExpand: _onNodeToggleExpand,
                   onEditLabelForMove: _onEditLabelForMove,
                   inlineLabelEditor: _buildInlineLabelEditor(),
+                  shapes: _controller.getChildArrows(),
+                  onSquareTapped: _onSquareTapped,
                 ),
     );
   }

@@ -1,0 +1,18 @@
+- **Verdict** — `Needs Fixes`
+- **Issues**
+1. **Critical — Hidden temporal coupling / crash risk (`Null check operator used on a null value`)**  
+   In [`repertoire_browser_controller.dart:278`](C:/code/misc/chess-trainer-4/src/lib/controllers/repertoire_browser_controller.dart:278) and [`repertoire_browser_controller.dart:308`](C:/code/misc/chess-trainer-4/src/lib/controllers/repertoire_browser_controller.dart:308), `cache.movesById[selectedId]!.fen` assumes the selected move always exists in the refreshed cache. But in [`repertoire_browser_screen.dart:203`](C:/code/misc/chess-trainer-4/src/lib/screens/repertoire_browser_screen.dart:203) -> [`repertoire_browser_screen.dart:206`](C:/code/misc/chess-trainer-4/src/lib/screens/repertoire_browser_screen.dart:206), `loadData()` notifies listeners before `clearSelection()`, and build calls [`repertoire_browser_screen.dart:318`](C:/code/misc/chess-trainer-4/src/lib/screens/repertoire_browser_screen.dart:318) (`getChildArrows()`), which can hit stale `selectedMoveId` and crash.  
+   Why it matters: this is a runtime failure introduced by ordering assumptions between async reload and selection cleanup.  
+   Suggested fix: make `getChildArrows()` / `getChildMoveIdByDestSquare()` defensive (`final selectedMove = cache.movesById[selectedId]; if (selectedMove == null) ...`) and/or normalize selection during `loadData()` if selected ID is no longer present.
+
+2. **Major — SRP/DIP violation (controller now depends on UI rendering types)**  
+   [`repertoire_browser_controller.dart:1`](C:/code/misc/chess-trainer-4/src/lib/controllers/repertoire_browser_controller.dart:1), [`repertoire_browser_controller.dart:3`](C:/code/misc/chess-trainer-4/src/lib/controllers/repertoire_browser_controller.dart:3), and arrow construction at [`repertoire_browser_controller.dart:290`](C:/code/misc/chess-trainer-4/src/lib/controllers/repertoire_browser_controller.dart:290) couple application logic to Flutter UI (`Color`) and chessground rendering (`Shape`, `Arrow`).  
+   Why it matters: high-level browser logic now depends on concrete presentation libraries, making extension/testing harder and blurring architecture boundaries.  
+   Suggested fix: return domain data from controller (e.g., `ChildMoveVisual { from, to, isDefault }`), and map to `Arrow/Color` in widget/screen layer.
+
+3. **Minor — Clean code: oversized files + intent drift in test naming**  
+   Changed files exceed the 300-line smell threshold:  
+   [`repertoire_browser_controller.dart`](C:/code/misc/chess-trainer-4/src/lib/controllers/repertoire_browser_controller.dart), [`repertoire_browser_screen.dart`](C:/code/misc/chess-trainer-4/src/lib/screens/repertoire_browser_screen.dart), [`repertoire_browser_controller_test.dart`](C:/code/misc/chess-trainer-4/src/test/controllers/repertoire_browser_controller_test.dart), [`repertoire_browser_screen_test.dart`](C:/code/misc/chess-trainer-4/src/test/screens/repertoire_browser_screen_test.dart).  
+   Also, test intent is now misleading: [`repertoire_browser_screen_test.dart:343`](C:/code/misc/chess-trainer-4/src/test/screens/repertoire_browser_screen_test.dart:343) still says “expands instead of selecting”, which no longer matches behavior.  
+   Why it matters: weakens readability and architectural discoverability.  
+   Suggested fix: split tests by feature (navigation, arrows, label flows, deletion) and rename/update obsolete test descriptions/comments.

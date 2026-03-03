@@ -1,4 +1,6 @@
 import 'package:chessground/chessground.dart';
+import 'package:dartchess/dartchess.dart';
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 
 import '../controllers/repertoire_browser_controller.dart';
@@ -38,6 +40,8 @@ class BrowserContent extends StatelessWidget {
     required this.onNodeToggleExpand,
     required this.onEditLabelForMove,
     this.inlineLabelEditor,
+    this.shapes,
+    this.onSquareTapped,
   });
 
   final RepertoireBrowserState state;
@@ -61,6 +65,12 @@ class BrowserContent extends StatelessWidget {
   /// the move tree in both layouts.
   final Widget? inlineLabelEditor;
 
+  /// Arrow and circle overlays to draw on the board.
+  final ISet<Shape>? shapes;
+
+  /// Callback fired when a square on the board is touched.
+  final void Function(Square)? onSquareTapped;
+
   // ---- Derived values -------------------------------------------------------
 
   String get _displayName {
@@ -73,12 +83,12 @@ class BrowserContent extends StatelessWidget {
   bool get _isLeaf =>
       _hasSelection && cache.isLeaf(state.selectedMoveId!);
 
-  bool get _canNavigateBack =>
-      _hasSelection &&
-      cache.movesById[state.selectedMoveId]?.parentMoveId != null;
+  bool get _canNavigateBack => _hasSelection;
 
   bool get _canNavigateForward =>
-      _hasSelection && cache.getChildren(state.selectedMoveId!).isNotEmpty;
+      _hasSelection
+          ? cache.getChildren(state.selectedMoveId!).isNotEmpty
+          : cache.getRootMoves().isNotEmpty;
 
   String get _deleteLabel => _isLeaf ? 'Delete' : 'Delete Branch';
 
@@ -114,6 +124,8 @@ class BrowserContent extends StatelessWidget {
                 controller: boardController,
                 orientation: state.boardOrientation,
                 settings: boardSettings,
+                shapes: shapes,
+                onTouchedSquare: onSquareTapped,
               ),
             ),
           ),
@@ -147,6 +159,8 @@ class BrowserContent extends StatelessWidget {
                 controller: boardController,
                 orientation: state.boardOrientation,
                 settings: boardSettings,
+                shapes: shapes,
+                onTouchedSquare: onSquareTapped,
               ),
             ),
             Expanded(

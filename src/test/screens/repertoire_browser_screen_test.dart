@@ -340,7 +340,8 @@ void main() {
       expect(chessboard.fen, isNot(kInitialFEN));
     });
 
-    testWidgets('forward at a branch point expands instead of selecting',
+    testWidgets(
+        'forward at a branch point selects default child and expands',
         (tester) async {
       final repId = await seedRepertoire(
         db,
@@ -358,7 +359,7 @@ void main() {
       await tester.pump();
 
       // Tap forward button -- e4 has two children (e5, c5), so it should
-      // expand instead of selecting
+      // select the default child (first by sortOrder) and expand the node.
       await tester.tap(find.byIcon(Icons.arrow_forward));
       await tester.pump();
 
@@ -2200,6 +2201,140 @@ void main() {
       final savedE5 =
           updatedMoves.firstWhere((m) => m.id == e5Line2.id);
       expect(savedE5.label, isNull);
+    });
+  });
+
+  group('Arrow-based branch visualization', () {
+    testWidgets('arrows rendered on board when move with children is selected',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+          ['e4', 'c5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4 (has two children: e5 and c5)
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // The Chessboard widget should now have shapes (arrows).
+      final chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.shapes, isNotNull);
+      expect(chessboard.shapes!.isNotEmpty, true);
+      expect(chessboard.shapes!.length, 2);
+    });
+
+    testWidgets('forward button navigates default line at branch points',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+          ['e4', 'c5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4 (has two children)
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // Tap forward button -- should navigate to first child (e5)
+      await tester.tap(find.byIcon(Icons.arrow_forward));
+      await tester.pump();
+
+      // Board FEN should change (position after e4 e5, not just e4)
+      final chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      // After e4 e5, FEN is different from just after e4
+      final positionAfterE4 =
+          Chess.fromSetup(Setup.parseFen(kInitialFEN)).play(
+        Chess.fromSetup(Setup.parseFen(kInitialFEN)).parseSan('e4')!,
+      );
+      expect(chessboard.fen, isNot(positionAfterE4.fen));
+    });
+
+    testWidgets('back navigation from root move returns to initial position',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4 (root move)
+      await tester.tap(find.text('1. e4'));
+      await tester.pump();
+
+      // Verify board is not at initial position
+      var chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.fen, isNot(kInitialFEN));
+
+      // Tap back button
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pump();
+
+      // Board should return to initial position
+      chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.fen, kInitialFEN);
+    });
+
+    testWidgets('forward from initial position selects first root move',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // No node is selected initially. The forward button should be enabled
+      // because root moves exist.
+      // Tap forward button
+      await tester.tap(find.byIcon(Icons.arrow_forward));
+      await tester.pump();
+
+      // Board should show position after e4 (the first root move)
+      final chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.fen, isNot(kInitialFEN));
+    });
+
+    testWidgets('arrows shown for root moves when nothing is selected',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+          ['d4', 'd5'],
+        ],
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // No node is selected -- arrows for root moves should be on the board.
+      final chessboard =
+          tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.shapes, isNotNull);
+      expect(chessboard.shapes!.length, 2);
     });
   });
 }
