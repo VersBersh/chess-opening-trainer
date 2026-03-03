@@ -44,7 +44,7 @@ See the cram detection discussion in the archived [focus-mode.md](focus-mode.md)
 
 ## Line Name Display
 
-During Free Practice, the **line name** (aggregate display name) is shown above the board when a card begins — the same behavior as regular Drill mode (see [drill-mode.md](drill-mode.md) Line Label Display). This tells the user which variation they're practicing.
+During Free Practice, the **line name** (aggregate display name) is shown below the board when a card begins — the same behavior as regular Drill mode (see [drill-mode.md](drill-mode.md) Line Label Display). This tells the user which variation they're practicing.
 
 ## Session Behavior
 

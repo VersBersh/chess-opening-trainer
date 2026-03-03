@@ -19,8 +19,9 @@ Uses **Repertoire**, **RepertoireMove**, and **ReviewCard** from [architecture/m
 
 A **take-back button** is available during line entry. It removes the last move from the buffer and reverts the board to the previous position. The user can press it repeatedly to undo multiple moves.
 
-- Take-back works for **all moves**, including the very first move (e.g., undoing 1. e4 returns to the empty starting position).
-- The button is **disabled** when the board is at the starting position (no moves to undo) or at a branch point (the boundary of existing repertoire data that was not entered in this session).
+- Take-back works for **all visible pills** — both buffered (unsaved) moves and followed (saved) moves. The user can take back through the entire pill list, not just the moves added in the current session.
+- Taking back a followed/saved move does **not** delete the node from the database. It only shortens the builder's view (pops the pill). The saved data remains intact.
+- The button is **disabled** only when the board is at the starting position (no pills visible).
 - Take-back is the **only** way to remove moves — pills do not have individual delete (X) buttons. See [add-line.md](add-line.md).
 
 ### Board Orientation and Color
@@ -73,6 +74,17 @@ The user can attach a short **label** to any node in the repertoire tree, not ju
   - After 1. e4 c5 → label: "Sicilian"
   - After 1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 → label: "Najdorf"
   - After 1. e4 e5 2. Nf3 Nc6 3. Bb5 → label: "Ruy Lopez"
+
+### Deferred Label Persistence During Entry
+
+When labeling positions during line entry (on the Add Line screen), label changes are **not** written to the database immediately. Instead:
+
+- A local **pending-labels map** (pill index → label string) is held in the entry controller's state.
+- The pending labels are overlaid onto the pill display so the user sees them immediately.
+- On **Confirm**, all pending label changes are persisted in a single transaction along with any new moves and card creation.
+- If the user abandons entry (navigates away), pending labels are discarded along with the move buffer.
+
+This preserves the builder pattern: the user assembles moves and labels, then saves everything at once. It avoids unnecessary DB writes and full-tree reloads during the entry flow.
 
 ### Aggregate Display Name
 

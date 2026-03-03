@@ -26,7 +26,7 @@ Each node in the tree shows:
 
 - **SAN move** (e.g., "e4", "Nf3") — always visible.
 - **Move number** — displayed as standard chess notation (e.g., "1. e4", "1...c5", "2. Nf3").
-- **Label** — if the node has a label (e.g., "Najdorf"), it is displayed prominently alongside or below the SAN move. The full aggregate display name (e.g., "Sicilian — Najdorf") is shown in a header or breadcrumb when the node is selected.
+- **Label** — if the node has a label (e.g., "Najdorf"), it is displayed prominently alongside or below the SAN move. The full aggregate display name (e.g., "Sicilian — Najdorf") is shown in a label area below the board when the node is selected.
 - **Branch indicator** — nodes with multiple children are visually distinct (e.g., a fork icon or expanded/collapsed chevron) to signal branch points.
 
 ### Compact Rows
@@ -97,6 +97,14 @@ A chessboard widget shows the position at the currently selected node.
 ### Board Interaction
 
 The board is **read-only** in the repertoire manager. The user cannot play moves on the board while browsing. To add moves, the user navigates to the [Add Line](add-line.md) screen. This prevents accidental line creation.
+
+### Line Display Name
+
+When a node is selected, the full aggregate display name (e.g., "Sicilian — Najdorf") is shown in a label area **below the board**. The label area always reserves its vertical space (even when empty), so the board size is stable regardless of whether a label is shown.
+
+- **Styling:** Plain text — `titleMedium`, `onSurfaceVariant`, `fontWeight: FontWeight.normal`. No coloured background.
+- **Alignment:** Left-aligned with a left inset matching the board coordinate gutter (~16–24dp from the board's left edge).
+- **Consistency:** The label placement and styling are identical to Drill mode and Free Practice mode. See [drill-mode.md](drill-mode.md) Line Label Display.
 
 ## Actions from Browser
 

@@ -41,8 +41,8 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 ### Deleting Moves
 
 - Pills do **not** have an X or delete affordance on them. The only way to remove moves is via the **Take Back button** in the action buttons area.
-- Take Back removes the last move from the in-memory buffer. Only the last move can be removed (no deleting from the middle of a line).
-- Take Back must work for **all moves**, including the very first move (e.g., taking back 1. e4 to return to the empty starting position).
+- Take Back removes the last pill — whether it represents a buffered (unsaved) move or a followed (saved) move. Only the last pill can be removed (no deleting from the middle of a line). Taking back a saved move does not delete it from the database; it just shortens the builder's view.
+- Take Back must work for **all visible pills**, including the very first move (e.g., taking back 1. e4 to return to the empty starting position). It is disabled only at the starting position.
 - See [line-management.md](line-management.md) for take-back rules.
 
 ### Editing Labels
@@ -51,6 +51,7 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 - When a pill is focused (tapped), the user can **add or edit the label** for that position. This applies to both saved and unsaved pills.
 - **No popup dialog.** Clicking a pill shows the label below it in an **inline editing box**. Clicking the box enables editing. See [design/ui-guidelines.md](../design/ui-guidelines.md) for the inline editing convention.
 - This follows the same labeling rules as [line-management.md](line-management.md) — labels are short local segments, the aggregate display name is computed by walking root-to-leaf.
+- **Deferred persistence:** Label edits are held in local state (a pending-labels map), not written to the database immediately. Pending labels are persisted together with moves on Confirm. This preserves the builder pattern — the user assembles moves and labels, then saves everything at once.
 - **Multi-line impact warning:** If adding or editing a label would affect multiple existing lines (e.g., labeling a shared ancestor node), an inline warning is shown (not a popup). See the confirmation behavior below.
 
 ### Branching
@@ -67,7 +68,9 @@ The entry flow follows [line-management.md](line-management.md):
 3. Existing moves in the tree are followed automatically (no duplicates created).
 4. New moves beyond the existing tree are buffered in memory.
 5. User presses **"Confirm"** to save buffered moves and create a card for the new leaf.
-6. Abandoning the screen (navigating away) discards the buffer.
+6. On confirm, any pending label changes (on both followed and buffered moves) are persisted along with the new moves.
+7. If the user follows an existing line exactly (no new moves), the Confirm button is disabled and an info label ("Existing line") is shown near the action bar.
+8. Abandoning the screen (navigating away) discards the buffer.
 
 ## Board Orientation and Color
 
@@ -86,7 +89,7 @@ Line parity validation on confirm follows [line-management.md](line-management.m
 
 ## Aggregate Name Preview
 
-The current **aggregate display name** (computed from labels along the path) is shown in the header area, updating as the user moves through the line. This helps the user see which variation they're building and spot missing labels.
+The current **aggregate display name** (computed from labels along the path) is shown below the board, updating as the user moves through the line. The label area always reserves its vertical space to prevent board resizing. This helps the user see which variation they're building and spot missing labels.
 
 ## Navigation
 

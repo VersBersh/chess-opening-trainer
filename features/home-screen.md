@@ -20,65 +20,37 @@ RepertoireSummary (transient, computed by controller)
 
 This summary is computed by the home screen controller from repository data. It is not persisted.
 
-## Repertoire List
+## Single-Repertoire Layout
 
-The main body of the home screen is a scrollable list of the user's repertoires.
+The home screen assumes a single repertoire and presents three direct action buttons — no repertoire name, no card list, no CRUD UI. The multi-repertoire data layer is preserved; this is a UI-only simplification.
 
-### List Item Display
+### Buttons
 
-Each repertoire is shown as a card or list tile containing:
+1. **Start Drill** — enters drill mode for the repertoire's due cards.
+   - If there are due cards, drill mode opens immediately.
+   - If there are no due cards, the button is visually muted. Tapping it shows a brief message: "No cards due for review. Come back later!"
+2. **Free Practice** — enters free practice mode (always available as long as the repertoire has cards). See [free-practice.md](free-practice.md).
+3. **Manage Repertoire** — navigates to the repertoire browser. See [repertoire-browser.md](repertoire-browser.md).
 
-- **Name** — the repertoire's name (e.g., "My White Openings"), displayed prominently.
-- **Due count** — the number of cards due for review today (e.g., "12 due"). This is the primary motivator and should be visually prominent when non-zero.
-- **Total lines** — the total number of lines (leaf nodes / review cards) in the repertoire (e.g., "47 lines"). Secondary information.
-
-### Repertoire Ordering
-
-Repertoires are displayed in creation order (oldest first). The `Repertoire` model does not currently have a `sort_order` field. If user-reorderable lists are desired later, a `sort_order` column can be added to the `repertoires` table.
+The controller uses the **first repertoire** (by creation order) as the implicit active repertoire. If no repertoire exists, the empty-state onboarding is shown instead (see Onboarding below).
 
 ### Due Count Updates
 
 Due counts should update reactively. If the user leaves the app open overnight and returns the next morning, the due counts should reflect the new date without requiring a manual refresh. This is achieved via Drift `watch` queries on the `review_cards` table (see [architecture/state-management.md](../architecture/state-management.md) for details on reactive data flow).
 
-## Quick-Drill Action
-
-### Per-Repertoire Drill Button
-
-Each repertoire list item includes a drill button. Tapping it enters drill mode for that repertoire's due cards.
-
-- If the repertoire has due cards, drill mode opens immediately with those cards queued.
-- If the repertoire has no due cards, the button is still visible but visually muted (e.g., grayed out or showing "0 due"). Tapping it shows a brief message: "No cards due for review. Come back later!" The user is not navigated to an empty drill screen.
-
-### Per-Repertoire Free Practice Button
-
-Each repertoire list item also includes a **"Free Practice"** button. Tapping it enters free practice mode for that repertoire.
-
-- Free Practice is **always available** as long as the repertoire has cards (regardless of due status).
-- If the repertoire has no cards at all, the button is visually muted.
-- On tap, the user goes **directly to the drill screen** in Free Practice mode — there is no intermediate setup or filter screen. Filtering by label is done inline on the drill screen itself.
-- See [free-practice.md](free-practice.md) for full details.
-
-### Global Drill Entry (Deferred)
-
-A "Drill all" button that combines due cards from all repertoires into a single session is a natural extension but raises questions about cross-repertoire queue ordering and session scope. This is deferred — the per-repertoire drill button is sufficient for v1.
-
 ## Navigation Targets
-
-### Repertoire Browser
-
-Tapping a repertoire's name or body (not the drill button) navigates to the repertoire browser for that repertoire. The browser shows the move tree, board, and provides access to line management and focus mode. See [repertoire-browser.md](repertoire-browser.md).
 
 ### Drill Mode
 
-The per-repertoire drill button navigates to drill mode. See [drill-mode.md](drill-mode.md).
+The "Start Drill" button navigates to drill mode. See [drill-mode.md](drill-mode.md).
 
 ### Free Practice
 
-The per-repertoire free practice button navigates to free practice mode. See [free-practice.md](free-practice.md).
+The "Free Practice" button navigates to free practice mode. See [free-practice.md](free-practice.md).
 
-### Add Line
+### Repertoire Browser
 
-A per-repertoire "Add Line" action navigates to the Add Line screen for that repertoire. See [add-line.md](add-line.md).
+The "Manage Repertoire" button navigates to the repertoire browser. The browser provides access to line management, tree exploration, and the Add Line screen. See [repertoire-browser.md](repertoire-browser.md).
 
 ### PGN Import (Phase 3)
 
@@ -86,69 +58,46 @@ A future "Import" action will be accessible from the home screen or from within 
 
 ## Repertoire CRUD
 
+> **Note:** The single-repertoire home screen removes the rename/delete/create UI from the home screen. The CRUD operations are preserved in the data and controller layers for future multi-repertoire support. Repertoire creation is handled automatically on first launch (see Onboarding below) or via the data layer.
+
 ### Create Repertoire
 
-- A prominent "Create repertoire" button is always visible (e.g., a floating action button or a button at the bottom of the list).
-- Tapping it opens a dialog or inline form with a single text field for the repertoire name.
-- The name field is required. The user confirms with a "Create" button.
-- On creation, the new repertoire appears at the bottom of the list with 0 lines and 0 due.
-- The user is optionally navigated to the new repertoire's browser to begin adding lines (see Onboarding below for first-time guidance).
+- On first launch (zero repertoires), a "Create your first repertoire" button is shown (see Onboarding).
+- The creation dialog has a single text field for the repertoire name and a confirm button.
+- On creation, the home screen transitions to the three-button layout.
 
-### Rename Repertoire
+### Rename / Delete Repertoire
 
-- Available via a context menu (long press on mobile, right-click or overflow menu on desktop) on each repertoire list item.
-- Opens a dialog pre-filled with the current name. The user edits and confirms.
-
-### Delete Repertoire
-
-- Available via the same context menu as rename.
-- Requires confirmation: "Delete [repertoire name]? This will remove all lines and review history. This cannot be undone."
+- Not exposed on the single-repertoire home screen.
+- The controller and repository methods (`renameRepertoire`, `deleteRepertoire`) remain available for future use.
 - Deletion cascades: the repertoire, all its moves, and all its review cards are deleted. This is handled by the `ON DELETE CASCADE` foreign keys defined in [architecture/repository.md](../architecture/repository.md).
-- After deletion, the repertoire is removed from the list. If it was the last repertoire, the empty state is shown.
 
 ## Onboarding
 
-The first-run experience when the app launches with no data. The user has no repertoires, no moves, no cards. The app must guide them to a productive state without being condescending to experienced chess players.
+The first-run experience when the app launches with no data. The user has no repertoires, no moves, no cards.
 
-### Empty State
+### Empty State (Zero Repertoires)
 
-When the home screen has zero repertoires, it does not show a blank page. Instead, it displays:
+When the home screen has zero repertoires, it shows:
 
-- A brief, non-patronizing explanation of what the app does: e.g., "Build your opening repertoire and practice it with spaced repetition."
-- A clear call to action: a prominent "Create your first repertoire" button.
-- The explanation is concise — one or two sentences. Chess players using a repertoire trainer are not beginners. Avoid multi-paragraph tutorials or animated walkthroughs.
+- A brief explanation: "Build your opening repertoire and practice it with spaced repetition."
+- A prominent "Create your first repertoire" button that opens the creation dialog (single text field + confirm).
+- On creation, the home screen transitions to the three-button layout and navigates to the repertoire browser.
 
-### Repertoire Creation Prompt
+### Empty Repertoire Guidance
 
-The "Create your first repertoire" button opens the same creation dialog as the standard "Create repertoire" action — a single text field for the name and a confirm button. There is no separate onboarding-specific creation flow. Minimal friction.
+The repertoire browser shows contextual guidance when the repertoire has zero lines:
 
-### First Line Entry Guidance
-
-After creating their first repertoire, the user is navigated to the repertoire browser (which is empty). The browser shows contextual guidance:
-
-- A brief inline prompt: "Play the moves of an opening you want to practice" with a button to enter line-entry mode.
-- This guidance appears only when the repertoire has zero lines. Once the user adds their first line, the guidance is replaced by the normal tree view.
-- The guidance does not explain chess notation or how to play moves — it assumes the user knows chess. It only explains the app's concept: play an opening line, confirm it, and the app will quiz you on it later.
-
-### Skip / Defer
-
-- The user can dismiss or ignore all onboarding guidance. The "Create your first repertoire" affordance remains visible on the empty home screen until a repertoire is created.
-- The first-line guidance in the browser is passive — it does not block the user from navigating away.
-- If the user creates a repertoire but adds no lines, the next launch still shows the first-line guidance within that repertoire's browser. Onboarding guidance is not "complete" until at least one review card exists.
+- A brief inline prompt: "Play the moves of an opening you want to practice" with a button to enter the Add Line screen.
+- This guidance disappears once the first line is added.
 
 ### No Tutorial Mode
 
-There is no multi-step tutorial overlay, no tooltip tour, no "did you know?" popups. Guidance is contextual and appears only in the relevant empty states:
-
-- Empty home screen: "Create your first repertoire."
-- Empty repertoire browser: "Play the moves of an opening you want to practice."
-- After first line is added: "You have 1 card due for review" on the home screen (the normal due count serves as implicit guidance to try drilling).
-
-The app's flow (create repertoire, add lines, drill) is simple enough that contextual empty-state prompts are sufficient.
+Guidance is contextual and appears only in empty states. No multi-step overlays, tooltip tours, or popups.
 
 ### PGN Import as Onboarding Fast-Path (Phase 3)
 
-For experienced users with existing PGN files, "Import PGN" as an alternative to manual entry would be the ideal onboarding fast-path. However, PGN import is Phase 3. Phase 2 onboarding can only offer manual line entry. When PGN import is implemented, the empty repertoire browser should add an "Import PGN" option alongside the manual entry prompt.
+When PGN import is implemented, the empty repertoire browser should add an "Import PGN" option alongside the manual entry prompt.
 
 ## Dependencies
 
