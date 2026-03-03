@@ -470,12 +470,52 @@ class _DrillFilterAutocomplete extends StatefulWidget {
 class _DrillFilterAutocompleteState extends State<_DrillFilterAutocomplete> {
   final _textController = TextEditingController();
   final _focusNode = FocusNode();
+  final _fieldKey = GlobalKey();
+
+  static const double _maxDesiredHeight = 200;
+  static const double _minUsefulHeight = 80;
 
   @override
   void dispose() {
     _textController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  /// Computes dropdown direction and capped height based on available space
+  /// around the text field identified by [_fieldKey].
+  ({bool openUpward, double dropdownHeight}) _computeDropdownLayout(
+      BuildContext optionsContext) {
+    final mq = MediaQuery.of(optionsContext);
+    final usableHeight =
+        mq.size.height - mq.viewInsets.bottom - mq.padding.bottom;
+
+    final renderBox = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.attached) {
+      // Fallback: open downward with default max height.
+      return (openUpward: false, dropdownHeight: _maxDesiredHeight);
+    }
+
+    final fieldOrigin = renderBox.localToGlobal(Offset.zero);
+    final fieldHeight = renderBox.size.height;
+
+    final spaceBelow = usableHeight - (fieldOrigin.dy + fieldHeight);
+    final spaceAbove = fieldOrigin.dy - mq.padding.top;
+
+    final bool openUpward;
+    final double dropdownHeight;
+
+    if (spaceBelow >= _minUsefulHeight) {
+      // Enough space below — prefer downward.
+      openUpward = false;
+      dropdownHeight = spaceBelow < _maxDesiredHeight ? spaceBelow : _maxDesiredHeight;
+    } else {
+      // Not enough space below — open upward and cap to available space above.
+      openUpward = true;
+      dropdownHeight = spaceAbove < _maxDesiredHeight ? spaceAbove : _maxDesiredHeight;
+    }
+
+    return (openUpward: openUpward, dropdownHeight: dropdownHeight.clamp(0.0, _maxDesiredHeight));
   }
 
   @override
@@ -500,6 +540,7 @@ class _DrillFilterAutocompleteState extends State<_DrillFilterAutocomplete> {
       fieldViewBuilder:
           (context, textEditingController, focusNode, onFieldSubmitted) {
         return TextField(
+          key: _fieldKey,
           controller: textEditingController,
           focusNode: focusNode,
           decoration: InputDecoration(
@@ -517,13 +558,16 @@ class _DrillFilterAutocompleteState extends State<_DrillFilterAutocomplete> {
         );
       },
       optionsViewBuilder: (context, onSelected, options) {
+        final layout = _computeDropdownLayout(context);
         return Align(
-          alignment: Alignment.topLeft,
+          alignment: layout.openUpward
+              ? Alignment.bottomLeft
+              : Alignment.topLeft,
           child: Material(
             elevation: 4,
             borderRadius: BorderRadius.circular(8),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
+              constraints: BoxConstraints(maxHeight: layout.dropdownHeight),
               child: ListView.builder(
                 padding: EdgeInsets.zero,
                 shrinkWrap: true,
