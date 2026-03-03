@@ -230,7 +230,8 @@ void main() {
       expect(rotatedLabelFinder, findsNothing);
     });
 
-    testWidgets('label does not affect pill layout height', (tester) async {
+    testWidgets('labeled and unlabeled pills have identical fixed height',
+        (tester) async {
       final pills = [
         const MovePillData(san: 'e4', isSaved: true, label: 'Sicilian'),
         const MovePillData(san: 'd4', isSaved: true),
@@ -240,19 +241,46 @@ void main() {
 
       final labeledSize = tester.getSize(find.ancestor(
         of: find.text('e4'),
-        matching: find.byWidgetPredicate(
-          (w) => w is Stack && w.clipBehavior == Clip.none,
-        ),
-      ));
+        matching: find.byType(Semantics),
+      ).first);
       final unlabeledSize = tester.getSize(find.ancestor(
         of: find.text('d4'),
-        matching: find.byType(GestureDetector),
+        matching: find.byType(Semantics),
       ).first);
 
-      // The Stack (labeled pill) should have the same height as the
-      // GestureDetector (unlabeled pill) because the label is positioned
-      // outside the layout bounds.
+      // Both pills must have the same height: _kPillMinTapTarget (36) +
+      // _kLabelSlotHeight (14) = 50 dp. The label slot is always reserved
+      // in-flow, so labels cannot overflow into adjacent wrapped rows.
       expect(labeledSize.height, unlabeledSize.height);
+      expect(labeledSize.height, 50.0);
+    });
+
+    testWidgets('label slot does not cause wrapped rows to overlap',
+        (tester) async {
+      // 150 dp container: 2 pills fit per row (2×66 + 4 = 136 ≤ 150),
+      // 3 do not (3×66 + 2×4 = 206 > 150). Pills[0] is in row 0 (has label);
+      // pills[2] is in row 1.
+      final pills = [
+        const MovePillData(san: 'e4', isSaved: true, label: 'Sicilian'),
+        const MovePillData(san: 'e5', isSaved: true),
+        const MovePillData(san: 'Nf3', isSaved: true),
+        const MovePillData(san: 'Nc6', isSaved: true),
+      ];
+
+      await tester.pumpWidget(buildTestApp(pills: pills, width: 150));
+
+      final row0Rect = tester.getRect(find.ancestor(
+        of: find.text('e4'),
+        matching: find.byType(Semantics),
+      ).first);
+      final row1Rect = tester.getRect(find.ancestor(
+        of: find.text('Nf3'),
+        matching: find.byType(Semantics),
+      ).first);
+
+      // The bottom edge of the first row's item must not exceed the top edge
+      // of the second row's item (runSpacing=4 sits between them).
+      expect(row0Rect.bottom, lessThanOrEqualTo(row1Rect.top));
     });
 
     testWidgets('pills do not render a delete icon', (tester) async {
