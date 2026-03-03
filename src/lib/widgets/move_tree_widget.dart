@@ -8,21 +8,29 @@ import '../repositories/local/database.dart';
 // ---------------------------------------------------------------------------
 
 /// A flattened representation of a tree node for rendering in a list.
+///
+/// A single `VisibleNode` may represent a chain of consecutive single-child
+/// unlabeled moves collapsed into one row. [moves] always has at least one
+/// element.
 class VisibleNode {
-  final RepertoireMove move;
+  final List<RepertoireMove> moves;
   final int depth;
   final bool hasChildren;
 
-  /// 1-based ply count, equal to tree depth + 1. Root moves are depth 0,
-  /// ply 1.
+  /// 1-based ply count of the **first** move. Root moves have plyCount 1.
+  /// For children of a chain, plyCount accounts for absorbed moves in the
+  /// parent chain (not simply depth + 1).
   final int plyCount;
 
   const VisibleNode({
-    required this.move,
+    required this.moves,
     required this.depth,
     required this.hasChildren,
     required this.plyCount,
-  });
+  }) : assert(moves.length > 0);
+
+  RepertoireMove get firstMove => moves.first;
+  RepertoireMove get lastMove => moves.last;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,26 +48,74 @@ List<VisibleNode> buildVisibleNodes(
 ) {
   final result = <VisibleNode>[];
 
-  void walk(List<RepertoireMove> nodes, int depth) {
+  void walk(List<RepertoireMove> nodes, int depth, int plyBase) {
     for (final node in nodes) {
-      // Review issue #3: call getChildren once per node instead of twice.
-      final children = cache.getChildren(node.id);
-      final hasChildren = children.isNotEmpty;
-      final plyCount = depth + 1;
+      // Greedily absorb single-child unlabeled successors into a chain.
+      final chain = <RepertoireMove>[node];
+      var current = node;
+      var tailChildren = cache.getChildren(current.id);
+
+      while (tailChildren.length == 1) {
+        final child = tailChildren[0];
+        if (child.label != null) break; // labeled nodes always get own row
+        chain.add(child);
+        current = child;
+        tailChildren = cache.getChildren(current.id);
+      }
+
       result.add(VisibleNode(
-        move: node,
+        moves: chain,
         depth: depth,
-        hasChildren: hasChildren,
-        plyCount: plyCount,
+        hasChildren: tailChildren.isNotEmpty,
+        plyCount: plyBase,
       ));
-      if (hasChildren && expanded.contains(node.id)) {
-        walk(children, depth + 1);
+      if (tailChildren.isNotEmpty && expanded.contains(current.id)) {
+        walk(tailChildren, depth + 1, plyBase + chain.length);
       }
     }
   }
 
-  walk(cache.getRootMoves(), 0);
+  walk(cache.getRootMoves(), 0, 1);
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Chain notation
+// ---------------------------------------------------------------------------
+
+/// Builds compact multi-move notation for a [VisibleNode].
+///
+/// For single-move nodes, delegates to [cache.getMoveNotation]. For chains,
+/// inlines the same notation rules: white moves get `"N. san"`, black moves
+/// after a white move in the same chain get just `"san"`, and black moves at
+/// the start of a chain (or after another black move) get `"N...san"`.
+String buildChainNotation(VisibleNode node, RepertoireTreeCache cache) {
+  if (node.moves.length == 1) {
+    return cache.getMoveNotation(node.firstMove.id, plyCount: node.plyCount);
+  }
+
+  final buffer = StringBuffer();
+  for (var i = 0; i < node.moves.length; i++) {
+    final ply = node.plyCount + i;
+    final moveNumber = (ply + 1) ~/ 2;
+    final isBlack = ply.isEven;
+    final san = node.moves[i].san;
+
+    if (i > 0) buffer.write(' ');
+
+    if (isBlack) {
+      final prevPly = node.plyCount + i - 1;
+      final prevIsBlack = prevPly.isEven;
+      if (i == 0 || prevIsBlack) {
+        buffer.write('$moveNumber...$san');
+      } else {
+        buffer.write(san);
+      }
+    } else {
+      buffer.write('$moveNumber. $san');
+    }
+  }
+  return buffer.toString();
 }
 
 // ---------------------------------------------------------------------------
@@ -118,19 +174,18 @@ class MoveTreeWidget extends StatelessWidget {
         final vn = visibleNodes[index];
         return _MoveTreeNodeTile(
           node: vn,
-          isSelected: vn.move.id == selectedMoveId,
-          dueCount: dueCountByMoveId[vn.move.id] ?? 0,
-          isExpanded: expandedNodeIds.contains(vn.move.id),
-          moveNotation: treeCache.getMoveNotation(
-            vn.move.id,
-            plyCount: vn.plyCount,
-          ),
-          onTap: () => onNodeSelected(vn.move.id),
+          isSelected: vn.moves.any((m) => m.id == selectedMoveId),
+          dueCount: vn.moves
+              .map((m) => dueCountByMoveId[m.id] ?? 0)
+              .firstWhere((c) => c > 0, orElse: () => 0),
+          isExpanded: expandedNodeIds.contains(vn.lastMove.id),
+          moveNotation: buildChainNotation(vn, treeCache),
+          onTap: () => onNodeSelected(vn.lastMove.id),
           onToggleExpand: vn.hasChildren
-              ? () => onNodeToggleExpand(vn.move.id)
+              ? () => onNodeToggleExpand(vn.lastMove.id)
               : null,
           onEditLabel: onEditLabel != null
-              ? () => onEditLabel!(vn.move.id)
+              ? () => onEditLabel!(vn.firstMove.id)
               : null,
         );
       },
@@ -167,7 +222,7 @@ class _MoveTreeNodeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final hasLabel = node.move.label != null;
+    final hasLabel = node.firstMove.label != null;
 
     return Material(
       color: isSelected
@@ -227,7 +282,7 @@ class _MoveTreeNodeTile extends StatelessWidget {
                       if (hasLabel) ...[
                         const TextSpan(text: '  '),
                         TextSpan(
-                          text: node.move.label!,
+                          text: node.firstMove.label!,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: isSelected

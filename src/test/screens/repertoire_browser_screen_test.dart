@@ -184,8 +184,8 @@ void main() {
       // Board should be visible
       expect(find.byType(Chessboard), findsOneWidget);
 
-      // Tree should show at least the root move
-      expect(find.text('1. e4'), findsOneWidget);
+      // Tree should show at least the root move (part of a chain row)
+      expect(find.textContaining('1. e4'), findsOneWidget);
     });
 
     testWidgets('selecting a node updates the board position', (tester) async {
@@ -199,9 +199,9 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // e4 is auto-expanded (no labels), so e5 is already visible.
-      // Tap on e5
-      await tester.tap(find.text('1...e5'));
+      // e4 and e5 collapse into one chain row "1. e4 e5".
+      // Tap on the chain row (selects the tail, e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Board FEN should now reflect position after 1. e4 e5
@@ -246,9 +246,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // e4 is auto-expanded (no labels), so e5 is already visible.
-      // Select e5 (no labels)
-      await tester.tap(find.text('1...e5'));
+      // e4 and e5 collapse into one chain row. Tap it (selects tail e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // No display name header should appear (there are no labels in the path)
@@ -256,10 +255,13 @@ void main() {
     });
 
     testWidgets('expand/collapse toggles child visibility', (tester) async {
+      // Use a branching tree so the branch point gets a chevron.
+      // e4 has two children (e5, c5). e4 is a branch point.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5', 'Nf3'],
+          ['e4', 'c5'],
         ],
       );
 
@@ -267,24 +269,26 @@ void main() {
       await tester.pumpAndSettle();
 
       // No labels, so all nodes are auto-expanded initially.
+      // e4 is a branch point (1 row). e5+Nf3 chain (1 row). c5 (1 row).
       expect(find.text('1. e4'), findsOneWidget);
-      expect(find.text('1...e5'), findsOneWidget);
-      expect(find.text('2. Nf3'), findsOneWidget);
+      expect(find.text('1...e5 2. Nf3'), findsOneWidget);
+      expect(find.text('1...c5'), findsOneWidget);
 
       // Collapse e4 (currently expanded, shows expand_more icon)
       await tester.tap(find.byIcon(Icons.expand_more).first);
       await tester.pump();
 
-      // e5 and Nf3 should no longer be visible
-      expect(find.text('1...e5'), findsNothing);
-      expect(find.text('2. Nf3'), findsNothing);
+      // e5+Nf3 and c5 should no longer be visible
+      expect(find.text('1...e5 2. Nf3'), findsNothing);
+      expect(find.text('1...c5'), findsNothing);
 
       // Re-expand e4 (now collapsed, shows chevron_right)
       await tester.tap(find.byIcon(Icons.chevron_right).first);
       await tester.pump();
 
-      // e5 should be visible again
-      expect(find.text('1...e5'), findsOneWidget);
+      // Children should be visible again
+      expect(find.text('1...e5 2. Nf3'), findsOneWidget);
+      expect(find.text('1...c5'), findsOneWidget);
     });
 
     testWidgets('board flip button changes board orientation', (tester) async {
@@ -323,9 +327,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // e4 is auto-expanded (no labels), so e5 is already visible.
-      // Select e5
-      await tester.tap(find.text('1...e5'));
+      // e4 and e5 collapse into one chain row. Tap it (selects tail e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Tap back button
@@ -369,11 +372,14 @@ void main() {
     });
 
     testWidgets('action buttons enabled/disabled state', (tester) async {
-      // Create a repertoire with a labeled node and a leaf node
+      // Create a repertoire with a labeled node and leaf nodes.
+      // e4 -> e5 (chain [e4, e5]) with e5 having two children Nf3 and Bc4
+      // so e4+e5 chain stops at the branch point.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5', 'Nf3'],
+          ['e4', 'e5', 'Bc4'],
         ],
         labelsOnSan: {'e4': 'King Pawn'},
       );
@@ -401,7 +407,8 @@ void main() {
       await tester.tapAt(Offset.zero);
       await tester.pumpAndSettle();
 
-      // Select e4 (labeled, has children so NOT a leaf).
+      // Select e4+e5 chain row (labeled, has children so NOT a leaf).
+      // Tapping the chain selects the tail (e5).
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
 
@@ -428,10 +435,7 @@ void main() {
       await tester.tapAt(Offset.zero);
       await tester.pumpAndSettle();
 
-      // Now expand and select the leaf node (Nf3)
-      await tester.tap(find.byIcon(Icons.chevron_right).first);
-      await tester.pump();
-      // Need to expand e5 too
+      // Expand e5 (chain tail) to see leaf nodes Nf3 and Bc4.
       await tester.tap(find.byIcon(Icons.chevron_right).first);
       await tester.pump();
       await tester.ensureVisible(find.text('2. Nf3'));
@@ -567,8 +571,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4
-      await tester.tap(find.text('1. e4'));
+      // e4+e5 chain row. Tap it to select a node.
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Label button should be enabled
@@ -579,17 +583,19 @@ void main() {
     });
 
     testWidgets('open inline editor and save a label', (tester) async {
+      // Use a branching tree so e4 is its own row.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
+          ['e4', 'c5'],
         ],
       );
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4
+      // Select e4 (branch point, own row)
       await tester.tap(find.text('1. e4'));
       await tester.pump();
 
@@ -611,10 +617,12 @@ void main() {
     });
 
     testWidgets('open inline editor and clear a label', (tester) async {
+      // Add a sibling so e4 is a branch point (own row, directly selectable).
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
+          ['e4', 'c5'],
         ],
         labelsOnSan: {'e4': 'King Pawn'},
       );
@@ -622,7 +630,7 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4 (which has label "King Pawn")
+      // Select e4 (branch point, own row, has label "King Pawn")
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
 
@@ -648,17 +656,19 @@ void main() {
 
     testWidgets('dismiss inline editor by selecting a different node',
         (tester) async {
+      // Use a branching tree so e4 and children are separate rows.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
+          ['e4', 'c5'],
         ],
       );
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4
+      // Select e4 (branch point, own row)
       await tester.tap(find.text('1. e4'));
       await tester.pump();
 
@@ -685,10 +695,13 @@ void main() {
 
     testWidgets('aggregate display name preview in inline editor',
         (tester) async {
+      // Use a branching tree so Nf3 remains a separate selectable row.
+      // e4 -> c5 chain (c5 has 2 children), then Nf3 and d3 as leaves.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'c5', 'Nf3'],
+          ['e4', 'c5', 'd3'],
         ],
         labelsOnSan: {'e4': 'Sicilian'},
       );
@@ -696,11 +709,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Expand to see Nf3 and select it
-      // e4 is labeled so it's collapsed initially. Expand it.
-      await tester.tap(find.byIcon(Icons.chevron_right).first);
-      await tester.pump();
-      // Now expand c5
+      // e4 is labeled so it's collapsed initially. Chain is [e4, c5]
+      // (c5 has 2 children, stops chaining). Expand the chain tail (c5).
       await tester.tap(find.byIcon(Icons.chevron_right).first);
       await tester.pump();
       // Select Nf3
@@ -737,8 +747,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4, add a label via inline editor
-      await tester.tap(find.text('1. e4'));
+      // e4+e5 chain row. Tap it to select e5 (tail), add a label.
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
@@ -749,23 +759,27 @@ void main() {
       // Verify in DB directly
       final repRepo = LocalRepertoireRepository(db);
       final moves = await repRepo.getMovesForRepertoire(repId);
-      final e4Move = moves.firstWhere((m) => m.san == 'e4');
-      expect(e4Move.label, 'King Pawn');
+      final e5Move = moves.firstWhere((m) => m.san == 'e5');
+      expect(e5Move.label, 'King Pawn');
     });
 
-    testWidgets('label works on root, interior, and leaf nodes',
+    testWidgets('label works on root (branch), leaf, and chain-tail nodes',
         (tester) async {
+      // Use a branching tree so individual moves get their own rows.
+      // e4 has two children (e5, c5), making e4 a branch point (own row).
+      // e5 is a leaf (own row). c5+Nf3 form a chain.
       final repId = await seedRepertoire(
         db,
         lines: [
-          ['e4', 'e5', 'Nf3'],
+          ['e4', 'e5'],
+          ['e4', 'c5', 'Nf3'],
         ],
       );
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Label root node (e4)
+      // Label root node (e4) -- it's a branch point, so it has its own row.
       await tester.tap(find.text('1. e4'));
       await tester.pump();
       await tester.tap(find.text('Label'));
@@ -774,31 +788,27 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      // Label interior node (e5) -- expand e4 first
+      // Label leaf node (e5) -- own row since e4 has 2 children.
       await tester.tap(find.byIcon(Icons.chevron_right).first);
       await tester.pump();
       await tester.tap(find.text('1...e5'));
       await tester.pump();
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'Interior Label');
+      await tester.enterText(find.byType(TextField), 'Leaf Label');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      // Label leaf node (Nf3) -- after labeling e4 and e5, both are
-      // collapsed by _computeInitialExpandState (stops at labeled nodes).
-      // Re-expand e4, then e5.
+      // Label chain-tail node (Nf3) -- c5+Nf3 chain is visible.
+      // After labeling e4 and e5, re-expand e4.
       await tester.tap(find.byIcon(Icons.chevron_right).first); // expand e4
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.chevron_right).first); // expand e5
-      await tester.pump();
-      await tester.ensureVisible(find.text('2. Nf3'));
-      await tester.pump();
-      await tester.tap(find.text('2. Nf3'));
+      // Tap chain [c5, Nf3] to select Nf3 (tail/leaf).
+      await tester.tap(find.textContaining('1...c5'));
       await tester.pump();
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'Leaf Label');
+      await tester.enterText(find.byType(TextField), 'Chain Tail Label');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
@@ -809,16 +819,18 @@ void main() {
       final e5Move = moves.firstWhere((m) => m.san == 'e5');
       final nf3Move = moves.firstWhere((m) => m.san == 'Nf3');
       expect(e4Move.label, 'Root Label');
-      expect(e5Move.label, 'Interior Label');
-      expect(nf3Move.label, 'Leaf Label');
+      expect(e5Move.label, 'Leaf Label');
+      expect(nf3Move.label, 'Chain Tail Label');
     });
 
     testWidgets('no-op guard: saving unchanged label preserves existing value',
         (tester) async {
+      // Add a sibling so e4 is a branch point (own row, directly selectable).
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
+          ['e4', 'c5'],
         ],
         labelsOnSan: {'e4': 'Existing'},
       );
@@ -826,7 +838,7 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4
+      // Select e4 (branch point, own row, has label "Existing")
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
 
@@ -847,10 +859,12 @@ void main() {
 
     testWidgets('inline label icon on tree row opens inline editor',
         (tester) async {
+      // Use a branching tree so we have separate rows to tap.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
+          ['e4', 'c5'],
         ],
       );
 
@@ -916,10 +930,12 @@ void main() {
 
     testWidgets('inline label icon works without selecting the node first',
         (tester) async {
+      // Use a branching tree so there are multiple rows and icons.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
+          ['e4', 'c5'],
         ],
       );
 
@@ -938,7 +954,7 @@ void main() {
         of: find.byType(MoveTreeWidget),
         matching: find.byTooltip('Label'),
       );
-      await tester.tap(inlineLabelIcons.last);
+      await tester.tap(inlineLabelIcons.at(1));
       await tester.pumpAndSettle();
 
       // The inline editor should appear even though no node was selected.
@@ -986,17 +1002,19 @@ void main() {
     });
 
     testWidgets('editor closes on node selection change', (tester) async {
+      // Use a branching tree so e4 and e5 are separate rows.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
+          ['e4', 'c5'],
         ],
       );
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4 and open the editor.
+      // Select e4 (branch point, own row) and open the editor.
       await tester.tap(find.text('1. e4'));
       await tester.pump();
       await tester.tap(find.text('Label'));
@@ -1004,7 +1022,7 @@ void main() {
 
       expect(find.byType(InlineLabelEditor), findsOneWidget);
 
-      // Select a different node (e5).
+      // Select a different node (e5, leaf, own row).
       await tester.tap(find.text('1...e5'));
       await tester.pumpAndSettle();
 
@@ -1023,8 +1041,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 and open the editor.
-      await tester.tap(find.text('1...e5'));
+      // e4+e5 chain row. Tap it to select e5 (tail), then open the editor.
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
       await tester.tap(find.text('Label'));
       await tester.pumpAndSettle();
@@ -1042,18 +1060,19 @@ void main() {
     testWidgets(
         'no warning dialog when no labeled descendants -- label saved directly',
         (tester) async {
-      // Tree: e4 -> e5 -> Nf3 -- no labels anywhere
+      // Use a branching tree so e4 is its own row (branch point).
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5', 'Nf3'],
+          ['e4', 'c5'],
         ],
       );
 
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4
+      // Select e4 (branch point, own row)
       await tester.tap(find.text('1. e4'));
       await tester.pump();
 
@@ -1081,10 +1100,12 @@ void main() {
         'warning dialog shown when labeled descendants exist -- correct before/after names',
         (tester) async {
       // Tree: e4 (label: "Sicilian") -> c5 -> Nf3 (label: "Open")
+      // Add a sibling d5 so e4 is a branch point (own row, directly selectable).
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'c5', 'Nf3'],
+          ['e4', 'd5'],
         ],
         labelsOnSan: {'e4': 'Sicilian', 'Nf3': 'Open'},
       );
@@ -1092,7 +1113,7 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4 (which has label "Sicilian")
+      // Select e4 (branch point, own row, has label "Sicilian")
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
 
@@ -1118,10 +1139,12 @@ void main() {
         'warning dialog -- Apply saves the label',
         (tester) async {
       // Tree: e4 (label: "Sicilian") -> c5 -> Nf3 (label: "Open")
+      // Add a sibling d5 so e4 is a branch point (own row, directly selectable).
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'c5', 'Nf3'],
+          ['e4', 'd5'],
         ],
         labelsOnSan: {'e4': 'Sicilian', 'Nf3': 'Open'},
       );
@@ -1129,7 +1152,7 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4, open editor, change label
+      // Select e4 (branch point, own row), open editor, change label
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
       await tester.tap(find.text('Label'));
@@ -1157,10 +1180,12 @@ void main() {
         'warning dialog -- Cancel does NOT save, editor stays open',
         (tester) async {
       // Tree: e4 (label: "Sicilian") -> c5 -> Nf3 (label: "Open")
+      // Add a sibling d5 so e4 is a branch point (own row, directly selectable).
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'c5', 'Nf3'],
+          ['e4', 'd5'],
         ],
         labelsOnSan: {'e4': 'Sicilian', 'Nf3': 'Open'},
       );
@@ -1168,7 +1193,7 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4, open editor, change label
+      // Select e4 (branch point, own row), open editor, change label
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
       await tester.tap(find.text('Label'));
@@ -1273,10 +1298,10 @@ void main() {
       // Nf3 should be gone from the tree.
       expect(find.text('2. Nf3'), findsNothing);
 
-      // e4, e5, and Bc4 should remain.
-      expect(find.text('1. e4'), findsOneWidget);
-      expect(find.text('1...e5'), findsOneWidget);
-      expect(find.text('2. Bc4'), findsOneWidget);
+      // e4, e5, and Bc4 should remain. After deleting Nf3, e5 has only
+      // one child (Bc4), so e4+e5+Bc4 collapse into a single chain row.
+      expect(find.textContaining('1. e4'), findsOneWidget);
+      expect(find.textContaining('Bc4'), findsOneWidget);
 
       // Verify the card for Nf3 is gone from the database.
       final reviewRepo = LocalReviewRepository(db);
@@ -1298,8 +1323,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (leaf).
-      await tester.tap(find.text('1...e5'));
+      // e4 and e5 collapse into one chain row. Tap it (selects tail e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Tap Delete via overflow menu.
@@ -1328,8 +1353,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (leaf), delete via overflow menu, confirm.
-      await tester.tap(find.text('1...e5'));
+      // e4 and e5 collapse into one chain row. Tap it (selects tail e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
       await tapOverflowAction(tester, 'Delete');
       await tester.tap(find.widgetWithText(TextButton, 'Delete'));
@@ -1342,7 +1367,7 @@ void main() {
 
       // Verify e4 is shown as a leaf in the tree.
       expect(find.text('1. e4'), findsOneWidget);
-      expect(find.text('1...e5'), findsNothing);
+      expect(find.textContaining('e5'), findsNothing);
 
       // Verify a new card exists for e4 in the database.
       final reviewRepo = LocalReviewRepository(db);
@@ -1367,8 +1392,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (leaf), delete via overflow menu, confirm.
-      await tester.tap(find.text('1...e5'));
+      // e4 and e5 collapse into one chain row. Tap it (selects tail e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
       await tapOverflowAction(tester, 'Delete');
       await tester.tap(find.widgetWithText(TextButton, 'Delete'));
@@ -1380,8 +1405,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // e4 should also be deleted. Tree should be empty.
-      expect(find.text('1. e4'), findsNothing);
-      expect(find.text('1...e5'), findsNothing);
+      expect(find.textContaining('e4'), findsNothing);
+      expect(find.textContaining('e5'), findsNothing);
 
       // Verify the tree is empty.
       expect(find.text('No moves yet. Add a line to get started.'),
@@ -1422,10 +1447,10 @@ void main() {
       expect(find.text('Keep shorter line'), findsNothing);
       expect(find.text('Remove move'), findsNothing);
 
-      // Tree should still show e4 and c5.
-      expect(find.text('1. e4'), findsOneWidget);
-      expect(find.text('1...c5'), findsOneWidget);
-      expect(find.text('1...e5'), findsNothing);
+      // Tree should still show e4 and c5 (now collapsed into a chain).
+      expect(find.textContaining('1. e4'), findsOneWidget);
+      expect(find.textContaining('c5'), findsOneWidget);
+      expect(find.textContaining('e5'), findsNothing);
     });
 
     testWidgets('delete branch -- confirmation shows correct counts',
@@ -1442,8 +1467,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (non-leaf, has children Nf3 and Bc4).
-      await tester.tap(find.text('1...e5'));
+      // Chain row [e4, e5]. Tap it to select e5 (tail, non-leaf).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Tap "Delete Branch" via overflow menu.
@@ -1468,8 +1493,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (non-leaf).
-      await tester.tap(find.text('1...e5'));
+      // Chain row [e4, e5]. Tap it to select e5 (tail, non-leaf).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Tap "Delete Branch" via overflow menu, confirm.
@@ -1484,7 +1509,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // e5, Nf3, and Bc4 should all be gone.
-      expect(find.text('1...e5'), findsNothing);
+      expect(find.textContaining('e5'), findsNothing);
       expect(find.text('2. Nf3'), findsNothing);
       expect(find.text('2. Bc4'), findsNothing);
 
@@ -1500,10 +1525,12 @@ void main() {
 
     testWidgets('delete branch -- orphan handling on parent',
         (tester) async {
+      // Use a branching tree so e5 is selectable via chain tail.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5', 'Nf3'],
+          ['e4', 'e5', 'Bc4'],
         ],
         createCards: true,
       );
@@ -1511,8 +1538,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (non-leaf, has child Nf3).
-      await tester.tap(find.text('1...e5'));
+      // Chain row [e4, e5]. Tap it to select e5 (tail, non-leaf).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Tap "Delete Branch" via overflow menu, confirm.
@@ -1527,10 +1554,12 @@ void main() {
 
     testWidgets('delete a root node (branch) -- no orphan prompt',
         (tester) async {
+      // e4 has two children (branch point, own row). d4+d5 is a separate root.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5'],
+          ['e4', 'c5'],
           ['d4', 'd5'],
         ],
         createCards: true,
@@ -1539,7 +1568,7 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4 (root, non-leaf since it has child e5).
+      // Select e4 (root, non-leaf, branch point -- own row).
       await tester.tap(find.text('1. e4'));
       await tester.pump();
 
@@ -1552,13 +1581,14 @@ void main() {
       expect(find.text('Keep shorter line'), findsNothing);
       expect(find.text('Remove move'), findsNothing);
 
-      // e4 and e5 should be gone.
-      expect(find.text('1. e4'), findsNothing);
-      expect(find.text('1...e5'), findsNothing);
+      // e4, e5, and c5 should be gone.
+      expect(find.textContaining('e4'), findsNothing);
+      expect(find.textContaining('e5'), findsNothing);
+      expect(find.textContaining('c5'), findsNothing);
 
-      // d4 and d5 should remain.
-      expect(find.text('1. d4'), findsOneWidget);
-      expect(find.text('1...d5'), findsOneWidget);
+      // d4 and d5 should remain (as a chain row).
+      expect(find.textContaining('d4'), findsOneWidget);
+      expect(find.textContaining('d5'), findsOneWidget);
     });
 
     testWidgets('orphan prompt -- dismiss preserves the orphaned move',
@@ -1574,8 +1604,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (leaf).
-      await tester.tap(find.text('1...e5'));
+      // e4 and e5 collapse into one chain row. Tap it (selects tail e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Tap Delete via overflow menu.
@@ -1599,7 +1629,7 @@ void main() {
       // e4 should still be visible in the tree (orphan preserved).
       expect(find.text('1. e4'), findsOneWidget);
       // e5 was deleted as intended.
-      expect(find.text('1...e5'), findsNothing);
+      expect(find.textContaining('e5'), findsNothing);
 
       // Verify DB state: only e4 remains.
       final repRepo = LocalRepertoireRepository(db);
@@ -1667,8 +1697,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4
-      await tester.tap(find.text('1. e4'));
+      // e4+e5 chain row. Tap it to select a node (selects tail e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Tap Add Line with a node selected
@@ -1686,10 +1716,12 @@ void main() {
   group('Card Stats', () {
     testWidgets('Stats button disabled when no leaf selected',
         (tester) async {
+      // Use a branching tree so e4 is a branch point (non-leaf, own row).
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5', 'Nf3'],
+          ['e4', 'c5'],
         ],
       );
 
@@ -1709,7 +1741,7 @@ void main() {
       await tester.tapAt(Offset.zero);
       await tester.pumpAndSettle();
 
-      // Select e4 (non-leaf) -- Stats should still be disabled
+      // Select e4 (branch point, non-leaf) -- Stats should still be disabled
       await tester.tap(find.text('1. e4'));
       await tester.pump();
 
@@ -1739,8 +1771,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (leaf)
-      await tester.tap(find.text('1...e5'));
+      // e4+e5 chain row. Tap it to select e5 (tail/leaf).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Stats should be enabled in overflow menu (leaf selected)
@@ -1790,8 +1822,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 (leaf)
-      await tester.tap(find.text('1...e5'));
+      // e4+e5 chain row. Tap it to select e5 (tail/leaf).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Tap Stats via overflow menu
@@ -1868,10 +1900,12 @@ void main() {
     testWidgets(
         'action bar buttons have correct enabled/disabled state in wide layout',
         (tester) async {
+      // e4 -> e5 chain (e5 has 2 children), then Nf3 and Bc4 are leaves.
       final repId = await seedRepertoire(
         db,
         lines: [
           ['e4', 'e5', 'Nf3'],
+          ['e4', 'e5', 'Bc4'],
         ],
         labelsOnSan: {'e4': 'King Pawn'},
         createCards: true,
@@ -1893,7 +1927,7 @@ void main() {
       );
       expect(labelButton.onPressed, isNull);
 
-      // Select e4 (non-leaf, has children)
+      // Select e4+e5 chain row (non-leaf, has children). Selects e5 (tail).
       await tester.tap(find.textContaining('1. e4'));
       await tester.pump();
 
@@ -1917,9 +1951,7 @@ void main() {
       // Delete tooltip should be "Delete Branch" for non-leaf
       expect(deleteButton.tooltip, 'Delete Branch');
 
-      // Now expand and select the leaf node (Nf3)
-      await tester.tap(find.byIcon(Icons.chevron_right).first);
-      await tester.pump();
+      // Expand e5 (chain tail) to see leaf nodes Nf3 and Bc4.
       await tester.tap(find.byIcon(Icons.chevron_right).first);
       await tester.pump();
       await tester.ensureVisible(find.text('2. Nf3'));
@@ -1981,8 +2013,8 @@ void main() {
           buildTestApp(db, repId, viewportSize: const Size(900, 800)));
       await tester.pumpAndSettle();
 
-      // Tap on e5
-      await tester.tap(find.text('1...e5'));
+      // e4 and e5 collapse into one chain row. Tap it (selects tail e5).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Board FEN should now reflect position after 1. e4 e5
@@ -2004,8 +2036,8 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e4
-      await tester.tap(find.text('1. e4'));
+      // e4+e5 chain row. Tap it to select e5 (tail).
+      await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
       // Open label editor
@@ -2022,11 +2054,11 @@ void main() {
       // No dialog should appear
       expect(find.text('Label conflict'), findsNothing);
 
-      // Label should be saved
+      // Label should be saved on the selected move (e5)
       final repRepo = LocalRepertoireRepository(db);
       final moves = await repRepo.getMovesForRepertoire(repId);
-      final e4Move = moves.firstWhere((m) => m.san == 'e4');
-      expect(e4Move.label, 'No Conflict');
+      final e5Move = moves.firstWhere((m) => m.san == 'e5');
+      expect(e5Move.label, 'No Conflict');
     });
 
     testWidgets(
@@ -2048,13 +2080,12 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Navigate to e5 in line 2. All nodes are auto-expanded (no labels
-      // on the Nf3 branch that would cause collapsing).
-      // Line 2 tree: 1. Nf3 -> 1...Nc6 -> 2. e4 -> 2...e5
-      // Find and tap "2...e5" (the transposition endpoint in line 2).
-      await tester.ensureVisible(find.text('2...e5'));
+      // Line 2 tree: Nf3 -> Nc6 -> e4 -> e5 (all unlabeled, all
+      // single-child). Collapses into one chain "1. Nf3 Nc6 2. e4 e5".
+      // Tap the chain to select e5 (tail, id=8).
+      await tester.ensureVisible(find.text('1. Nf3 Nc6 2. e4 e5'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('2...e5'));
+      await tester.tap(find.text('1. Nf3 Nc6 2. e4 e5'));
       await tester.pump();
 
       // Open label editor
@@ -2111,10 +2142,11 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 in line 2
-      await tester.ensureVisible(find.text('2...e5'));
+      // Line 2 chain: Nf3 -> Nc6 -> e4 -> e5 (all unlabeled).
+      // Tap the chain to select e5 (tail).
+      await tester.ensureVisible(find.text('1. Nf3 Nc6 2. e4 e5'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('2...e5'));
+      await tester.tap(find.text('1. Nf3 Nc6 2. e4 e5'));
       await tester.pump();
 
       // Open label editor
@@ -2175,11 +2207,12 @@ void main() {
       await tester.pumpWidget(buildTestApp(db, repId));
       await tester.pumpAndSettle();
 
-      // Select e5 in line 2. With the label "Existing" on it, it may be shown
-      // with a label suffix. Find by text containing "2...e5".
-      await tester.ensureVisible(find.textContaining('2...e5'));
+      // Select e5 in line 2. With the label "Existing" on it, it gets its
+      // own row. Chain [Nf3, Nc6, e4] is at depth 0 (3 moves), so e5 is at
+      // depth 1, ply 4 -> notation "2...e5". Find by text containing "Existing".
+      await tester.ensureVisible(find.textContaining('Existing'));
       await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('2...e5'));
+      await tester.tap(find.textContaining('Existing'));
       await tester.pump();
 
       // Open label editor

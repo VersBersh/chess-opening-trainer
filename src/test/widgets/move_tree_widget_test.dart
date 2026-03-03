@@ -114,56 +114,61 @@ void main() {
       final result = buildVisibleNodes(cache, {});
 
       expect(result.length, 1);
-      expect(result[0].move.san, 'e4');
+      expect(result[0].firstMove.san, 'e4');
+      expect(result[0].moves.length, 1);
       expect(result[0].depth, 0);
       expect(result[0].plyCount, 1);
       expect(result[0].hasChildren, false);
     });
 
-    test('root with children, all collapsed: only root visible', () {
+    test('root with children, all collapsed: entire chain collapses', () {
+      // Linear chain: e4 -> e5 -> Nf3. All single-child unlabeled.
+      // Chain collapsing absorbs all three into one VisibleNode.
       final line = buildLine(['e4', 'e5', 'Nf3']);
       final cache = RepertoireTreeCache.build(line);
 
       final result = buildVisibleNodes(cache, {});
 
       expect(result.length, 1);
-      expect(result[0].move.san, 'e4');
-      expect(result[0].hasChildren, true);
+      expect(result[0].firstMove.san, 'e4');
+      expect(result[0].lastMove.san, 'Nf3');
+      expect(result[0].moves.length, 3);
+      expect(result[0].hasChildren, false);
     });
 
-    test('root with children, root expanded: root and child visible', () {
+    test('root with children, root expanded: chain still collapses', () {
+      // Linear chain: e4 -> e5 -> Nf3. Even with e4 (id=1) "expanded",
+      // chain collapsing absorbs all three into one node. The tail (Nf3)
+      // has no children, so expansion is irrelevant.
       final line = buildLine(['e4', 'e5', 'Nf3']);
       final cache = RepertoireTreeCache.build(line);
 
-      // Expand root (id=1)
       final result = buildVisibleNodes(cache, {1});
 
-      expect(result.length, 2);
-      expect(result[0].move.san, 'e4');
+      expect(result.length, 1);
+      expect(result[0].firstMove.san, 'e4');
+      expect(result[0].lastMove.san, 'Nf3');
+      expect(result[0].moves.length, 3);
       expect(result[0].depth, 0);
       expect(result[0].plyCount, 1);
-      expect(result[1].move.san, 'e5');
-      expect(result[1].depth, 1);
-      expect(result[1].plyCount, 2);
-      expect(result[1].hasChildren, true);
+      expect(result[0].hasChildren, false);
     });
 
     test('deeply nested tree with selective expansion', () {
       // 1. e4 e5 2. Nf3 Nc6 3. Bb5
+      // All single-child unlabeled: entire chain collapses into one node.
       final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
       final cache = RepertoireTreeCache.build(line);
 
-      // Expand e4 (1) and e5 (2), but not Nf3 (3)
+      // Expand doesn't matter for a fully linear tree.
       final result = buildVisibleNodes(cache, {1, 2});
 
-      expect(result.length, 3);
-      expect(result[0].move.san, 'e4');
+      expect(result.length, 1);
+      expect(result[0].firstMove.san, 'e4');
+      expect(result[0].lastMove.san, 'Bb5');
+      expect(result[0].moves.length, 5);
       expect(result[0].depth, 0);
-      expect(result[1].move.san, 'e5');
-      expect(result[1].depth, 1);
-      expect(result[2].move.san, 'Nf3');
-      expect(result[2].depth, 2);
-      expect(result[2].hasChildren, true); // Nf3 has Nc6 as child
+      expect(result[0].hasChildren, false);
     });
 
     test('multiple root moves are all visible at depth 0', () {
@@ -188,15 +193,16 @@ void main() {
       final result = buildVisibleNodes(cache, {});
 
       expect(result.length, 2);
-      expect(result[0].move.san, 'e4');
+      expect(result[0].firstMove.san, 'e4');
       expect(result[0].depth, 0);
-      expect(result[1].move.san, 'd4');
+      expect(result[1].firstMove.san, 'd4');
       expect(result[1].depth, 0);
     });
 
     test('only expanded subtrees are visible', () {
       // Main line: 1. e4 e5 2. Nf3
       // Branch: 1. e4 c5
+      // e4 has 2 children -> branch point, no chain collapsing at e4.
       final mainLine = buildLine(['e4', 'e5', 'Nf3']);
       final branch = buildBranch(
         ['e4'],
@@ -212,27 +218,198 @@ void main() {
       final result = buildVisibleNodes(cache, {1});
 
       expect(result.length, 3);
-      expect(result[0].move.san, 'e4');
+      expect(result[0].firstMove.san, 'e4');
+      expect(result[0].moves.length, 1); // branch point, no chaining
       expect(result[0].depth, 0);
-      expect(result[1].move.san, 'e5');
+      // e5 has one child Nf3 (unlabeled) -> chain collapses to [e5, Nf3]
+      expect(result[1].firstMove.san, 'e5');
+      expect(result[1].lastMove.san, 'Nf3');
+      expect(result[1].moves.length, 2);
       expect(result[1].depth, 1);
-      expect(result[2].move.san, 'c5');
+      // c5 is a leaf
+      expect(result[2].firstMove.san, 'c5');
+      expect(result[2].moves.length, 1);
       expect(result[2].depth, 1);
     });
 
-    test('plyCount tracks line position, not visual nesting', () {
-      // All nodes in a linear chain have plyCount = depth + 1
+    test('plyCount tracks line position for collapsed chain', () {
+      // Linear chain of 4 moves: all collapse into one VisibleNode.
       final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6']);
       final cache = RepertoireTreeCache.build(line);
 
-      // Expand all
       final result = buildVisibleNodes(cache, {1, 2, 3});
 
-      expect(result.length, 4);
-      for (var i = 0; i < result.length; i++) {
-        expect(result[i].depth, i);
-        expect(result[i].plyCount, i + 1);
-      }
+      expect(result.length, 1);
+      expect(result[0].plyCount, 1); // first move is at ply 1
+      expect(result[0].moves.length, 4);
+      expect(result[0].moves[0].san, 'e4');
+      expect(result[0].moves[1].san, 'e5');
+      expect(result[0].moves[2].san, 'Nf3');
+      expect(result[0].moves[3].san, 'Nc6');
+    });
+
+    // -------------------------------------------------------------------
+    // Chain-specific unit tests (Step 8)
+    // -------------------------------------------------------------------
+
+    test('single-child chain collapses into one VisibleNode with multiple moves', () {
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      // Expand all (though irrelevant for fully linear tree).
+      final result = buildVisibleNodes(cache, {1, 2, 3});
+
+      expect(result.length, 1);
+      expect(result[0].moves.length, 3);
+      expect(result[0].firstMove.san, 'e4');
+      expect(result[0].lastMove.san, 'Nf3');
+      expect(result[0].hasChildren, false);
+      expect(result[0].depth, 0);
+      expect(result[0].plyCount, 1);
+    });
+
+    test('chain stops at branch point', () {
+      // e4 has two children: e5 and d5. e4 cannot be chained.
+      final mainLine = buildLine(['e4', 'e5']);
+      final branch = buildBranch(
+        ['e4'],
+        ['d5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      // Expand e4 to see children.
+      final result = buildVisibleNodes(cache, {1});
+
+      expect(result.length, 3);
+      // e4 alone (branch point, 2 children)
+      expect(result[0].moves.length, 1);
+      expect(result[0].firstMove.san, 'e4');
+      // e5 alone (leaf)
+      expect(result[1].firstMove.san, 'e5');
+      // d5 alone (leaf)
+      expect(result[2].firstMove.san, 'd5');
+    });
+
+    test('chain stops before labeled child', () {
+      // e4 -> e5 (labeled) -> Nf3. e4's child e5 is labeled, so chain stops.
+      // e5 -> Nf3 is a valid chain (Nf3 is unlabeled single-child of e5...
+      // actually Nf3 is a leaf, so e5+Nf3 chain).
+      final line = buildLine(['e4', 'e5', 'Nf3'], labels: {1: 'Open Game'});
+      final cache = RepertoireTreeCache.build(line);
+
+      // Expand all.
+      final result = buildVisibleNodes(cache, {1, 2, 3});
+
+      expect(result.length, 2);
+      // e4 alone (its child e5 is labeled, so chain stops)
+      expect(result[0].moves.length, 1);
+      expect(result[0].firstMove.san, 'e4');
+      expect(result[0].hasChildren, true);
+      // e5 + Nf3 chained (e5 is labeled, starts its own row; Nf3 is unlabeled leaf)
+      expect(result[1].moves.length, 2);
+      expect(result[1].firstMove.san, 'e5');
+      expect(result[1].firstMove.label, 'Open Game');
+      expect(result[1].lastMove.san, 'Nf3');
+    });
+
+    test('entire linear tree produces one VisibleNode', () {
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      final result = buildVisibleNodes(cache, {1, 2, 3, 4});
+
+      expect(result.length, 1);
+      expect(result[0].moves.length, 5);
+    });
+
+    test('mixed tree with branches and chains', () {
+      // e4 has children e5 and c5. e5 continues to Nf3, Nc6.
+      // c5 continues to Nf3, d6.
+      final mainLine = buildLine(['e4', 'e5', 'Nf3', 'Nc6']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5', 'Nf3', 'd6'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      // Expand e4 (id=1) to see both branches.
+      final result = buildVisibleNodes(cache, {1});
+
+      expect(result.length, 3);
+      // e4 alone (branch point, 2 children)
+      expect(result[0].moves.length, 1);
+      expect(result[0].firstMove.san, 'e4');
+      // e5 chain: e5 -> Nf3 -> Nc6 (3 moves)
+      expect(result[1].moves.length, 3);
+      expect(result[1].firstMove.san, 'e5');
+      expect(result[1].lastMove.san, 'Nc6');
+      // c5 chain: c5 -> Nf3 -> d6 (3 moves)
+      expect(result[2].moves.length, 3);
+      expect(result[2].firstMove.san, 'c5');
+      expect(result[2].lastMove.san, 'd6');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Unit tests for buildChainNotation (Step 10)
+  // -------------------------------------------------------------------------
+
+  group('buildChainNotation', () {
+    test('single white move matches getMoveNotation output for single-move chains', () {
+      final line = buildLine(['e4']);
+      final cache = RepertoireTreeCache.build(line);
+      final node = VisibleNode(moves: line, depth: 0, hasChildren: false, plyCount: 1);
+
+      expect(buildChainNotation(node, cache), '1. e4');
+    });
+
+    test('single black move matches getMoveNotation output for single-move chains', () {
+      // Build a VisibleNode representing just a black move at ply 2.
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+      final node = VisibleNode(
+        moves: [line[1]], // just e5
+        depth: 1,
+        hasChildren: false,
+        plyCount: 2,
+      );
+
+      expect(buildChainNotation(node, cache), '1...e5');
+    });
+
+    test('multi-move chain starting with white', () {
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6']);
+      final cache = RepertoireTreeCache.build(line);
+      final node = VisibleNode(moves: line, depth: 0, hasChildren: false, plyCount: 1);
+
+      expect(buildChainNotation(node, cache), '1. e4 e5 2. Nf3 Nc6');
+    });
+
+    test('multi-move chain starting with black', () {
+      // Simulate a chain starting at ply 2 (black move).
+      // c5, Nf3, d6 at plies 2, 3, 4.
+      final line = buildLine(['e4', 'c5', 'Nf3', 'd6']);
+      final cache = RepertoireTreeCache.build(line);
+      final chainMoves = line.sublist(1); // c5, Nf3, d6
+      final node = VisibleNode(moves: chainMoves, depth: 1, hasChildren: false, plyCount: 2);
+
+      expect(buildChainNotation(node, cache), '1...c5 2. Nf3 d6');
+    });
+
+    test('chain with only one pair', () {
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+      final node = VisibleNode(moves: line, depth: 0, hasChildren: false, plyCount: 1);
+
+      expect(buildChainNotation(node, cache), '1. e4 e5');
     });
   });
 
@@ -270,27 +447,45 @@ void main() {
 
     testWidgets('renders correct number of tiles for a given tree + expand state',
         (tester) async {
-      // 1. e4 e5 2. Nf3 -- expand root only
-      final line = buildLine(['e4', 'e5', 'Nf3']);
-      final cache = RepertoireTreeCache.build(line);
+      // e4 has two children (e5, c5) -> branch point, not chained.
+      // e5 has child Nf3 -> chain [e5, Nf3].
+      // Expand e4 only -> see e4, [e5 Nf3], c5.
+      final mainLine = buildLine(['e4', 'e5', 'Nf3']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
         expandedNodeIds: {1},
       ));
 
-      // Should show e4 (expanded) and e5 (collapsed child).
-      // Nf3 is hidden because e5 is not expanded.
+      // e4 is a branch point (separate row).
       expect(find.text('1. e4'), findsOneWidget);
-      expect(find.text('1...e5'), findsOneWidget);
-      expect(find.text('2. Nf3'), findsNothing);
+      // e5 and Nf3 collapse into a chain.
+      expect(find.text('1...e5 2. Nf3'), findsOneWidget);
+      // c5 is a leaf (separate row).
+      expect(find.text('1...c5'), findsOneWidget);
     });
 
-    testWidgets('tapping a node calls onNodeSelected with the correct move ID',
+    testWidgets('tapping a node calls onNodeSelected with the tail move ID',
         (tester) async {
       int? selectedId;
-      final line = buildLine(['e4', 'e5']);
-      final cache = RepertoireTreeCache.build(line);
+      // e4 has two children -> branch point.
+      final mainLine = buildLine(['e4', 'e5']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
@@ -298,16 +493,24 @@ void main() {
         onNodeSelected: (id) => selectedId = id,
       ));
 
-      // Tap on the e5 node text
+      // Tap on the e5 node text (leaf, single-move row)
       await tester.tap(find.text('1...e5'));
-      expect(selectedId, 2);
+      expect(selectedId, 2); // e5 is its own row, tail is itself
     });
 
     testWidgets('tapping the expand chevron calls onNodeToggleExpand',
         (tester) async {
       int? toggledId;
-      final line = buildLine(['e4', 'e5', 'Nf3']);
-      final cache = RepertoireTreeCache.build(line);
+      // e4 has two children (e5, c5) -> branch point with chevron.
+      final mainLine = buildLine(['e4', 'e5', 'Nf3']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
@@ -321,20 +524,19 @@ void main() {
     });
 
     testWidgets('selected node has distinct visual styling', (tester) async {
+      // e4 -> e5 chain. Select e5 (id=2, part of the chain).
       final line = buildLine(['e4', 'e5']);
       final cache = RepertoireTreeCache.build(line);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
-        expandedNodeIds: {1},
+        expandedNodeIds: {},
         selectedMoveId: 2,
       ));
 
-      // The selected node (e5, id=2) should be rendered with a
-      // primaryContainer background color. We verify by finding the Material
-      // widget wrapping the selected node.
+      // The chain row contains e5 (id=2) which is selected, so the row
+      // should have primaryContainer background.
       final materials = tester.widgetList<Material>(find.byType(Material));
-      // At least one Material should have the primaryContainer color.
       final hasPrimaryContainer = materials.any((m) =>
           m.color != null && m.color != Colors.transparent);
       expect(hasPrimaryContainer, true);
@@ -391,8 +593,16 @@ void main() {
 
     testWidgets('each row shows a label icon when onEditLabel is provided',
         (tester) async {
-      final line = buildLine(['e4', 'e5']);
-      final cache = RepertoireTreeCache.build(line);
+      // e4 has two children -> branch point -> 3 rows when expanded.
+      final mainLine = buildLine(['e4', 'e5']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
@@ -400,8 +610,8 @@ void main() {
         onEditLabel: (_) {},
       ));
 
-      // Two visible rows (e4 and e5), each should have a label_outline icon.
-      expect(find.byIcon(Icons.label_outline), findsNWidgets(2));
+      // Three visible rows (e4, e5, c5), each should have a label_outline icon.
+      expect(find.byIcon(Icons.label_outline), findsNWidgets(3));
     });
 
     testWidgets('no label icon when onEditLabel is null', (tester) async {
@@ -410,19 +620,27 @@ void main() {
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
-        expandedNodeIds: {1},
-        // onEditLabel not set — defaults to null
+        expandedNodeIds: {},
+        // onEditLabel not set -- defaults to null
       ));
 
       expect(find.byIcon(Icons.label_outline), findsNothing);
     });
 
-    testWidgets('tapping the label icon calls onEditLabel with the correct move ID',
+    testWidgets('tapping the label icon calls onEditLabel with the first move ID',
         (tester) async {
       int? editedId;
       int? selectedId;
-      final line = buildLine(['e4', 'e5']);
-      final cache = RepertoireTreeCache.build(line);
+      // e4 has two children -> branch point -> 3 rows when expanded.
+      final mainLine = buildLine(['e4', 'e5']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
@@ -431,10 +649,10 @@ void main() {
         onEditLabel: (id) => editedId = id,
       ));
 
-      // Tap the second label icon (e5, id=2)
-      await tester.tap(find.byIcon(Icons.label_outline).last);
+      // Tap the second label icon (e5 row, which is a single-move node).
+      await tester.tap(find.byIcon(Icons.label_outline).at(1));
 
-      // onEditLabel should fire, but onNodeSelected should not.
+      // onEditLabel should fire with e5's ID (first move of that row).
       expect(editedId, 2);
       expect(selectedId, isNull);
     });
@@ -443,8 +661,16 @@ void main() {
         (tester) async {
       int? editedId;
       int? selectedId;
-      final line = buildLine(['e4', 'e5']);
-      final cache = RepertoireTreeCache.build(line);
+      // e4 has two children -> branch point -> 3 rows when expanded.
+      final mainLine = buildLine(['e4', 'e5']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
@@ -456,13 +682,15 @@ void main() {
       // Tap on the row text for e5
       await tester.tap(find.text('1...e5'));
 
-      // onNodeSelected should fire, but onEditLabel should not.
+      // onNodeSelected should fire (with tail ID), but onEditLabel should not.
       expect(selectedId, 2);
       expect(editedId, isNull);
     });
 
     testWidgets('label icon uses primary color when node has a label',
         (tester) async {
+      // e4 (labeled) has child e5 (labeled 'Open Game') -> chain stops.
+      // So e4 is its own row with a label.
       final line = buildLine(
         ['e4', 'e5'],
         labels: {0: 'King Pawn'},
@@ -471,11 +699,11 @@ void main() {
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
-        expandedNodeIds: {1},
+        expandedNodeIds: {},
         onEditLabel: (_) {},
       ));
 
-      // The first label icon belongs to e4 (which has a label).
+      // e4 has label -> first label icon should use primary color.
       final icon = tester.widget<Icon>(find.byIcon(Icons.label_outline).first);
       final theme = Theme.of(tester.element(find.byIcon(Icons.label_outline).first));
       expect(icon.color, theme.colorScheme.primary);
@@ -483,11 +711,25 @@ void main() {
 
     testWidgets('label icon uses onSurfaceVariant when node has no label',
         (tester) async {
-      final line = buildLine(
+      // e4 (labeled) has child e5 -> chain stops because e5 is the only
+      // child and has no label, so e4+e5 chain. But e4 IS labeled.
+      // Wait -- e4 has label "King Pawn", and e5 has no label. e4's child
+      // is e5, which is unlabeled and single-child. So chain is [e4, e5].
+      // The chain's firstMove (e4) has a label, so hasLabel is true for both.
+      // We need a tree where one row has a label and another doesn't.
+      // Use a branch: e4 has children e5 and c5. Label e4.
+      final mainLine = buildLine(
         ['e4', 'e5'],
         labels: {0: 'King Pawn'},
       );
-      final cache = RepertoireTreeCache.build(line);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
@@ -495,7 +737,8 @@ void main() {
         onEditLabel: (_) {},
       ));
 
-      // The second label icon belongs to e5 (which has no label).
+      // Three rows: e4 (labeled), e5 (no label), c5 (no label).
+      // The last label icon belongs to c5 (no label).
       final icon = tester.widget<Icon>(find.byIcon(Icons.label_outline).last);
       final theme = Theme.of(tester.element(find.byIcon(Icons.label_outline).last));
       expect(icon.color, theme.colorScheme.onSurfaceVariant);
@@ -517,7 +760,7 @@ void main() {
       ));
 
       // The label icon is 14px but sits inside a 28x28 SizedBox.
-      // Tap 10px above the icon center — inside the 28dp box but outside
+      // Tap 10px above the icon center -- inside the 28dp box but outside
       // the 14px visual icon.
       final iconCenter = tester.getCenter(find.byIcon(Icons.label_outline));
       await tester.tapAt(iconCenter + const Offset(0, -10));
@@ -531,8 +774,16 @@ void main() {
         (tester) async {
       int? toggledId;
       int? selectedId;
-      final line = buildLine(['e4', 'e5', 'Nf3']);
-      final cache = RepertoireTreeCache.build(line);
+      // e4 has two children -> branch point with chevron.
+      final mainLine = buildLine(['e4', 'e5', 'Nf3']);
+      final branch = buildBranch(
+        ['e4'],
+        ['c5'],
+        startId: 100,
+        parentMoveId: 1,
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
 
       await tester.pumpWidget(buildTestApp(
         treeCache: cache,
@@ -542,13 +793,127 @@ void main() {
       ));
 
       // The chevron icon is 16px but sits inside a 28x28 SizedBox.
-      // Tap 10px above the icon center — inside the 28dp box but outside
+      // Tap 10px above the icon center -- inside the 28dp box but outside
       // the 16px visual icon.
       final chevronCenter = tester.getCenter(find.byIcon(Icons.chevron_right));
       await tester.tapAt(chevronCenter + const Offset(0, -10));
 
       expect(toggledId, 1);
       expect(selectedId, isNull);
+    });
+
+    // -------------------------------------------------------------------
+    // Chain-specific widget tests (Step 9)
+    // -------------------------------------------------------------------
+
+    testWidgets('collapsed chain shows combined notation', (tester) async {
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+      ));
+
+      // Entire linear tree collapses into one row.
+      expect(find.text('1. e4 e5 2. Nf3 Nc6'), findsOneWidget);
+    });
+
+    testWidgets('tapping chain row selects last move', (tester) async {
+      int? selectedId;
+      final line = buildLine(['e4', 'e5', 'Nf3', 'Nc6']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+        onNodeSelected: (id) => selectedId = id,
+      ));
+
+      await tester.tap(find.text('1. e4 e5 2. Nf3 Nc6'));
+      expect(selectedId, 4); // Nc6 is the tail (id=4)
+    });
+
+    testWidgets('chain row highlights when any move in chain is selected',
+        (tester) async {
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      // Select the middle move (e5, id=2).
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+        selectedMoveId: 2,
+      ));
+
+      // The chain row should have primaryContainer highlight.
+      final materials = tester.widgetList<Material>(find.byType(Material));
+      final hasPrimaryContainer = materials.any((m) =>
+          m.color != null && m.color != Colors.transparent);
+      expect(hasPrimaryContainer, true);
+    });
+
+    testWidgets('chevron on chain toggles last move expansion', (tester) async {
+      int? toggledId;
+      // e4 -> e5 -> Nf3, where Nf3 has 2 children (Nc6, d4-ish).
+      // Chain is [e4, e5, Nf3]. Nf3 is the tail with 2 children.
+      // But wait -- Nf3 has 2 children means the chain STOPS before Nf3?
+      // No: the chain absorbs nodes whose PARENT has 1 child.
+      // e4's child is e5 (single child) -> absorb e5.
+      // e5's child is Nf3 (single child) -> absorb Nf3.
+      // Nf3's children are [Nc6, d4-branch] (2 children) -> stop.
+      // So the chain is [e4, e5, Nf3] with hasChildren=true.
+      final mainLine = buildLine(['e4', 'e5', 'Nf3', 'Nc6']);
+      final branch = buildBranch(
+        ['e4', 'e5', 'Nf3'],
+        ['d5'],
+        startId: 100,
+        parentMoveId: 3, // Nf3
+      );
+      final allMoves = [...mainLine, ...branch];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+        onNodeToggleExpand: (id) => toggledId = id,
+      ));
+
+      // The chain [e4, e5, Nf3] should show a chevron (hasChildren=true).
+      await tester.tap(find.byIcon(Icons.chevron_right));
+      expect(toggledId, 3); // Nf3 is the tail
+    });
+
+    testWidgets('label icon on chain edits first move label', (tester) async {
+      int? editedId;
+      // Linear chain: e4 -> e5 collapses into one row.
+      final line = buildLine(['e4', 'e5']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+        onEditLabel: (id) => editedId = id,
+      ));
+
+      // One row, one label icon.
+      await tester.tap(find.byIcon(Icons.label_outline));
+      expect(editedId, 1); // e4 is the first move
+    });
+
+    testWidgets('dueCount shows first non-zero in chain order', (tester) async {
+      // Chain [e4, e5, Nf3]. Due count only on e5 (id=2).
+      final line = buildLine(['e4', 'e5', 'Nf3']);
+      final cache = RepertoireTreeCache.build(line);
+
+      await tester.pumpWidget(buildTestApp(
+        treeCache: cache,
+        expandedNodeIds: {},
+        dueCountByMoveId: {2: 3},
+      ));
+
+      // The chain row should display "3 due" from the middle move.
+      expect(find.text('3 due'), findsOneWidget);
     });
   });
 }
