@@ -12,7 +12,7 @@ Global visual and layout conventions that apply across all screens. Feature-spec
 - **Color:** Move pills use a blue fill by default. The exact shade should be a named theme token (e.g., `pillColor`) so it can be adjusted globally.
 - **Equal width:** All move pills have the **same width**, regardless of the SAN text length (e.g., "e4" and "Nxd4" get the same pill width). This provides a clean, uniform grid-like appearance.
 - **Wrapping:** Pill rows wrap onto multiple lines when the content exceeds the available width. They must never clip or scroll off-screen invisibly.
-- **Labels on pills:** When a pill has an associated label, the label text is displayed **flat** beneath the pill (not angled or slanted). Labels may overflow underneath neighboring pills — this is acceptable since it's unlikely adjacent pills will both have labels.
+- **Labels on pills:** When a pill has an associated label, the label text is displayed **flat** beneath the pill (not angled or slanted). Labels must be laid out in a **reserved vertical slot** that is part of each row's intrinsic height — not absolutely positioned. Every wrapped row of pills must be tall enough to contain both the pill and the tallest possible label beneath it, whether or not any pill in that row carries a label. A label may extend horizontally into the column space of a neighbouring pill that has no label, but it must never visually overlap the neighbouring pill itself or bleed into an adjacent pill row.
 - **No delete (X) on pills:** Pills do not have individual X/delete buttons. Move deletion is handled exclusively by the Take Back button. Individual X buttons are too small to press reliably on a phone and are redundant with Take Back.
 
 ## Action Buttons
@@ -36,6 +36,11 @@ Global visual and layout conventions that apply across all screens. Feature-spec
 - The user can ignore the warning and continue editing, or take the suggested action (e.g., flip the board).
 - Inline warnings are dismissible and non-blocking.
 - **Destructive confirmations** (e.g., deleting a branch with N lines) may still use a dialog, since these are rare and high-stakes.
+
+## App Bar / Banner
+
+- **Background colour:** The top app bar background must match the screen background colour. Do not use a distinct or contrasting colour (e.g. `primaryContainer`, `surfaceVariant`, or a hard-coded colour). Use a transparent background or the `surface` colour token so the banner is visually continuous with the rest of the screen.
+- **Title text size:** The title text in the top app bar must use `titleMedium` or `titleSmall` — not `titleLarge`. The smaller size is sufficient for orientation and avoids the banner dominating the screen.
 
 ## Settings & Selection Indicators
 

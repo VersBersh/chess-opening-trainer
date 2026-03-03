@@ -17,6 +17,7 @@ Applies to:
 - Use one shared horizontal inset for the board container across screens.
 - Use one shared top gap between header/app-bar content and board container.
 - Boards must not render flush to the screen edge on one screen and padded on another.
+- **No dynamic content above the board:** No screen may render dynamic or variable-height content between the app bar and the board container. This includes line names, banners, status labels, inline warnings, or any widget whose presence or size can change at runtime. Such content shifts the board's vertical position, breaking the stable-board guarantee. All dynamic content must be placed below the board.
 
 ### Label Slot
 

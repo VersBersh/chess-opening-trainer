@@ -105,6 +105,14 @@ The board supports **exploration moves** in the repertoire manager:
 - Playing a move that is not present in the repertoire does not create data and should show lightweight feedback (for example, "Not in repertoire").
 - Exploration moves never persist changes. Creating new moves still requires [Add Line](add-line.md).
 
+**Move recognition must handle all legal chess move types.** The board interaction layer must not rely solely on SAN string matching or a naive source-square → destination-square lookup that only works for simple piece moves. It must use a proper chess-move normalisation step before resolving the gesture against the repertoire tree:
+
+- **Castling (king-side and queen-side):** The user can castle by dragging the king two squares toward the rook, or by tapping the king then the target king square (or the rook square, per standard board-UI convention). Both gestures must be recognised and normalised into the correct castling move representation before the tree lookup. The arrow hint for a castling move being shown while the move cannot be executed by hand is a bug.
+- **En passant:** Pawn captures to an empty square on the en-passant target must be correctly identified as en-passant moves rather than rejected as illegal.
+- **Promotions:** Pawn moves to the back rank must trigger a promotion-piece selector and produce a fully-specified promotion move.
+
+The implementation must use a chess-engine or move-generation layer to enumerate legal moves from the current position and match the user's gesture to one of those legal moves, rather than constructing a move descriptor from the gesture alone. This is the only approach that handles castling rights, en-passant state, and promotion correctly in all cases.
+
 ### Line Display Name
 
 When a node is selected, the full aggregate display name (e.g., "Sicilian — Najdorf") is shown in a label area **below the board**. The label area always reserves its vertical space (even when empty), so the board size is stable regardless of whether a label is shown.

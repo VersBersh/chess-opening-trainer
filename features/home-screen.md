@@ -22,7 +22,7 @@ This summary is computed by the home screen controller from repository data. It 
 
 ## Single-Repertoire Layout
 
-The home screen assumes a single repertoire and presents three direct action buttons — no repertoire name, no card list, no CRUD UI. The multi-repertoire data layer is preserved; this is a UI-only simplification.
+The home screen assumes a single repertoire and presents four direct action buttons — no repertoire name, no card list, no CRUD UI. The multi-repertoire data layer is preserved; this is a UI-only simplification.
 
 ### Buttons
 
@@ -30,7 +30,8 @@ The home screen assumes a single repertoire and presents three direct action but
    - If there are due cards, drill mode opens immediately.
    - If there are no due cards, the button is visually muted. Tapping it shows a brief message: "No cards due for review. Come back later!"
 2. **Free Practice** — enters free practice mode (always available as long as the repertoire has cards). See [free-practice.md](free-practice.md).
-3. **Manage Repertoire** — navigates to the repertoire browser. See [repertoire-browser.md](repertoire-browser.md).
+3. **Add Line** — navigates directly to the Add Line screen for the active repertoire, without requiring the user to go through the Repertoire Manager first. See [add-line.md](add-line.md).
+4. **Manage Repertoire** — navigates to the repertoire browser. See [repertoire-browser.md](repertoire-browser.md).
 
 The controller uses the **first repertoire** (by creation order) as the implicit active repertoire. If no repertoire exists, the empty-state onboarding is shown instead (see Onboarding below).
 
@@ -47,6 +48,10 @@ The "Start Drill" button navigates to drill mode. See [drill-mode.md](drill-mode
 ### Free Practice
 
 The "Free Practice" button navigates to free practice mode. See [free-practice.md](free-practice.md).
+
+### Add Line
+
+The "Add Line" button navigates directly to the Add Line screen for the active repertoire. This provides a shortcut that bypasses the Repertoire Manager. The Add Line screen remains accessible from the Repertoire Manager as well. See [add-line.md](add-line.md).
 
 ### Repertoire Browser
 

@@ -12,9 +12,11 @@ The Add Line screen uses the same line entry mechanics as [line-management.md](l
 
 - **"Add Line" header** displayed above the board, making the screen's purpose clear.
 - **Banner gap:** There must be visible vertical spacing between the header banner and the chessboard. The board must not sit flush against the banner. See [design/ui-guidelines.md](../design/ui-guidelines.md).
+- **Static header only above board:** The only content permitted above the board is the static "Add Line" header (app bar / title bar). It must have constant, fixed height. No dynamic content — including line names, banners, labels, status messages, or any variable-height widget — may be inserted between the app bar and the board container. Doing so would shift the board downward and violates the board-layout-consistency contract.
 - The **chessboard** is the main interaction area — the user plays moves to build a line.
 - **Move pills** are displayed below the board (see Move Pills section).
-- **Action buttons** (confirm, take-back, flip board) appear below the move pills, grouped tightly together (not spread across the full width).
+- **Action buttons** (confirm, take-back, flip board) are anchored to a **fixed position** at the bottom of the screen (e.g. in a `BottomAppBar` or equivalent fixed-footer row). They must not shift as pill rows are added or removed. The specific widget is an implementation detail; the requirement is that the buttons are always reachable at the same vertical position, grouped tightly together (not spread across the full width).
+- The **pill area** between the board and the action buttons must be scrollable (or otherwise overflow-safe) so that a large number of pills cannot push the action buttons off screen or crowd out the board.
 - **No Tree Explorer** — this screen is purely about playing moves on the board.
 - **No Edit mode toggle** — the screen is always in entry mode. Editing happens inline via the move pills.
 
@@ -27,12 +29,14 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 - Pills are shown in order: e.g. `e4` → `e5` → `Nf3` → `Nc6` → ...
 - As the user makes moves on the board, new pills are appended to the row.
 - If a pill's move exists in the database and has a **label**, the label is shown beneath the pill as **flat text** (not angled/slanted).
-- Label placement must avoid overlap with neighboring pills and neighboring labels. Relative offsets that cause collisions are not acceptable.
-- The layout should reserve enough vertical space per wrapped row so labels remain legible across dense move sequences.
+- **Label overlap is not permitted under any circumstances.** Labels must be rendered in a dedicated, reserved vertical slot that is part of each pill row's intrinsic height — not absolutely positioned on top of other content.
+- Each wrapped row of pills must allocate sufficient height to contain both the pill AND the tallest possible label beneath it, regardless of whether any pill in that row actually has a label. This ensures uniform row heights and prevents adjacent rows from colliding.
+- Labels must not bleed into adjacent rows or visually overlap adjacent pills. A label may extend horizontally into the column space of a neighbouring pill (if that pill has no label), but it must never sit on top of the neighbouring pill itself.
 - All pills use the same styling regardless of whether the move is already saved in the database or is new/unsaved.
 - **Equal width:** All pills have the **same width**, regardless of the SAN text length. This provides a clean, uniform appearance.
 - **Styling:** Pills use a blue fill, modest border radius (not full stadium shape), per [design/ui-guidelines.md](../design/ui-guidelines.md).
 - **Wrapping:** The pill row wraps onto multiple lines when moves exceed the available width. Pills must never scroll off-screen invisibly.
+- **Overflow safety:** The pill area has a bounded maximum height (the space between the board and the fixed action buttons). When wrapped rows exceed this height, the pill area must scroll vertically so that all pills remain reachable and the action buttons remain at their fixed position. The board must not be displaced regardless of how many rows are present.
 
 ### Navigation (Tap)
 
@@ -82,22 +86,35 @@ A **flip board** toggle is available. Board orientation determines the line's co
 
 Line parity validation on confirm follows [line-management.md](line-management.md).
 
+### Flip board does not modify the move buffer
+
+**Flipping the board is a display-only operation.** It must never alter, truncate, or otherwise modify the in-memory move buffer. The full sequence of moves the user has played is preserved exactly as entered, regardless of how many times the board is flipped or what orientation it currently shows.
+
+- Parity is validated **at confirm time only** — never at flip time.
+- The expected leaf color is derived from the board orientation **at the moment the user presses Confirm**, not from the orientation in which moves were entered.
+- If the buffered line ends on a ply depth that is inconsistent with the orientation at confirm time, the inline parity-mismatch warning must be shown (see Confirmation Behavior). No moves may be silently removed from the buffer to make the line "fit" the current orientation.
+
 ## Confirmation Behavior
 
 - **No popup on confirm.** When the user presses Confirm, any warnings (e.g., line parity mismatch) are shown as an **inline warning below the board**, not as a popup dialog.
 - The user can read the warning and then either continue editing the line, flip the board, or confirm anyway.
 - The inline warning is dismissible and non-blocking — it does not interrupt the user's flow.
 - See [design/ui-guidelines.md](../design/ui-guidelines.md) for the inline warning convention.
+- **Parity mismatch must never silently modify the buffer.** If the buffered line does not satisfy the parity implied by the current board orientation, the warning is shown and the buffer is left intact — no moves are removed or saved. This applies regardless of how the mismatch arose, including when the user built a valid line and then flipped the board before confirming. See the "Flip board does not modify the move buffer" constraint above.
 
 ## Undo Feedback Lifetime
 
 - Undo feedback for "line added" actions should be scoped to the Add Line screen route.
 - The undo message duration should be short (about 4-6 seconds) and should not remain visible after navigating to another screen.
 - If the user leaves Add Line, any active undo feedback is dismissed.
+- The "line saved/extended" feedback (and any associated undo affordance) must also be dismissed when the user **begins a new line on the same screen**. A new line begins when the user makes their first board move after a successful confirm — i.e., the first move of a fresh sequence following the builder reset. An explicit "New Line" or reset action (if present) counts equally.
+- In other words: any board interaction that appends the first move of a new line clears the feedback immediately, regardless of whether the auto-dismiss timer has elapsed.
 
 ## Aggregate Name Preview
 
-The current **aggregate display name** (computed from labels along the path) is shown below the board, updating as the user moves through the line. The label area always reserves its vertical space to prevent board resizing. This helps the user see which variation they're building and spot missing labels.
+The current **aggregate display name** (computed from labels along the path) is shown **below the board only**, updating as the user moves through the line. The label area always reserves its vertical space to prevent board resizing. This helps the user see which variation they're building and spot missing labels.
+
+The aggregate name must **never** appear above the board or in any widget between the app bar and the board container. Placing it above the board would cause the board to shift when the name appears or disappears, violating the board-layout-consistency contract.
 
 ## Navigation
 
