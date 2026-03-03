@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../controllers/drill_controller.dart';
 import '../theme/board_theme.dart';
 import '../theme/drill_feedback_theme.dart';
+import '../theme/spacing.dart';
 import '../widgets/chessboard_widget.dart';
 import '../widgets/session_summary_widget.dart';
 
@@ -179,12 +180,18 @@ class DrillScreen extends ConsumerWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= 600;
 
-    final lineLabelWidget = lineLabel.isNotEmpty
-        ? SizedBox(
-            key: const ValueKey('drill-line-label'),
-            width: double.infinity,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    final lineLabelWidget = SizedBox(
+      key: const ValueKey('drill-line-label-area'),
+      height: kLineLabelHeight,
+      width: double.infinity,
+      child: lineLabel.isNotEmpty
+          ? Padding(
+              key: const ValueKey('drill-line-label'),
+              padding: const EdgeInsets.only(
+                left: kLineLabelLeftInset,
+                top: 4,
+                bottom: 4,
+              ),
               child: Text(
                 lineLabel,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -194,9 +201,9 @@ class DrillScreen extends ConsumerWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-          )
-        : null;
+            )
+          : null,
+    );
 
     final boardWidget = ChessboardWidget(
       controller: notifier.boardController,
@@ -244,7 +251,7 @@ class DrillScreen extends ConsumerWidget {
                               child: boardWidget,
                             ),
                           ),
-                          ?lineLabelWidget,
+                          lineLabelWidget,
                         ],
                       ),
                     ),
@@ -264,7 +271,7 @@ class DrillScreen extends ConsumerWidget {
           : Column(
               children: [
                 Expanded(child: boardWidget),
-                ?lineLabelWidget,
+                lineLabelWidget,
                 statusWidget,
                 ?filterWidget,
               ],

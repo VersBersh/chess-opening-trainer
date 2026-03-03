@@ -14,6 +14,7 @@ import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/screens/repertoire_browser_screen.dart';
 import 'package:chess_trainer/widgets/browser_action_bar.dart';
+import 'package:chess_trainer/widgets/browser_board_panel.dart';
 import 'package:chess_trainer/widgets/inline_label_editor.dart';
 import 'package:chess_trainer/widgets/move_tree_widget.dart';
 
@@ -250,8 +251,67 @@ void main() {
       await tester.tap(find.text('1. e4 e5'));
       await tester.pump();
 
-      // No display name header should appear (there are no labels in the path)
-      // The display name container won't be built at all when empty.
+      // The header widget is always rendered (reserves space), even when
+      // display name is empty.
+      expect(find.byType(BrowserDisplayNameHeader), findsOneWidget);
+
+      // No text descendant should be rendered inside the header.
+      expect(
+        find.descendant(
+          of: find.byType(BrowserDisplayNameHeader),
+          matching: find.byType(Text),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('label appears below the board in narrow layout',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        labelsOnSan: {'e4': 'King Pawn'},
+      );
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Select e4 to show the label
+      await tester.tap(find.textContaining('1. e4'));
+      await tester.pump();
+
+      final boardBox = tester.getRect(find.byType(Chessboard));
+      final headerBox =
+          tester.getRect(find.byType(BrowserDisplayNameHeader));
+      expect(headerBox.top, greaterThanOrEqualTo(boardBox.bottom),
+          reason: 'Label should appear below the board in narrow layout');
+    });
+
+    testWidgets('label appears below the board in wide layout',
+        (tester) async {
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        labelsOnSan: {'e4': 'King Pawn'},
+      );
+
+      await tester.pumpWidget(
+          buildTestApp(db, repId, viewportSize: const Size(900, 600)));
+      await tester.pumpAndSettle();
+
+      // Select e4 to show the label
+      await tester.tap(find.textContaining('1. e4'));
+      await tester.pump();
+
+      final boardBox = tester.getRect(find.byType(Chessboard));
+      final headerBox =
+          tester.getRect(find.byType(BrowserDisplayNameHeader));
+      expect(headerBox.top, greaterThanOrEqualTo(boardBox.bottom),
+          reason: 'Label should appear below the board in wide layout');
     });
 
     testWidgets('expand/collapse toggles child visibility', (tester) async {

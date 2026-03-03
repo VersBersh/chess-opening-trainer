@@ -114,7 +114,6 @@ class BrowserContent extends StatelessWidget {
 
     return Column(
       children: [
-        BrowserDisplayNameHeader(displayName: _displayName),
         Flexible(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxBoardSize),
@@ -130,6 +129,7 @@ class BrowserContent extends StatelessWidget {
             ),
           ),
         ),
+        BrowserDisplayNameHeader(displayName: _displayName),
         BrowserBoardControls(
           onFlipBoard: onFlipBoard,
           onNavigateBack: _canNavigateBack ? onNavigateBack : null,
@@ -154,19 +154,28 @@ class BrowserContent extends StatelessWidget {
           children: [
             SizedBox(
               width: boardSize,
-              height: boardSize,
-              child: BrowserChessboard(
-                controller: boardController,
-                orientation: state.boardOrientation,
-                settings: boardSettings,
-                shapes: shapes,
-                onTouchedSquare: onSquareTapped,
+              height: constraints.maxHeight,
+              child: Column(
+                children: [
+                  Flexible(
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: BrowserChessboard(
+                        controller: boardController,
+                        orientation: state.boardOrientation,
+                        settings: boardSettings,
+                        shapes: shapes,
+                        onTouchedSquare: onSquareTapped,
+                      ),
+                    ),
+                  ),
+                  BrowserDisplayNameHeader(displayName: _displayName),
+                ],
               ),
             ),
             Expanded(
               child: Column(
                 children: [
-                  BrowserDisplayNameHeader(displayName: _displayName),
                   BrowserBoardControls(
                     onFlipBoard: onFlipBoard,
                     onNavigateBack:

@@ -3,6 +3,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/material.dart';
 
+import '../theme/spacing.dart';
 import 'chessboard_controller.dart';
 import 'chessboard_widget.dart';
 
@@ -50,7 +51,9 @@ class BrowserChessboard extends StatelessWidget {
 
 /// Displays the aggregate display name for the selected move.
 ///
-/// Renders nothing ([SizedBox.shrink]) when [displayName] is empty.
+/// Always reserves [kLineLabelHeight] of vertical space below the board.
+/// When [displayName] is empty the space is still rendered (no text shown)
+/// so the board never resizes.
 class BrowserDisplayNameHeader extends StatelessWidget {
   const BrowserDisplayNameHeader({
     super.key,
@@ -61,23 +64,27 @@ class BrowserDisplayNameHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (displayName.isEmpty) return const SizedBox.shrink();
-
-    return Container(
+    return SizedBox(
+      height: kLineLabelHeight,
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Text(
-        displayName,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      child: displayName.isNotEmpty
+          ? Padding(
+              padding: const EdgeInsets.only(
+                left: kLineLabelLeftInset,
+                top: 4,
+                bottom: 4,
+              ),
+              child: Text(
+                displayName,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.normal,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            )
+          : null,
     );
   }
 }

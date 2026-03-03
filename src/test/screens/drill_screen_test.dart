@@ -13,6 +13,7 @@ import 'package:chess_trainer/repositories/local/database.dart';
 import 'package:chess_trainer/repositories/repertoire_repository.dart';
 import 'package:chess_trainer/repositories/review_repository.dart';
 import 'package:chess_trainer/screens/drill_screen.dart';
+import 'package:chess_trainer/theme/spacing.dart';
 import 'package:chess_trainer/widgets/chessboard_widget.dart';
 
 // ---------------------------------------------------------------------------
@@ -936,7 +937,8 @@ void main() {
       expect(find.text('Sicilian'), findsOneWidget);
     });
 
-    testWidgets('label is hidden when line has no labels', (tester) async {
+    testWidgets('label area reserves space but shows no text when line has no labels',
+        (tester) async {
       final card = buildReviewCard(whiteLine9);
       final repertoireRepo = FakeRepertoireRepository(moves: whiteLine9);
       final reviewRepo = FakeReviewRepository(dueCards: [card]);
@@ -947,7 +949,14 @@ void main() {
       ));
       await tester.pumpAndSettle(const Duration(seconds: 5));
 
+      // The text-keyed widget is absent (key only set when label is non-empty)
       expect(find.byKey(const ValueKey('drill-line-label')), findsNothing);
+
+      // But the label area container always reserves space
+      final areaFinder = find.byKey(const ValueKey('drill-line-label-area'));
+      expect(areaFinder, findsOneWidget);
+      final areaBox = tester.getRect(areaFinder);
+      expect(areaBox.height, kLineLabelHeight);
     });
 
     testWidgets(
@@ -1737,7 +1746,7 @@ void main() {
           find.byKey(const ValueKey('drill-line-label')), findsOneWidget);
     });
 
-    testWidgets('hides line label when line has no labels in Free Practice',
+    testWidgets('label area reserves space but shows no text in Free Practice when unlabeled',
         (tester) async {
       final card = buildReviewCard(whiteLine9);
       final freePracticeConfig = DrillConfig(
@@ -1755,7 +1764,14 @@ void main() {
       ));
       await tester.pumpAndSettle(const Duration(seconds: 5));
 
+      // The text-keyed widget is absent (key only set when label is non-empty)
       expect(find.byKey(const ValueKey('drill-line-label')), findsNothing);
+
+      // But the label area container always reserves space
+      final areaFinder = find.byKey(const ValueKey('drill-line-label-area'));
+      expect(areaFinder, findsOneWidget);
+      final areaBox = tester.getRect(areaFinder);
+      expect(areaBox.height, kLineLabelHeight);
     });
 
     testWidgets('line label updates after Keep Going in Free Practice',
