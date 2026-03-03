@@ -611,6 +611,106 @@ void main() {
   // These verify the dartchess `makeSan` destructuring pattern used in the
   // browser screen's `_onEditModeMove` handler.
 
+  group('Buffered move labels', () {
+    test('setBufferedLabel mutates label on the correct buffered move', () {
+      final cache = RepertoireTreeCache.build([]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // Buffer two moves.
+      final fens = computeFens(['e4', 'e5']);
+      engine.acceptMove('e4', fens[0]);
+      engine.acceptMove('e5', fens[1]);
+
+      expect(engine.bufferedMoves[0].label, isNull);
+      expect(engine.bufferedMoves[1].label, isNull);
+
+      // Set label on the first buffered move.
+      engine.setBufferedLabel(0, 'King Pawn');
+
+      expect(engine.bufferedMoves[0].label, 'King Pawn');
+      expect(engine.bufferedMoves[1].label, isNull);
+
+      // Set label on the second buffered move.
+      engine.setBufferedLabel(1, 'Open Game');
+
+      expect(engine.bufferedMoves[0].label, 'King Pawn');
+      expect(engine.bufferedMoves[1].label, 'Open Game');
+    });
+
+    test('reapplyBufferedLabels restores labels after replay', () {
+      final cache = RepertoireTreeCache.build([]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // Buffer two moves and label them.
+      final fens = computeFens(['e4', 'e5']);
+      engine.acceptMove('e4', fens[0]);
+      engine.acceptMove('e5', fens[1]);
+      engine.setBufferedLabel(0, 'King Pawn');
+      engine.setBufferedLabel(1, 'Open Game');
+
+      // Snapshot labels.
+      final labels = engine.bufferedMoves.map((b) => b.label).toList();
+
+      // Simulate replay: create fresh engine and re-buffer.
+      final engine2 = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+      engine2.acceptMove('e4', fens[0]);
+      engine2.acceptMove('e5', fens[1]);
+
+      // Fresh moves have no labels.
+      expect(engine2.bufferedMoves[0].label, isNull);
+      expect(engine2.bufferedMoves[1].label, isNull);
+
+      // Reapply labels from snapshot.
+      engine2.reapplyBufferedLabels(labels);
+
+      expect(engine2.bufferedMoves[0].label, 'King Pawn');
+      expect(engine2.bufferedMoves[1].label, 'Open Game');
+    });
+
+    test('buffered move labels survive take-back of later moves', () {
+      final cache = RepertoireTreeCache.build([]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // Buffer three moves and label the first two.
+      final fens = computeFens(['e4', 'e5', 'Nf3']);
+      engine.acceptMove('e4', fens[0]);
+      engine.acceptMove('e5', fens[1]);
+      engine.acceptMove('Nf3', fens[2]);
+
+      engine.setBufferedLabel(0, 'King Pawn');
+      engine.setBufferedLabel(1, 'Open Game');
+
+      // Take back Nf3.
+      engine.takeBack();
+
+      expect(engine.bufferedMoves.length, 2);
+      expect(engine.bufferedMoves[0].label, 'King Pawn');
+      expect(engine.bufferedMoves[1].label, 'Open Game');
+
+      // Take back e5.
+      engine.takeBack();
+
+      expect(engine.bufferedMoves.length, 1);
+      expect(engine.bufferedMoves[0].label, 'King Pawn');
+    });
+  });
+
   group('SAN computation from NormalMove + position', () {
     test('standard move: e2-e4 from initial position produces "e4"', () {
       final position = Chess.initial;

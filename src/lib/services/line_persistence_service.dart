@@ -1,3 +1,5 @@
+import 'package:drift/drift.dart' show Value;
+
 import '../repositories/local/database.dart';
 import '../repositories/repertoire_repository.dart';
 import '../repositories/review_repository.dart';
@@ -74,6 +76,9 @@ class LinePersistenceService {
         repertoireId: confirmData.repertoireId,
         fen: buffered.fen,
         san: buffered.san,
+        label: buffered.label != null
+            ? Value(buffered.label)
+            : const Value.absent(),
         sortOrder: i == 0 ? confirmData.sortOrder : 0,
       ));
     }
@@ -96,6 +101,9 @@ class LinePersistenceService {
         repertoireId: confirmData.repertoireId,
         fen: buffered.fen,
         san: buffered.san,
+        label: buffered.label != null
+            ? Value(buffered.label)
+            : const Value.absent(),
         sortOrder: i == 0 ? confirmData.sortOrder : 0,
       ));
     }

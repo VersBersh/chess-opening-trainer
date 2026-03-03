@@ -36,7 +36,7 @@ class MovePillData {
     required this.san,
     required this.isSaved,
     this.label,
-  }) : assert(isSaved || label == null, 'Only saved moves can have labels');
+  });
 }
 
 // ---------------------------------------------------------------------------

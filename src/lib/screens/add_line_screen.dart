@@ -114,8 +114,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     final isSameAsFocused = index == state.focusedPillIndex;
     final pill = index < state.pills.length ? state.pills[index] : null;
 
-    if (isSameAsFocused && pill != null && pill.isSaved) {
-      // Re-tap on a focused saved pill: open the inline editor.
+    if (isSameAsFocused && pill != null) {
+      // Re-tap on a focused pill: open the inline editor.
       setState(() => _isLabelEditorVisible = true);
       return;
     }
@@ -411,6 +411,19 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
     final focusedIndex = state.focusedPillIndex;
     if (focusedIndex == null) return const SizedBox.shrink();
 
+    final pill = focusedIndex < state.pills.length
+        ? state.pills[focusedIndex]
+        : null;
+    if (pill == null) return const SizedBox.shrink();
+
+    if (pill.isSaved) {
+      return _buildSavedPillLabelEditor(state, focusedIndex);
+    } else {
+      return _buildUnsavedPillLabelEditor(state, focusedIndex, pill);
+    }
+  }
+
+  Widget _buildSavedPillLabelEditor(AddLineState state, int focusedIndex) {
     final move = _controller.getMoveAtPillIndex(focusedIndex);
     if (move == null) return const SizedBox.shrink();
 
@@ -456,6 +469,28 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
         moveId: move.id,
         newLabel: newLabel,
       ),
+    );
+  }
+
+  Widget _buildUnsavedPillLabelEditor(
+    AddLineState state,
+    int focusedIndex,
+    MovePillData pill,
+  ) {
+    return InlineLabelEditor(
+      key: ValueKey('label-editor-unsaved-$focusedIndex'),
+      currentLabel: pill.label,
+      moveId: -focusedIndex - 1,
+      descendantLeafCount: 0,
+      previewDisplayName: (text) => text,
+      onSave: (label) async {
+        _controller.updateBufferedLabel(focusedIndex, label);
+      },
+      onClose: () {
+        if (mounted) {
+          setState(() => _isLabelEditorVisible = false);
+        }
+      },
     );
   }
 
@@ -520,8 +555,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen> {
   }
 
   Widget _buildActionBar(BuildContext context, AddLineState state) {
-    // Label editing is enabled when a saved pill is focused, regardless of
-    // board orientation or unsaved moves. Labels are organizational metadata
+    // Label editing is enabled when any pill is focused, regardless of
+    // board orientation or save state. Labels are organizational metadata
     // independent of line color (see add-line.md).
     final canEditLabel = _controller.canEditLabel;
 

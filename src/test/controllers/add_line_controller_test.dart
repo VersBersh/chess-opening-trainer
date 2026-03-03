@@ -1010,9 +1010,10 @@ void main() {
       // Assert: canEditLabel is true when focused on pill 0 (saved).
       expect(controller.canEditLabel, true);
 
-      // Focus on pill 3 (Nc6, unsaved). Assert canEditLabel is false.
+      // Focus on pill 3 (Nc6, unsaved). Assert canEditLabel is true (unsaved
+      // pills now support label editing).
       controller.onPillTapped(3, boardController);
-      expect(controller.canEditLabel, false);
+      expect(controller.canEditLabel, true);
 
       controller.dispose();
       boardController.dispose();
@@ -1515,6 +1516,195 @@ void main() {
 
       expect(controller.hasNewMoves, true);
       expect(controller.hasLineLabel, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('unsaved pill label editing', () {
+    test('canEditLabel returns true when focused on an unsaved pill', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Buffer e4 (unsaved pill).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Focus on pill 0 (e4, unsaved).
+      expect(controller.state.pills.length, 1);
+      expect(controller.state.pills[0].isSaved, false);
+      expect(controller.state.focusedPillIndex, 0);
+      expect(controller.canEditLabel, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('updateBufferedLabel sets label on buffered move and rebuilds pills',
+        () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Buffer e4 and e5.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final fens = computeFens(['e4', 'e5']);
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].label, isNull);
+
+      // Set label on first buffered pill.
+      controller.updateBufferedLabel(0, 'King Pawn');
+
+      expect(controller.state.pills[0].label, 'King Pawn');
+      expect(controller.state.pills[0].isSaved, false);
+      expect(controller.state.pills[1].label, isNull);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('buffered labels are preserved across take-back and re-entry',
+        () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Buffer e4, e5, Nf3.
+      final fens = computeFens(['e4', 'e5', 'Nf3']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      final nf3Move = sanToNormalMove(fens[1], 'Nf3');
+      boardController.playMove(nf3Move);
+      controller.onBoardMove(nf3Move, boardController);
+
+      // Label the first two buffered moves.
+      controller.updateBufferedLabel(0, 'King Pawn');
+      controller.updateBufferedLabel(1, 'Open Game');
+
+      expect(controller.state.pills[0].label, 'King Pawn');
+      expect(controller.state.pills[1].label, 'Open Game');
+      expect(controller.state.pills[2].label, isNull);
+
+      // Take back the last move (Nf3).
+      controller.onTakeBack(boardController);
+
+      // Labels on remaining pills should be preserved.
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].label, 'King Pawn');
+      expect(controller.state.pills[1].label, 'Open Game');
+
+      // Re-enter a new move — earlier labels should still persist.
+      final nc3Move = sanToNormalMove(fens[1], 'Nc3');
+      boardController.playMove(nc3Move);
+      controller.onBoardMove(nc3Move, boardController);
+
+      expect(controller.state.pills.length, 3);
+      expect(controller.state.pills[0].label, 'King Pawn');
+      expect(controller.state.pills[1].label, 'Open Game');
+      expect(controller.state.pills[2].label, isNull);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('buffered labels are preserved when updateLabel is called on a saved move',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4, e5 (saved), then buffer Nf3.
+      final fens = computeFens(['e4', 'e5', 'Nf3']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      final nf3Move = sanToNormalMove(fens[1], 'Nf3');
+      boardController.playMove(nf3Move);
+      controller.onBoardMove(nf3Move, boardController);
+
+      // Label the buffered move Nf3.
+      controller.updateBufferedLabel(2, 'Italian');
+
+      expect(controller.state.pills[2].label, 'Italian');
+      expect(controller.state.pills[2].isSaved, false);
+
+      // Focus on pill 0 (e4, saved) and update its label.
+      controller.onPillTapped(0, boardController);
+      await controller.updateLabel(0, 'King Pawn');
+
+      // The buffered label on Nf3 should still be preserved.
+      expect(controller.state.pills.length, 3);
+      expect(controller.state.pills[0].label, 'King Pawn');
+      expect(controller.state.pills[0].isSaved, true);
+      expect(controller.state.pills[2].label, 'Italian');
+      expect(controller.state.pills[2].isSaved, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('buffered labels are persisted on confirm', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Buffer e4, e5.
+      final fens = computeFens(['e4', 'e5']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      // Label first buffered move.
+      controller.updateBufferedLabel(0, 'King Pawn');
+
+      // Flip board for parity (2-ply = even = black expected).
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // Verify the label was persisted to the DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Db.label, 'King Pawn');
 
       controller.dispose();
       boardController.dispose();

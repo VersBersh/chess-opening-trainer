@@ -11,7 +11,16 @@ import '../repositories/local/database.dart';
 class BufferedMove {
   final String san;
   final String fen;
-  const BufferedMove({required this.san, required this.fen});
+  final String? label;
+  const BufferedMove({required this.san, required this.fen, this.label});
+
+  BufferedMove copyWith({String? san, String? fen, String? Function()? label}) {
+    return BufferedMove(
+      san: san ?? this.san,
+      fen: fen ?? this.fen,
+      label: label != null ? label() : this.label,
+    );
+  }
 }
 
 /// Result of [LineEntryEngine.acceptMove].
@@ -232,9 +241,28 @@ class LineEntryEngine {
     );
   }
 
+  /// Sets the label on a buffered move at the given index.
+  void setBufferedLabel(int index, String? label) {
+    if (index >= 0 && index < _bufferedMoves.length) {
+      _bufferedMoves[index] = _bufferedMoves[index].copyWith(label: () => label);
+    }
+  }
+
+  /// Reapplies labels to buffered moves after a replay.
+  ///
+  /// Used to restore labels that would otherwise be lost when buffered moves
+  /// are replayed onto a fresh engine (e.g. after [updateLabel] rebuilds the
+  /// cache).
+  void reapplyBufferedLabels(List<String?> labels) {
+    for (var i = 0; i < labels.length && i < _bufferedMoves.length; i++) {
+      _bufferedMoves[i] = _bufferedMoves[i].copyWith(label: () => labels[i]);
+    }
+  }
+
   /// Returns the aggregate display name for the current position in the tree.
   ///
-  /// Only reflects labels on existing moves (buffered moves have no labels).
+  /// Only reflects labels on existing/followed moves; buffered labels are not
+  /// included in the aggregate display name (they are not in the tree cache).
   String getCurrentDisplayName() {
     final lastExisting = _lastExistingMoveId;
     if (lastExisting == null) return '';

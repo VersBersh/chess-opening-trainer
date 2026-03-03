@@ -384,7 +384,7 @@ void main() {
       expect(find.text('1. e4'), findsNothing);
     });
 
-    testWidgets('label button disabled when no saved pill focused',
+    testWidgets('label button disabled when no pill focused',
         (tester) async {
       final repId = await seedRepertoire(db);
 
@@ -1935,6 +1935,82 @@ void main() {
       // No moves should be persisted.
       final moves = await repRepo.getMovesForRepertoire(repId);
       expect(moves, isEmpty);
+    });
+  });
+
+  group('Unsaved pill label editing', () {
+    testWidgets('label button enabled when unsaved pill is focused',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Play e4 (unsaved pill since repertoire is empty).
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      // The unsaved pill e4 should be focused (last pill).
+      expect(find.text('e4'), findsOneWidget);
+
+      // Label button should be enabled.
+      final labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNotNull);
+    });
+
+    testWidgets('double-tap unsaved pill opens label editor',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Play e4 (unsaved pill).
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      // Tap e4 to ensure it is focused.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Tap e4 again (re-tap) to open the inline label editor.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // InlineLabelEditor should appear.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+    });
+
+    testWidgets('label entered on unsaved pill is displayed on the pill',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Play e4 (unsaved pill).
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      // Open label editor via Label button.
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Enter label text and press Enter.
+      await tester.enterText(find.byType(TextField), 'King Pawn');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // The label should be visible on the pill.
+      expect(find.text('King Pawn'), findsOneWidget);
     });
   });
 }

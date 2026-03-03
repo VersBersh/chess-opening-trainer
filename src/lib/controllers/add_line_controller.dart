@@ -211,6 +211,7 @@ class AddLineController extends ChangeNotifier {
       pills.add(MovePillData(
         san: buffered.san,
         isSaved: false,
+        label: buffered.label,
       ));
     }
 
@@ -282,9 +283,11 @@ class AddLineController extends ChangeNotifier {
 
   /// Whether any move along the current line's path has a label.
   ///
-  /// Returns `true` when [AddLineState.aggregateDisplayName] is non-empty,
-  /// meaning at least one existing/followed move has a label assigned.
-  bool get hasLineLabel => _state.aggregateDisplayName.isNotEmpty;
+  /// Returns `true` when any pill (saved or unsaved) has a label assigned.
+  bool get hasLineLabel {
+    if (_state.aggregateDisplayName.isNotEmpty) return true;
+    return _state.pills.any((p) => p.label != null && p.label!.isNotEmpty);
+  }
 
   /// Whether branching from the currently focused pill is valid.
   ///
@@ -592,14 +595,14 @@ class AddLineController extends ChangeNotifier {
 
   /// Whether label editing is permitted.
   ///
-  /// Label editing is allowed whenever a saved pill is focused, regardless of
-  /// whether unsaved (buffered) moves exist. The `updateLabel()` method
-  /// preserves buffered moves via replay after the cache rebuild.
+  /// Label editing is allowed whenever any pill is focused, regardless of
+  /// whether it is saved or unsaved. For saved pills, `updateLabel()` persists
+  /// to the DB. For unsaved pills, `updateBufferedLabel()` mutates the
+  /// in-memory `BufferedMove.label`.
   bool get canEditLabel {
     final focusedIndex = _state.focusedPillIndex;
     if (focusedIndex == null) return false;
     if (focusedIndex >= _state.pills.length) return false;
-    if (!_state.pills[focusedIndex].isSaved) return false;
     return true;
   }
 
@@ -616,6 +619,7 @@ class AddLineController extends ChangeNotifier {
     // Capture engine state before any async gaps, so the replay uses a
     // consistent snapshot even if _state changes during the awaits below.
     final savedBufferedMoves = List.of(_state.engine?.bufferedMoves ?? []);
+    final savedBufferedLabels = savedBufferedMoves.map((b) => b.label).toList().cast<String?>();
     final savedLastExistingMoveId = _state.engine?.lastExistingMoveId;
 
     // Save navigation state before refresh.
@@ -649,6 +653,10 @@ class AddLineController extends ChangeNotifier {
       engine.acceptMove(buffered.san, buffered.fen);
     }
 
+    // Reapply labels after replay — acceptMove creates fresh BufferedMove
+    // instances without labels, so we restore the snapshot.
+    engine.reapplyBufferedLabels(savedBufferedLabels);
+
     // Rebuild pills and display name from the fresh engine/cache.
     final pills = _buildPillsList(engine);
     final displayName = engine.getCurrentDisplayName();
@@ -669,6 +677,43 @@ class AddLineController extends ChangeNotifier {
       aggregateDisplayName: displayName,
       isLoading: false,
       repertoireName: repertoire.name,
+      pills: pills,
+    );
+    notifyListeners();
+  }
+
+  /// Updates the label on a buffered (unsaved) move at the given pill index.
+  ///
+  /// Unlike [updateLabel], which persists to the DB and rebuilds the engine,
+  /// this method simply mutates the in-memory [BufferedMove.label] and
+  /// rebuilds pills.
+  void updateBufferedLabel(int pillIndex, String? newLabel) {
+    final engine = _state.engine;
+    if (engine == null) return;
+
+    final existingLen = engine.existingPath.length;
+    final followedLen = engine.followedMoves.length;
+    final bufferedIndex = pillIndex - existingLen - followedLen;
+
+    if (bufferedIndex < 0 || bufferedIndex >= engine.bufferedMoves.length) {
+      return;
+    }
+
+    engine.setBufferedLabel(bufferedIndex, newLabel);
+
+    final pills = _buildPillsList(engine);
+    final displayName = engine.getCurrentDisplayName();
+
+    _state = AddLineState(
+      treeCache: _state.treeCache,
+      engine: engine,
+      boardOrientation: _state.boardOrientation,
+      focusedPillIndex: _state.focusedPillIndex,
+      currentFen: _state.currentFen,
+      preMoveFen: _state.preMoveFen,
+      aggregateDisplayName: displayName,
+      isLoading: false,
+      repertoireName: _state.repertoireName,
       pills: pills,
     );
     notifyListeners();

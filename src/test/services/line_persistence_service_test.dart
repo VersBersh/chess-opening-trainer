@@ -212,6 +212,43 @@ void main() {
     });
   });
 
+  group('Extension persistence with labels', () {
+    test('persistNewMoves writes buffered labels into RepertoireMovesCompanion inserts for extensions',
+        () async {
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = allMoves.first;
+
+      final fens = computeFens(['e4', 'e5', 'Nf3']);
+
+      final confirmData = ConfirmData(
+        parentMoveId: e4Move.id,
+        newMoves: [
+          BufferedMove(san: 'e5', fen: fens[1], label: 'Open Game'),
+          BufferedMove(san: 'Nf3', fen: fens[2]),
+        ],
+        isExtension: true,
+        repertoireId: repId,
+        sortOrder: 0,
+      );
+
+      final result = await service.persistNewMoves(confirmData);
+      expect(result.insertedMoveIds.length, 2);
+
+      // Verify the label was persisted on the e5 move.
+      final movesAfter = await repRepo.getMovesForRepertoire(repId);
+      final e5Move = movesAfter.firstWhere((m) => m.san == 'e5');
+      final nf3Move = movesAfter.firstWhere((m) => m.san == 'Nf3');
+      expect(e5Move.label, 'Open Game');
+      expect(nf3Move.label, isNull);
+    });
+  });
+
   group('Branch persistence', () {
     test('branches from non-leaf: inserts moves and card, preserves existing',
         () async {
@@ -283,6 +320,40 @@ void main() {
       final cards = await reviewRepo.getAllCardsForRepertoire(repId);
       expect(cards.length, 1);
       expect(cards.first.leafMoveId, e5Move.id);
+    });
+  });
+
+  group('Branch persistence with labels', () {
+    test('persistNewMoves writes buffered labels into RepertoireMovesCompanion inserts for branches',
+        () async {
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'e5'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = allMoves.firstWhere((m) => m.san == 'e4');
+
+      final fens = computeFens(['e4', 'd5']);
+
+      final confirmData = ConfirmData(
+        parentMoveId: e4Move.id,
+        newMoves: [
+          BufferedMove(san: 'd5', fen: fens[1], label: 'Scandinavian'),
+        ],
+        isExtension: false,
+        repertoireId: repId,
+        sortOrder: 1,
+      );
+
+      final result = await service.persistNewMoves(confirmData);
+      expect(result.insertedMoveIds.length, 1);
+
+      // Verify the label was persisted on the d5 move.
+      final movesAfter = await repRepo.getMovesForRepertoire(repId);
+      final d5Move = movesAfter.firstWhere((m) => m.san == 'd5');
+      expect(d5Move.label, 'Scandinavian');
     });
   });
 }
