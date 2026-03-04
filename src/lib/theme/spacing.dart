@@ -16,6 +16,12 @@ const double kBoardFrameTopGap = kBannerGap; // 8dp -- same value, explicit name
 /// [kBoardFrameTopGap] as top-only EdgeInsets, for use with [Padding] widgets.
 const EdgeInsets kBoardFrameTopInsets = EdgeInsets.only(top: kBoardFrameTopGap);
 
+/// Maximum board dimension (width and height) used by the narrow-layout board
+/// on all screens. Shared so that every screen that shows a chessboard
+/// produces identical board pixel dimensions (board-layout-consistency
+/// contract — see features/add-line.md).
+const double kMaxBoardSize = 300;
+
 /// Fixed height reserved for the line-label area below the board.
 /// Sized to fit one line of titleMedium text (24dp) + 8dp vertical padding.
 const double kLineLabelHeight = 32;

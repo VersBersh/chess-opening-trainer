@@ -417,7 +417,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
 
         // Chessboard — direct Column child, position unaffected by pill count
         ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 300),
+          constraints: const BoxConstraints(maxHeight: kMaxBoardSize),
           child: AspectRatio(
             aspectRatio: 1,
             child: ChessboardWidget(

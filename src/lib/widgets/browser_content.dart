@@ -114,8 +114,8 @@ class BrowserContent extends StatelessWidget {
 
   Widget _buildNarrow(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final maxBoardSize = (screenHeight * 0.4).clamp(0.0, screenWidth);
+    final maxBoardSize =
+        (screenHeight * 0.4).clamp(0.0, kMaxBoardSize.toDouble());
 
     return Column(
       children: [

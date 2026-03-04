@@ -272,7 +272,14 @@ class DrillScreen extends ConsumerWidget {
               )
             : Column(
                 children: [
-                  Expanded(child: boardWidget),
+                  ConstrainedBox(
+                    constraints:
+                        const BoxConstraints(maxHeight: kMaxBoardSize),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: boardWidget,
+                    ),
+                  ),
                   lineLabelWidget,
                   statusWidget,
                   ?filterWidget,
