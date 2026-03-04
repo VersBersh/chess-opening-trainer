@@ -377,6 +377,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
           appBar: AppBar(
             title: const Text('Add Line'),
           ),
+          bottomNavigationBar:
+              state.isLoading ? null : _buildActionBar(context, state),
           body: state.isLoading
               ? const Center(child: CircularProgressIndicator())
               : _buildContent(context, state),
@@ -388,65 +390,69 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
   Widget _buildContent(BuildContext context, AddLineState state) {
     final displayName = state.aggregateDisplayName;
 
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // Aggregate display name banner
-          if (displayName.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              child: Text(
-                displayName,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+    return Column(
+      children: [
+        // Aggregate display name banner
+        if (displayName.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
             ),
-
-          const SizedBox(height: kBoardFrameTopGap),
-
-          // Chessboard
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 300),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: ChessboardWidget(
-                controller: _boardController,
-                orientation: state.boardOrientation,
-                playerSide: PlayerSide.both,
-                onMove: _onBoardMove,
-              ),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Text(
+              displayName,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
 
-          // Move pills
-          MovePillsWidget(
-            pills: state.pills,
-            focusedIndex: state.focusedPillIndex,
-            onPillTapped: _onPillTapped,
+        const SizedBox(height: kBoardFrameTopGap),
+
+        // Chessboard — direct Column child, position unaffected by pill count
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 300),
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: ChessboardWidget(
+              controller: _boardController,
+              orientation: state.boardOrientation,
+              playerSide: PlayerSide.both,
+              onMove: _onBoardMove,
+            ),
           ),
+        ),
 
-          // Inline label editor
-          if (_isLabelEditorVisible) _buildInlineLabelEditor(state),
+        // Scrollable pill area — bounded between board and fixed action bar
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Move pills
+                MovePillsWidget(
+                  pills: state.pills,
+                  focusedIndex: state.focusedPillIndex,
+                  onPillTapped: _onPillTapped,
+                ),
 
-          // Inline parity warning
-          if (_parityWarning != null) _buildParityWarning(_parityWarning!),
+                // Inline label editor
+                if (_isLabelEditorVisible) _buildInlineLabelEditor(state),
 
-          // Existing line info
-          if (_controller.isExistingLine)
-            _buildExistingLineInfo(context),
+                // Inline parity warning
+                if (_parityWarning != null) _buildParityWarning(_parityWarning!),
 
-          // Action bar
-          _buildActionBar(context, state),
-        ],
-      ),
+                // Existing line info
+                if (_controller.isExistingLine) _buildExistingLineInfo(context),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -611,39 +617,41 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     // independent of line color (see add-line.md).
     final canEditLabel = _controller.canEditLabel;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Flip board
-          IconButton(
-            onPressed: _onFlipBoard,
-            icon: const Icon(Icons.swap_vert),
-            tooltip: 'Flip board',
-          ),
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Flip board
+            IconButton(
+              onPressed: _onFlipBoard,
+              icon: const Icon(Icons.swap_vert),
+              tooltip: 'Flip board',
+            ),
 
-          // Take back
-          TextButton.icon(
-            onPressed: _controller.canTakeBack ? _onTakeBack : null,
-            icon: const Icon(Icons.undo, size: 18),
-            label: const Text('Take Back'),
-          ),
+            // Take back
+            TextButton.icon(
+              onPressed: _controller.canTakeBack ? _onTakeBack : null,
+              icon: const Icon(Icons.undo, size: 18),
+              label: const Text('Take Back'),
+            ),
 
-          // Confirm line
-          TextButton.icon(
-            onPressed: _controller.hasNewMoves ? _onConfirmLine : null,
-            icon: const Icon(Icons.check, size: 18),
-            label: const Text('Confirm'),
-          ),
+            // Confirm line
+            TextButton.icon(
+              onPressed: _controller.hasNewMoves ? _onConfirmLine : null,
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Confirm'),
+            ),
 
-          // Label
-          TextButton.icon(
-            onPressed: canEditLabel ? _onEditLabel : null,
-            icon: const Icon(Icons.label, size: 18),
-            label: const Text('Label'),
-          ),
-        ],
+            // Label
+            TextButton.icon(
+              onPressed: canEditLabel ? _onEditLabel : null,
+              icon: const Icon(Icons.label, size: 18),
+              label: const Text('Label'),
+            ),
+          ],
+        ),
       ),
     );
   }
