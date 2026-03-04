@@ -473,6 +473,41 @@ void main() {
 
       controller.dispose();
     });
+
+    test('flipBoard does not modify the move buffer', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5, Nf3 (3 buffered moves, 3-ply).
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final engine = controller.state.engine!;
+      expect(engine.bufferedMoves.length, 3);
+
+      // Flip white -> black.
+      controller.flipBoard();
+      expect(controller.state.boardOrientation, Side.black);
+      expect(engine.bufferedMoves.length, 3);
+      expect(engine.bufferedMoves.map((m) => m.san).toList(), ['e4', 'e5', 'Nf3']);
+
+      // Flip black -> white.
+      controller.flipBoard();
+      expect(controller.state.boardOrientation, Side.white);
+      expect(engine.bufferedMoves.length, 3);
+      expect(engine.bufferedMoves.map((m) => m.san).toList(), ['e4', 'e5', 'Nf3']);
+
+      controller.dispose();
+      boardController.dispose();
+    });
   });
 
   group('Aggregate display name', () {
@@ -623,6 +658,69 @@ void main() {
       expect(result, isA<ConfirmParityMismatch>());
       final mismatch = (result as ConfirmParityMismatch).mismatch;
       expect(mismatch.expectedOrientation, Side.white);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('confirmAndPersist after flip returns ConfirmParityMismatch for odd-ply line on black board', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4 (1-ply, odd = white line). Default orientation is white -> parity matches.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Flip to black -> now 1-ply line with black board = parity mismatch.
+      controller.flipBoard();
+      expect(controller.state.boardOrientation, Side.black);
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmParityMismatch>());
+      expect((result as ConfirmParityMismatch).mismatch.expectedOrientation, Side.white);
+
+      // Buffer unchanged, nothing written to DB.
+      final engine = controller.state.engine!;
+      expect(engine.bufferedMoves.length, 1);
+      final allMoves = await LocalRepertoireRepository(db).getMovesForRepertoire(repId);
+      expect(allMoves, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('buffer is unchanged after confirmAndPersist returns ConfirmParityMismatch', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5, Nf3 (3 buffered moves, 3-ply = odd = white line).
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Flip to black -> mismatch.
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmParityMismatch>());
+
+      // Buffer must still contain all 3 moves with correct SANs.
+      final engine = controller.state.engine!;
+      expect(engine.bufferedMoves.map((m) => m.san).toList(), ['e4', 'e5', 'Nf3']);
+
+      // Nothing written to DB.
+      final allMoves = await LocalRepertoireRepository(db).getMovesForRepertoire(repId);
+      expect(allMoves, isEmpty);
 
       controller.dispose();
       boardController.dispose();

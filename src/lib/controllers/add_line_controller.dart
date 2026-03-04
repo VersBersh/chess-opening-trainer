@@ -563,6 +563,13 @@ class AddLineController extends ChangeNotifier {
     );
     notifyListeners();
 
+    // Defensive parity re-check: flipping should resolve the mismatch, but
+    // guard against edge cases where it does not.
+    final recheck = engine.validateParity(_state.boardOrientation);
+    if (recheck is ParityMismatch) {
+      return ConfirmParityMismatch(mismatch: recheck);
+    }
+
     // Invalidate any prior undo snackbar.
     _undoGeneration++;
 

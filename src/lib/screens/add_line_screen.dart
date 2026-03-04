@@ -313,6 +313,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     if (!mounted) return;
     if (result is ConfirmSuccess) {
       _handleConfirmSuccess(result);
+    } else if (result is ConfirmParityMismatch) {
+      setState(() => _parityWarning = result.mismatch);
     } else if (result is ConfirmError) {
       _localMessengerKey.currentState?.showSnackBar(
         SnackBar(

@@ -1071,6 +1071,115 @@ void main() {
       expect(find.text('Lines for White should end on a White move'), findsNothing);
     });
 
+    testWidgets(
+        'valid white line + flip to black + confirm shows parity warning without saving',
+        (tester) async {
+      // Seed e4 and e5 with a label on e4, so hasLineLabel = true (no-name
+      // dialog is bypassed). User follows e4 and e5, then buffers Nf3.
+      // Total ply = 3 (odd = white expected). Default board = white -> matches.
+      // Flip to black -> mismatch. Confirm -> parity warning shown.
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        labelsOnSan: {'e4': 'King Pawn'},
+      );
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Follow e4.
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      // Follow e5.
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e7, to: Square.e5));
+      await tester.pumpAndSettle();
+
+      // Buffer Nf3 (new move).
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.g1, to: Square.f3));
+      await tester.pumpAndSettle();
+
+      // Flip board to black (white -> black).
+      await tester.ensureVisible(find.byIcon(Icons.swap_vert));
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pumpAndSettle();
+
+      // Confirm: 3-ply (odd = white expected) but board is black -> mismatch.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Inline parity warning must be visible.
+      expect(find.text('Lines for Black should end on a Black move'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+
+      // Nf3 must NOT have been written to DB (only e4 and e5 from seed).
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.length, 2); // only seeded e4 + e5
+      expect(moves.any((m) => m.san == 'Nf3'), isFalse);
+    });
+
+    testWidgets(
+        'pills show full original line after dismissing parity warning triggered by flip+confirm',
+        (tester) async {
+      // Same setup as above: follow e4, e5, buffer Nf3, flip, confirm ->
+      // parity warning. Then dismiss. Pills must still show all 3 moves.
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5'],
+        ],
+        labelsOnSan: {'e4': 'King Pawn'},
+      );
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Follow e4.
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e2, to: Square.e4));
+      await tester.pumpAndSettle();
+
+      // Follow e5.
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.e7, to: Square.e5));
+      await tester.pumpAndSettle();
+
+      // Buffer Nf3.
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      chessboard.game!.onMove(NormalMove(from: Square.g1, to: Square.f3));
+      await tester.pumpAndSettle();
+
+      // Flip board to black.
+      await tester.ensureVisible(find.byIcon(Icons.swap_vert));
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pumpAndSettle();
+
+      // Confirm -> parity warning appears.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      expect(find.text('Lines for Black should end on a Black move'), findsOneWidget);
+
+      // Dismiss the warning via the X button.
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+
+      // Warning gone, but all 3 pills still visible.
+      expect(find.text('Lines for Black should end on a Black move'), findsNothing);
+      expect(find.text('e4'), findsOneWidget);
+      expect(find.text('e5'), findsOneWidget);
+      expect(find.text('Nf3'), findsOneWidget);
+
+      // DB still only has seeded moves (Nf3 not persisted).
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.length, 2);
+      expect(moves.any((m) => m.san == 'Nf3'), isFalse);
+    });
+
     testWidgets('ConfirmError shows error SnackBar on confirm',
         (tester) async {
       // Seed tree with e4 -> e5 (labeled so no-name dialog is skipped).
