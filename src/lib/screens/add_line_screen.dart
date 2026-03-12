@@ -392,7 +392,8 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
   Widget _buildContent(BuildContext context, AddLineState state) {
     final displayName = state.aggregateDisplayName;
 
-    return Column(
+    return SizedBox.expand(
+      child: Column(
       children: [
         // Aggregate display name banner
         if (displayName.isNotEmpty)
@@ -455,6 +456,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
           ),
         ),
       ],
+    ),
     );
   }
 
@@ -658,3 +660,5 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     );
   }
 }
+
+

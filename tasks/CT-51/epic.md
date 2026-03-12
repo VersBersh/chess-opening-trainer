@@ -16,3 +16,4 @@ A batch of user-reported issues covering banner styling, the repertoire manager 
 - CT-51.6: Flip-board + confirm removes last white move (Add Line)
 - CT-51.7: Line name banner displaces board (Add Line)
 - CT-51.8: Take Back button position unstable (Add Line)
+- CT-51.9: Board shifts from centered to left-aligned after first move (Add Line)
