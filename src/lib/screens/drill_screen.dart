@@ -239,11 +239,11 @@ class DrillScreen extends ConsumerWidget {
         child: isWide
             ? LayoutBuilder(
                 builder: (context, constraints) {
-                  final maxBoardWidth = constraints.maxWidth * 0.6;
+                  final boardSize = boardSizeForConstraints(constraints);
                   return Row(
                     children: [
                       SizedBox(
-                        width: maxBoardWidth,
+                        width: boardSize,
                         height: constraints.maxHeight,
                         child: Column(
                           children: [
@@ -272,12 +272,20 @@ class DrillScreen extends ConsumerWidget {
               )
             : Column(
                 children: [
-                  ConstrainedBox(
-                    constraints:
-                        const BoxConstraints(maxHeight: kMaxBoardSize),
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: boardWidget,
+                  Padding(
+                    padding: kBoardHorizontalInsets,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: boardSizeForNarrow(
+                          screenWidth,
+                          MediaQuery.of(context).size.height,
+                          maxHeightFraction: kBoardMaxHeightFraction,
+                        ),
+                      ),
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: boardWidget,
+                      ),
                     ),
                   ),
                   lineLabelWidget,

@@ -1,16 +1,19 @@
 /// Layout test: the chessboard must occupy the same pixel dimensions on every
-/// screen that shows one.  A size mismatch means the board visually shifts
-/// when the user navigates, which breaks the consistency contract described in
-/// features/add-line.md ("board-layout-consistency contract").
+/// screen at a **wide** viewport (desktop/tablet).  This complements the
+/// existing narrow-viewport test in `board_layout_test.dart`.
+///
+/// CT-52 introduces `boardSizeForConstraints` as a shared sizing helper for
+/// wide layouts.  After CT-52, all four screens have a wide-layout branch and
+/// must produce the same board dimensions at a given wide viewport.
 ///
 /// Screens under test:
-///   - AddLineScreen
-///   - DrillScreen  (regular)
-///   - DrillScreen  (free practice / isExtraPractice: true)
-///   - RepertoireBrowserScreen  (Repertoire Manager)
+///   - AddLineScreen          (wide branch added in CT-52 Step 3)
+///   - DrillScreen            (regular)
+///   - DrillScreen            (free practice / isExtraPractice: true)
+///   - RepertoireBrowserScreen (Repertoire Manager)
 ///
-/// Technique: pump each screen at a fixed surface size, wait for it to settle,
-/// then call tester.getSize(find.byType(Chessboard)) and compare the results.
+/// Technique: pump each screen at a fixed wide surface size, wait for it to
+/// settle, then call tester.getSize(find.byType(Chessboard)) and compare.
 library;
 
 import 'package:chessground/chessground.dart';
@@ -35,9 +38,8 @@ import 'package:chess_trainer/theme/spacing.dart';
 // Constants
 // ---------------------------------------------------------------------------
 
-/// Physical pixel dimensions of a typical modern phone viewport.
-/// All screens are pumped at this size so comparisons are meaningful.
-const _phoneSize = Size(390, 844);
+/// A desktop/tablet-sized viewport for wide-layout testing.
+const _wideSize = Size(1024, 768);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,15 +51,11 @@ AppDatabase _createTestDatabase() => AppDatabase(NativeDatabase.memory());
 /// review card whose due date is in the past so the DrillScreen always loads a
 /// card.
 ///
-/// The line must be at least 7 moves long so that [DrillController._autoPlayIntro]
-/// exhausts its 3-user-move intro cap before reaching the leaf, leaving the
-/// session in [DrillUserTurn] (board still visible) when [pumpAndSettle] finishes.
-/// A 3-move line causes the entire line to be intro-played, which immediately
-/// triggers [_handleLineComplete] → [DrillSessionComplete] (no board).
+/// Identical to the helper in `board_layout_test.dart`.
 Future<int> _seedRepertoire(AppDatabase db) async {
   final repId = await db
       .into(db.repertoires)
-      .insert(RepertoiresCompanion.insert(name: 'Board Layout Test'));
+      .insert(RepertoiresCompanion.insert(name: 'Board Layout Wide Test'));
 
   final sans = ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4'];
   Position position = Chess.initial;
@@ -79,7 +77,6 @@ Future<int> _seedRepertoire(AppDatabase db) async {
     parentId = lastMoveId;
   }
 
-  // Review card with a past due date so it is always returned as due.
   await db.into(db.reviewCards).insert(
         ReviewCardsCompanion.insert(
           repertoireId: repId,
@@ -106,9 +103,6 @@ void main() {
     prefs = await SharedPreferences.getInstance();
     db = _createTestDatabase();
     repId = await _seedRepertoire(db);
-    // Query the seeded review card so we can pass it as preloadedCards to
-    // DrillScreen, bypassing the getDueCardsForRepertoire async query which
-    // can behave unpredictably in the test environment.
     seededCards = await (db.select(db.reviewCards)
           ..where((c) => c.repertoireId.equals(repId)))
         .get();
@@ -118,16 +112,11 @@ void main() {
     await db.close();
   });
 
-  testWidgets('chessboard is the same size on all screens', (tester) async {
-    // Pin the surface to a fixed phone-like size for the whole test so that
-    // comparisons reflect real layout rather than the default test viewport.
-    await tester.binding.setSurfaceSize(_phoneSize);
+  testWidgets('chessboard is the same size on all screens at wide viewport',
+      (tester) async {
+    await tester.binding.setSurfaceSize(_wideSize);
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    // All screens share the same provider overrides.
-    // The MediaQuery wrapper ensures screens see the correct logical size
-    // (setSurfaceSize constrains the render pipeline but does not update
-    // MediaQuery.of(context).size, which would otherwise default to 800×600).
     Widget buildApp(Widget screen) {
       return ProviderScope(
         overrides: [
@@ -140,7 +129,7 @@ void main() {
         ],
         child: MaterialApp(
           home: MediaQuery(
-            data: MediaQueryData(size: _phoneSize),
+            data: MediaQueryData(size: _wideSize),
             child: screen,
           ),
         ),
@@ -149,20 +138,19 @@ void main() {
 
     final boardSizes = <String, Size>{};
 
-    // ---- 1. Add Line Screen --------------------------------------------------
+    // ---- 1. Add Line Screen (now has wide branch per CT-52 Step 3) --------
 
     await tester.pumpWidget(buildApp(AddLineScreen(repertoireId: repId)));
     await tester.pumpAndSettle();
-    // Dismiss any pre-existing layout overflow in the action bar at 390px width.
     tester.takeException();
     expect(
       find.byType(Chessboard),
       findsOneWidget,
-      reason: 'AddLineScreen must render a chessboard',
+      reason: 'AddLineScreen must render a chessboard at wide viewport',
     );
     boardSizes['AddLine'] = tester.getSize(find.byType(Chessboard));
 
-    // ---- 2. Drill Screen (regular) ------------------------------------------
+    // ---- 2. Drill Screen (regular) ----------------------------------------
 
     await tester.pumpWidget(
       buildApp(
@@ -178,11 +166,11 @@ void main() {
     expect(
       find.byType(Chessboard),
       findsOneWidget,
-      reason: 'DrillScreen must render a chessboard',
+      reason: 'DrillScreen must render a chessboard at wide viewport',
     );
     boardSizes['Drill'] = tester.getSize(find.byType(Chessboard));
 
-    // ---- 3. Free Practice Screen (DrillScreen with isExtraPractice) ---------
+    // ---- 3. Free Practice Screen ------------------------------------------
 
     await tester.pumpWidget(
       buildApp(
@@ -199,48 +187,112 @@ void main() {
     expect(
       find.byType(Chessboard),
       findsOneWidget,
-      reason: 'Free Practice screen must render a chessboard',
+      reason: 'Free Practice screen must render a chessboard at wide viewport',
     );
     boardSizes['FreePractice'] = tester.getSize(find.byType(Chessboard));
 
-    // ---- 4. Repertoire Manager (RepertoireBrowserScreen) --------------------
+    // ---- 4. Repertoire Manager --------------------------------------------
 
     await tester.pumpWidget(
       buildApp(RepertoireBrowserScreen(repertoireId: repId)),
     );
     await tester.pumpAndSettle();
-    // Dismiss any pre-existing layout overflow in the action bar at 390px width.
     tester.takeException();
     expect(
       find.byType(Chessboard),
       findsOneWidget,
-      reason: 'RepertoireBrowserScreen must render a chessboard',
+      reason:
+          'RepertoireBrowserScreen must render a chessboard at wide viewport',
     );
     boardSizes['RepertoireManager'] = tester.getSize(find.byType(Chessboard));
 
-    // ---- Assertions ---------------------------------------------------------
+    // ---- Assertions -------------------------------------------------------
 
     final referenceSize = boardSizes['AddLine']!;
+
+    // All boards must be the same size as each other.
     for (final entry in boardSizes.entries) {
       expect(
         entry.value,
         equals(referenceSize),
         reason:
             '${entry.key} board is ${entry.value} '
-            'but AddLine board is $referenceSize',
+            'but AddLine board is $referenceSize — wide-layout consistency '
+            'requires all screens to use boardSizeForConstraints',
       );
     }
 
-    // Sanity check: the reference board size matches the shared helper output.
+    // The board must be square.
     expect(
       referenceSize.width,
-      equals(boardSizeForNarrow(
-        _phoneSize.width,
-        _phoneSize.height,
-        maxHeightFraction: kBoardMaxHeightFraction,
-      )),
+      equals(referenceSize.height),
+      reason: 'Board must be square at wide viewport',
+    );
+
+    // The board must not exceed kMaxBoardSize.
+    expect(
+      referenceSize.width,
+      lessThanOrEqualTo(kMaxBoardSize),
+      reason: 'Board must not exceed kMaxBoardSize ($kMaxBoardSize) '
+          'at wide viewport',
+    );
+  });
+
+  testWidgets(
+      'board does not exceed kMaxBoardSize on ultrawide viewport',
+      (tester) async {
+    const ultrawideSize = Size(1920, 1080);
+    await tester.binding.setSurfaceSize(ultrawideSize);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    Widget buildApp(Widget screen) {
+      return ProviderScope(
+        overrides: [
+          repertoireRepositoryProvider
+              .overrideWithValue(LocalRepertoireRepository(db)),
+          reviewRepositoryProvider
+              .overrideWithValue(LocalReviewRepository(db)),
+          databaseProvider.overrideWithValue(db),
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+        child: MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(size: ultrawideSize),
+            child: screen,
+          ),
+        ),
+      );
+    }
+
+    // Just test one screen — if it uses the shared helper, it is capped.
+    await tester.pumpWidget(
+      buildApp(
+        DrillScreen(
+          config: DrillConfig(
+            repertoireId: repId,
+            preloadedCards: seededCards,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(seconds: 5));
+    expect(
+      find.byType(Chessboard),
+      findsOneWidget,
+      reason: 'DrillScreen must render a chessboard on ultrawide',
+    );
+
+    final boardSize = tester.getSize(find.byType(Chessboard));
+    expect(
+      boardSize.width,
+      lessThanOrEqualTo(kMaxBoardSize),
+      reason: 'Board width must not exceed kMaxBoardSize on ultrawide monitor',
+    );
+    expect(
+      boardSize.height,
+      lessThanOrEqualTo(kMaxBoardSize),
       reason:
-          'Board width should equal boardSizeForNarrow at phone size $_phoneSize',
+          'Board height must not exceed kMaxBoardSize on ultrawide monitor',
     );
   });
 }

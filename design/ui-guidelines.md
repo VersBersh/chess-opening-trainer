@@ -6,6 +6,11 @@ Global visual and layout conventions that apply across all screens. Feature-spec
 
 - **Banner gap:** Every screen with a top app bar / banner must have visible vertical spacing between the banner and the first content element (board, list, etc.). No content should sit flush against the banner.
 
+### Board padding
+
+- On mobile (narrow layouts), horizontal board padding should be minimal (4dp per side via `kBoardHorizontalInset`) to maximise board size. The board should be nearly edge-to-edge.
+- On desktop/wide layouts, the board may have more generous padding or be sized as a fraction of available space with a sensible maximum (`kMaxBoardSize`), but must use the shared sizing helper (`boardSizeForConstraints`).
+
 ## Pills & Chips
 
 - **Border radius:** Move pills and similar chip elements use a modest border radius (slightly rounded corners, not stadium/capsule shape). The goal is a clean, squared-off look that still feels soft.

@@ -390,10 +390,32 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
   }
 
   Widget _buildContent(BuildContext context, AddLineState state) {
-    final displayName = state.aggregateDisplayName;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 600;
 
     return SizedBox.expand(
-      child: Column(
+      child: Padding(
+        padding: kBoardFrameTopInsets,
+        child: isWide
+            ? _buildWideContent(context, state)
+            : _buildNarrowContent(context, state),
+      ),
+    );
+  }
+
+  Widget _buildNarrowContent(
+    BuildContext context,
+    AddLineState state,
+  ) {
+    final displayName = state.aggregateDisplayName;
+    final size = MediaQuery.of(context).size;
+    final maxBoard = boardSizeForNarrow(
+      size.width,
+      size.height,
+      maxHeightFraction: kBoardMaxHeightFraction,
+    );
+
+    return Column(
       children: [
         // Aggregate display name banner
         if (displayName.isNotEmpty)
@@ -414,18 +436,21 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
             ),
           ),
 
-        const SizedBox(height: kBoardFrameTopGap),
-
-        // Chessboard — direct Column child, position unaffected by pill count
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: kMaxBoardSize),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: ChessboardWidget(
-              controller: _boardController,
-              orientation: state.boardOrientation,
-              playerSide: PlayerSide.both,
-              onMove: _onBoardMove,
+        // Chessboard — responsive width-based sizing with height guard
+        Padding(
+          padding: kBoardHorizontalInsets,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: maxBoard,
+            ),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: ChessboardWidget(
+                controller: _boardController,
+                orientation: state.boardOrientation,
+                playerSide: PlayerSide.both,
+                onMove: _onBoardMove,
+              ),
             ),
           ),
         ),
@@ -456,7 +481,92 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
           ),
         ),
       ],
-    ),
+    );
+  }
+
+  Widget _buildWideContent(BuildContext context, AddLineState state) {
+    final displayName = state.aggregateDisplayName;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boardSize = boardSizeForConstraints(constraints);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: boardSize,
+              height: constraints.maxHeight,
+              child: Column(
+                children: [
+                  Flexible(
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: ChessboardWidget(
+                        controller: _boardController,
+                        orientation: state.boardOrientation,
+                        playerSide: PlayerSide.both,
+                        onMove: _onBoardMove,
+                      ),
+                    ),
+                  ),
+                  // Display name below the board (not above, per
+                  // board-layout-consistency.md "no dynamic content above
+                  // the board" rule).
+                  if (displayName.isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                      child: Text(
+                        displayName,
+                        style:
+                            Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Move pills
+                    MovePillsWidget(
+                      pills: state.pills,
+                      focusedIndex: state.focusedPillIndex,
+                      onPillTapped: _onPillTapped,
+                    ),
+
+                    // Inline label editor
+                    if (_isLabelEditorVisible)
+                      _buildInlineLabelEditor(state),
+
+                    // Inline parity warning
+                    if (_parityWarning != null)
+                      _buildParityWarning(_parityWarning!),
+
+                    // Existing line info
+                    if (_controller.isExistingLine)
+                      _buildExistingLineInfo(context),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

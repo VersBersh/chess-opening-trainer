@@ -113,13 +113,17 @@ class BrowserContent extends StatelessWidget {
   // ---- Narrow layout --------------------------------------------------------
 
   Widget _buildNarrow(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final maxBoardSize =
-        (screenHeight * 0.4).clamp(0.0, kMaxBoardSize.toDouble());
+    final size = MediaQuery.of(context).size;
+    final maxBoardSize = boardSizeForNarrow(
+      size.width,
+      size.height,
+      maxHeightFraction: kBoardMaxHeightFraction,
+    );
 
     return Column(
       children: [
-        Flexible(
+        Padding(
+          padding: kBoardHorizontalInsets,
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxBoardSize),
             child: AspectRatio(
@@ -153,8 +157,7 @@ class BrowserContent extends StatelessWidget {
   Widget _buildWide(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final boardSize =
-            constraints.maxHeight.clamp(0.0, constraints.maxWidth * 0.5);
+        final boardSize = boardSizeForConstraints(constraints);
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
