@@ -211,7 +211,9 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
   }
 
   void _handleConfirmSuccess(ConfirmSuccess result) {
-    // Reset board to the starting position after confirm + loadData.
+    // Sync the board to the controller's current FEN after confirm.
+    // Post-confirm, the controller preserves the leaf position (pills persist),
+    // so this sets the board to the confirmed line's leaf FEN.
     final fen = _controller.state.currentFen;
     if (fen == kInitialFEN) {
       _boardController.resetToInitial();

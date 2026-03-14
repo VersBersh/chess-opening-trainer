@@ -77,8 +77,12 @@ The entry flow follows [line-management.md](line-management.md):
 4. New moves beyond the existing tree are buffered in memory.
 5. User presses **"Confirm"** to save buffered moves and create a card for the new leaf.
 6. On confirm, any pending label changes (on both followed and buffered moves) are persisted along with the new moves.
-7. If the user follows an existing line exactly (no new moves), the Confirm button is disabled and an info label ("Existing line") is shown near the action bar.
-8. Abandoning the screen (navigating away) discards the buffer.
+7. After confirm, the pills and board position remain unchanged. All previously-buffered moves are now displayed as saved. The Confirm button becomes disabled and the "Existing line" indicator appears, since there are no new moves.
+   - The user can tap any previous pill to navigate to that position, then play a different move to start a new variation (branching).
+   - When the user plays a move that diverges from the saved line, the new move appears as unsaved and Confirm re-enables.
+   - The board resets to the starting position in two cases: (a) the user explicitly navigates away from the screen, or (b) the user taps Undo on the post-confirm snackbar, which deletes the just-saved line and reloads the screen to the original starting position (root if the screen was opened without a `startingMoveId`, or the `startingMoveId` position if the screen was opened mid-tree).
+8. If the user follows an existing line exactly (no new moves), the Confirm button is disabled and an info label ("Existing line") is shown near the action bar. This naturally applies after confirm, since all moves became saved.
+9. Abandoning the screen (navigating away) discards the buffer.
 
 ## Board Orientation and Color
 
@@ -109,8 +113,9 @@ Line parity validation on confirm follows [line-management.md](line-management.m
 - Undo feedback for "line added" actions should be scoped to the Add Line screen route.
 - The undo message duration should be short (about 4-6 seconds) and should not remain visible after navigating to another screen.
 - If the user leaves Add Line, any active undo feedback is dismissed.
-- The "line saved/extended" feedback (and any associated undo affordance) must also be dismissed when the user **begins a new line on the same screen**. A new line begins when the user makes their first board move after a successful confirm — i.e., the first move of a fresh sequence following the builder reset. An explicit "New Line" or reset action (if present) counts equally.
-- In other words: any board interaction that appends the first move of a new line clears the feedback immediately, regardless of whether the auto-dismiss timer has elapsed.
+- The undo snackbar coexists with the persistent pills after confirm. The snackbar is dismissed when the user plays the first move of a **new variation** — i.e., the first board move that creates a new buffered (unsaved) move after a confirm. It is not dismissed merely because pills are visible.
+- In other words: any board interaction that creates the first unsaved move after a confirm clears the feedback immediately, regardless of whether the auto-dismiss timer has elapsed.
+- Tapping Undo on the snackbar deletes the saved line and reloads the screen to the original starting position (root if `startingMoveId` was null, or the `startingMoveId` position if the screen was opened mid-tree).
 
 ## Aggregate Name Preview
 

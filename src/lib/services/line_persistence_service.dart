@@ -16,8 +16,14 @@ class PersistResult {
   final List<int> insertedMoveIds;
   final ReviewCard? oldCard;
 
+  /// The move ID of the new leaf node created by this persist operation.
+  /// Used by the controller to reload the engine at the correct position
+  /// after confirm (for persistent-pill behavior).
+  final int newLeafMoveId;
+
   const PersistResult({
     required this.isExtension,
+    required this.newLeafMoveId,
     this.oldLeafMoveId,
     this.insertedMoveIds = const [],
     this.oldCard,
@@ -103,6 +109,7 @@ class LinePersistenceService {
 
     return PersistResult(
       isExtension: true,
+      newLeafMoveId: insertedMoveIds.last,
       oldLeafMoveId: oldLeafMoveId,
       insertedMoveIds: insertedMoveIds,
       oldCard: oldCard,
@@ -139,6 +146,7 @@ class LinePersistenceService {
 
     return PersistResult(
       isExtension: false,
+      newLeafMoveId: insertedIds.last,
       insertedMoveIds: insertedIds,
     );
   }

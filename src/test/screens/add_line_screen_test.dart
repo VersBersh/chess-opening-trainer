@@ -1591,13 +1591,15 @@ void main() {
 
       expect(find.text('Line saved'), findsOneWidget);
 
-      // Play d4 — a new move not yet in the tree (e4 was just saved).
-      // This is the first move of a new branching line.
+      // CT-54: Post-confirm position is at the e4 leaf (black to move),
+      // not kInitialFEN. Play e5 -- a divergent move from the e4 position.
+      final postConfirmFen = result.controller.state.currentFen;
       final newBoard = ChessboardController();
       addTearDown(newBoard.dispose);
-      final d4Move = sanToNormalMove(kInitialFEN, 'd4');
-      newBoard.playMove(d4Move);
-      result.controller.onBoardMove(d4Move, newBoard);
+      newBoard.setPosition(postConfirmFen);
+      final e5Move = sanToNormalMove(postConfirmFen, 'e5');
+      newBoard.playMove(e5Move);
+      result.controller.onBoardMove(e5Move, newBoard);
       await tester.pumpAndSettle();
 
       // Snackbar should have been dismissed.
@@ -1609,19 +1611,22 @@ void main() {
         (tester) async {
       final result = await pumpWithExtendingMove(tester, db);
 
-      // Confirm the extension (e4→e5 is now saved, starting position is e4).
+      // Confirm the extension (e4→e5 is now saved).
       await tester.tap(find.text('Confirm'));
       await tester.pumpAndSettle();
 
       expect(find.text('Line extended'), findsOneWidget);
 
-      // The post-confirm position is the e4 FEN (black to move).
-      // Play d5 — a new move not yet in the tree (e5 was just saved).
-      final postConfirmFen = result.controller.state.currentFen;
+      // CT-54: Post-confirm position is now the e5 leaf (white to move),
+      // not the startingMoveId (e4) position. Navigate back to pill 0
+      // (e4 position, black to move) and play d5 to start a new variation.
       final newBoard = ChessboardController();
       addTearDown(newBoard.dispose);
-      newBoard.setPosition(postConfirmFen);
-      final d5Move = sanToNormalMove(postConfirmFen, 'd5');
+      // Navigate to the e4 pill (pill index 0 in the existing path).
+      result.controller.onPillTapped(0, newBoard);
+      final e4Fen = result.controller.state.currentFen;
+      newBoard.setPosition(e4Fen);
+      final d5Move = sanToNormalMove(e4Fen, 'd5');
       newBoard.playMove(d5Move);
       result.controller.onBoardMove(d5Move, newBoard);
       await tester.pumpAndSettle();
@@ -2279,6 +2284,101 @@ void main() {
 
       // Info text should disappear.
       expect(find.text('Existing line'), findsNothing);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // CT-54: Post-confirm pill and position persistence (screen tests)
+  // ---------------------------------------------------------------------------
+
+  group('CT-54: Post-confirm persistence', () {
+    testWidgets('pills visible after confirm', (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Confirm the new line (e4).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // Pill for e4 should still be visible after confirm.
+      expect(find.text('e4'), findsOneWidget);
+    });
+
+    testWidgets('"Existing line" label visible after confirm', (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Confirm the new line (e4).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // "Existing line" info label should appear since all moves are saved.
+      expect(find.text('Existing line'), findsOneWidget);
+    });
+
+    testWidgets('confirm button disabled after confirm', (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Confirm the new line (e4).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // Confirm button should be disabled (hasNewMoves is false).
+      final confirmButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Confirm'),
+      );
+      expect(confirmButton.onPressed, isNull);
+    });
+
+    testWidgets('undo snackbar coexists with pills after confirm',
+        (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Confirm the new line (e4).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // Both the snackbar and the pill should be visible simultaneously.
+      expect(find.text('Line saved'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+      expect(find.text('e4'), findsOneWidget);
+    });
+
+    testWidgets('undo snackbar dismissed on new variation after confirm',
+        (tester) async {
+      final result = await pumpWithExtendingMove(tester, db);
+
+      // Confirm the extension (e4→e5 is now saved).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Line extended'), findsOneWidget);
+
+      // CT-54: Post-confirm, pills [e4, e5] are visible. Navigate back
+      // to pill 0 (e4 position) and play a divergent move.
+      final newBoard = ChessboardController();
+      addTearDown(newBoard.dispose);
+
+      // Navigate back to e4 (pill index 0).
+      result.controller.onPillTapped(0, newBoard);
+      final e4Fen = result.controller.state.currentFen;
+      newBoard.setPosition(e4Fen);
+
+      // Play d5 (diverges from e5, creates a new variation).
+      final d5Move = sanToNormalMove(e4Fen, 'd5');
+      newBoard.playMove(d5Move);
+      result.controller.onBoardMove(d5Move, newBoard);
+      await tester.pumpAndSettle();
+
+      // Snackbar should have been dismissed because hasNewMoves transitioned
+      // from false to true.
+      expect(find.text('Line extended'), findsNothing);
     });
   });
 }

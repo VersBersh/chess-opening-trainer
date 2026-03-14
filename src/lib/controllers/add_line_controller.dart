@@ -151,7 +151,20 @@ class AddLineController extends ChangeNotifier {
   // ---- Data loading -------------------------------------------------------
 
   /// Loads repertoire data, builds the tree cache, and creates the engine.
-  Future<void> loadData() async {
+  ///
+  /// This is the public entry point used by the screen on init and by undo
+  /// handlers. It resets to the controller's original [_startingMoveId].
+  Future<void> loadData() => _loadData();
+
+  /// Internal data-loading method.
+  ///
+  /// When [leafMoveId] is provided (e.g. after a successful confirm), the
+  /// engine is created with that move as the starting position so that the
+  /// full root-to-leaf path appears as saved pills and the board stays at
+  /// the leaf position. When [leafMoveId] is null, the engine is created
+  /// with the controller's original [_startingMoveId], which resets to the
+  /// screen's initial position.
+  Future<void> _loadData({int? leafMoveId}) async {
     _pendingLabels.clear();
 
     // 1. Load the repertoire name.
@@ -162,16 +175,20 @@ class AddLineController extends ChangeNotifier {
     final cache = RepertoireTreeCache.build(allMoves);
 
     // 3. Create the LineEntryEngine.
+    // Use leafMoveId when restoring post-confirm position,
+    // otherwise fall back to the controller's original _startingMoveId.
+    final effectiveStartId = leafMoveId ?? _startingMoveId;
+
     final engine = LineEntryEngine(
       treeCache: cache,
       repertoireId: _repertoireId,
-      startingMoveId: _startingMoveId,
+      startingMoveId: effectiveStartId,
     );
 
     // 4. Compute starting FEN.
     final String startingFen;
-    if (_startingMoveId != null) {
-      final move = cache.movesById[_startingMoveId];
+    if (effectiveStartId != null) {
+      final move = cache.movesById[effectiveStartId];
       startingFen = move?.fen ?? kInitialFEN;
     } else {
       startingFen = kInitialFEN;
@@ -603,8 +620,9 @@ class AddLineController extends ChangeNotifier {
         pendingLabelUpdates: labelUpdates,
       );
 
-      // Rebuild tree cache and reset engine.
-      await loadData();
+      // Rebuild tree cache and engine, preserving the board at the new leaf
+      // so that pills persist and the user can branch from this position.
+      await _loadData(leafMoveId: result.newLeafMoveId);
 
       return ConfirmSuccess(
         isExtension: result.isExtension,
@@ -613,8 +631,8 @@ class AddLineController extends ChangeNotifier {
         oldCard: result.oldCard,
       );
     } on Object catch (e) {
-      // Restore consistent state from DB.
-      await loadData();
+      // Restore consistent state from DB (reset to original starting position).
+      await _loadData();
 
       final sqliteError = _extractSqliteException(e);
       if (sqliteError != null && sqliteError.extendedResultCode == 2067) {

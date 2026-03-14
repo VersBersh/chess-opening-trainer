@@ -1324,21 +1324,26 @@ void main() {
       final success1 = result1 as ConfirmSuccess;
       final gen1 = controller.undoGeneration;
 
-      // Confirm a second line (d4, d5) to increment generation.
-      // Flip back to white first since confirmAndPersist calls loadData.
-      controller.flipBoard();
+      // CT-54: After confirm, position persists at the e5 leaf (not root).
+      // Navigate back to pill 0 (e4) and branch with d5 from there.
+      // Post-confirm state: pills are [e4, e5], all saved, position at e5.
+      final e5Fen = controller.state.currentFen;
+      expect(e5Fen, isNot(kInitialFEN));
 
-      moves = ['d4', 'd5'];
-      currentFen = kInitialFEN;
-      for (final san in moves) {
-        final normalMove = sanToNormalMove(currentFen, san);
-        boardController.playMove(normalMove);
-        controller.onBoardMove(normalMove, boardController);
-        currentFen = boardController.fen;
-      }
+      // Navigate to pill 0 (e4 position -- black to move).
+      controller.onPillTapped(0, boardController);
+      final e4Fen = controller.state.currentFen;
 
-      // Flip for parity (even ply -> black).
-      controller.flipBoard();
+      // Play d5 from e4 position (branching -- diverges from e5).
+      final d5Move = sanToNormalMove(e4Fen, 'd5');
+      boardController.setPosition(e4Fen);
+      boardController.playMove(d5Move);
+      controller.onBoardMove(d5Move, boardController);
+
+      // Flip for parity (2-ply = even = black expected, board was flipped
+      // from first confirm -- flip back to white then to black).
+      // After first confirm the board is black. We played a 2-ply line
+      // (e4, d5) so expected is black. Board is already black -> matches.
 
       final result2 = await controller.confirmAndPersist();
       expect(result2, isA<ConfirmSuccess>());
@@ -1346,11 +1351,11 @@ void main() {
       // Now try to undo the first line with gen1 -- should be a no-op.
       await controller.undoNewLine(gen1, success1.insertedMoveIds);
 
-      // Verify both lines still exist (4 moves, 2 cards).
+      // Verify both lines still exist (3 moves: e4, e5, d5; 2 cards).
       final repRepo = LocalRepertoireRepository(db);
       final reviewRepo = LocalReviewRepository(db);
       final allMoves = await repRepo.getMovesForRepertoire(repId);
-      expect(allMoves.length, 4);
+      expect(allMoves.length, 3); // e4 shared, e5 from line 1, d5 from line 2
       final cards = await reviewRepo.getAllCardsForRepertoire(repId);
       expect(cards.length, 2);
 
@@ -2360,6 +2365,361 @@ void main() {
       expect(result, isA<MoveAccepted>());
       // Pending labels should be cleared after branching.
       expect(controller.pendingLabels, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // CT-54: Post-confirm pill and position persistence
+  // ---------------------------------------------------------------------------
+
+  group('CT-54: Pills persist after confirm', () {
+    test('pills persist after confirm (root start), all marked saved', () async {
+      // Seed empty repertoire, play e4/e5, flip to black, confirm.
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5.
+      final fens = computeFens(['e4', 'e5']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      // Flip board for parity (2-ply = even = black expected).
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // After confirm, pills should persist with 2 pills, both saved.
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.pills[0].isSaved, true);
+      expect(controller.state.pills[1].san, 'e5');
+      expect(controller.state.pills[1].isSaved, true);
+
+      // hasNewMoves should be false (all moves now saved).
+      expect(controller.hasNewMoves, false);
+
+      // isExistingLine should be true.
+      expect(controller.isExistingLine, true);
+
+      // currentFen should be the FEN after e5 (not kInitialFEN).
+      expect(controller.state.currentFen, fens[1]);
+      expect(controller.state.currentFen, isNot(kInitialFEN));
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('pills persist after confirm (mid-tree start)', () async {
+      // Seed repertoire with e4/e5/Nf3, create controller with
+      // startingMoveId = Nf3, play Nc6, flip, confirm.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId,
+          startingMoveId: nf3Id);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play Nc6 (extends from Nf3).
+      final nf3Fen = controller.state.currentFen;
+      final nc6Move = sanToNormalMove(nf3Fen, 'Nc6');
+      boardController.setPosition(nf3Fen);
+      boardController.playMove(nc6Move);
+      controller.onBoardMove(nc6Move, boardController);
+
+      // Flip for parity (4-ply = even = black expected).
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // After confirm, pills should show the full path: e4, e5, Nf3, Nc6.
+      expect(controller.state.pills.length, 4);
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.pills[1].san, 'e5');
+      expect(controller.state.pills[2].san, 'Nf3');
+      expect(controller.state.pills[3].san, 'Nc6');
+      for (final pill in controller.state.pills) {
+        expect(pill.isSaved, true);
+      }
+
+      // currentFen should be the Nc6 FEN.
+      final nc6Fens = computeFens(['e4', 'e5', 'Nf3', 'Nc6']);
+      expect(controller.state.currentFen, nc6Fens[3]);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('board position preserved after confirm (preMoveFen matches leaf)', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5.
+      final fens = computeFens(['e4', 'e5']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      controller.flipBoard();
+
+      await controller.confirmAndPersist();
+
+      // Both currentFen and preMoveFen should match the FEN after e5.
+      expect(controller.state.currentFen, fens[1]);
+      expect(controller.state.preMoveFen, fens[1]);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('branching after confirm', () async {
+      // After confirming e4/e5, tap pill at index 0 (e4), play d5.
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5.
+      final fens = computeFens(['e4', 'e5']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // Post-confirm: pills [e4, e5] all saved, position at e5.
+      // Navigate back to pill 0 (e4 position, black to move).
+      controller.onPillTapped(0, boardController);
+      final e4Fen = controller.state.currentFen;
+
+      // Play d5 (diverging from e5).
+      final d5Move = sanToNormalMove(e4Fen, 'd5');
+      boardController.setPosition(e4Fen);
+      boardController.playMove(d5Move);
+      final moveResult = controller.onBoardMove(d5Move, boardController);
+
+      expect(moveResult, isA<MoveAccepted>());
+      // Pills should now show the branched line: e4 (saved), d5 (unsaved).
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.pills[0].isSaved, true);
+      expect(controller.state.pills[1].san, 'd5');
+      expect(controller.state.pills[1].isSaved, false);
+      expect(controller.hasNewMoves, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('confirm button disabled after confirm (hasNewMoves is false)', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4 (1-ply, odd = white, default orientation matches).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // After confirm, hasNewMoves should be false.
+      expect(controller.hasNewMoves, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('second confirm after branching', () async {
+      // Confirm e4/e5, branch to e4/d5, confirm again.
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5.
+      final fens = computeFens(['e4', 'e5']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      controller.flipBoard();
+
+      final result1 = await controller.confirmAndPersist();
+      expect(result1, isA<ConfirmSuccess>());
+
+      // Branch: navigate to pill 0 (e4), play d5.
+      controller.onPillTapped(0, boardController);
+      final e4Fen = controller.state.currentFen;
+      final d5Move = sanToNormalMove(e4Fen, 'd5');
+      boardController.setPosition(e4Fen);
+      boardController.playMove(d5Move);
+      controller.onBoardMove(d5Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+
+      // Board is black (flipped earlier). 2-ply line (e4, d5) = even = black.
+      // Parity matches.
+      final result2 = await controller.confirmAndPersist();
+      expect(result2, isA<ConfirmSuccess>());
+
+      // After second confirm, pills should persist showing e4/d5, both saved.
+      expect(controller.state.pills.length, 2);
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.pills[0].isSaved, true);
+      expect(controller.state.pills[1].san, 'd5');
+      expect(controller.state.pills[1].isSaved, true);
+      expect(controller.hasNewMoves, false);
+
+      // Verify DB has both lines: e4/e5 and e4/d5 (3 moves total).
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 3); // e4 shared, e5, d5
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('undo after confirm resets to original starting position (root start)', () async {
+      // Seed empty repertoire, play e4/e5, confirm, then undo.
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final fens = computeFens(['e4', 'e5']);
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+      final success = result as ConfirmSuccess;
+
+      // Capture generation for undo.
+      final gen = controller.undoGeneration;
+
+      // Undo the new line.
+      await controller.undoNewLine(gen, success.insertedMoveIds);
+
+      // After undo: state resets to initial (empty pills, kInitialFEN).
+      expect(controller.state.pills, isEmpty);
+      expect(controller.state.currentFen, kInitialFEN);
+      expect(controller.hasNewMoves, false);
+
+      // DB should have no moves.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      expect(allMoves, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('undo after confirm resets to original starting position (mid-tree start)', () async {
+      // Seed repertoire with e4/e5/Nf3 (with cards), create controller with
+      // startingMoveId = Nf3, play Nc6, confirm, then undo.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ], createCards: true);
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId,
+          startingMoveId: nf3Id);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play Nc6 (extends from Nf3).
+      final nf3Fen = controller.state.currentFen;
+      final nc6Move = sanToNormalMove(nf3Fen, 'Nc6');
+      boardController.setPosition(nf3Fen);
+      boardController.playMove(nc6Move);
+      controller.onBoardMove(nc6Move, boardController);
+
+      // Flip for parity (4-ply = even = black expected).
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+      final success = result as ConfirmSuccess;
+
+      // Capture generation for undo.
+      final gen = controller.undoGeneration;
+
+      // Undo the extension.
+      await controller.undoExtension(
+        gen, success.oldLeafMoveId!, success.insertedMoveIds, success.oldCard!);
+
+      // After undo, state resets to the original startingMoveId position
+      // (Nf3), not to kInitialFEN.
+      final nf3Fens = computeFens(['e4', 'e5', 'Nf3']);
+      expect(controller.state.currentFen, nf3Fens[2]);
+      expect(controller.state.currentFen, isNot(kInitialFEN));
+
+      // Pills should show existing path: e4, e5, Nf3.
+      expect(controller.state.pills.length, 3);
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.pills[1].san, 'e5');
+      expect(controller.state.pills[2].san, 'Nf3');
+      for (final pill in controller.state.pills) {
+        expect(pill.isSaved, true);
+      }
+
+      // Nc6 should have been removed from DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 3); // e4, e5, Nf3 remain
+      expect(allMoves.any((m) => m.san == 'Nc6'), false);
 
       controller.dispose();
       boardController.dispose();
