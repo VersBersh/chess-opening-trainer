@@ -1,5 +1,9 @@
+import 'dart:ui' show Color;
+
+import 'package:chessground/chessground.dart' show Arrow, Shape;
 import 'package:dartchess/dartchess.dart';
 import 'package:drift/drift.dart' show DriftWrappedException;
+import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqlite3/common.dart';
 
@@ -7,6 +11,7 @@ import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
 import '../repositories/repertoire_repository.dart';
 import '../repositories/review_repository.dart';
+import '../services/chess_utils.dart';
 import '../services/line_entry_engine.dart';
 import '../services/line_persistence_service.dart';
 import '../widgets/chessboard_controller.dart';
@@ -30,6 +35,7 @@ class AddLineState {
     this.repertoireName = '',
     this.pills = const [],
     this.transpositionMatches = const [],
+    this.showHintArrows = false,
   });
 
   final RepertoireTreeCache? treeCache;
@@ -43,6 +49,7 @@ class AddLineState {
   final String repertoireName;
   final List<MovePillData> pills;
   final List<TranspositionMatch> transpositionMatches;
+  final bool showHintArrows;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +226,7 @@ class AddLineController extends ChangeNotifier {
       repertoireName: repertoire.name,
       pills: pills,
       transpositionMatches: transpositions,
+      showHintArrows: _state.showHintArrows,
     );
     notifyListeners();
   }
@@ -442,6 +450,7 @@ class AddLineController extends ChangeNotifier {
         repertoireName: _state.repertoireName,
         pills: newPills,
         transpositionMatches: transpositions,
+        showHintArrows: _state.showHintArrows,
       );
       notifyListeners();
       return const MoveAccepted();
@@ -469,6 +478,7 @@ class AddLineController extends ChangeNotifier {
       repertoireName: _state.repertoireName,
       pills: newPills,
       transpositionMatches: transpositions,
+      showHintArrows: _state.showHintArrows,
     );
     notifyListeners();
     return const MoveAccepted();
@@ -506,6 +516,7 @@ class AddLineController extends ChangeNotifier {
       repertoireName: _state.repertoireName,
       pills: _state.pills,
       transpositionMatches: transpositions,
+      showHintArrows: _state.showHintArrows,
     );
     notifyListeners();
   }
@@ -557,6 +568,7 @@ class AddLineController extends ChangeNotifier {
       repertoireName: _state.repertoireName,
       pills: newPills,
       transpositionMatches: transpositions,
+      showHintArrows: _state.showHintArrows,
     );
     notifyListeners();
   }
@@ -604,6 +616,7 @@ class AddLineController extends ChangeNotifier {
       repertoireName: _state.repertoireName,
       pills: _state.pills,
       transpositionMatches: _state.transpositionMatches,
+      showHintArrows: _state.showHintArrows,
     );
     notifyListeners();
 
@@ -758,6 +771,7 @@ class AddLineController extends ChangeNotifier {
       repertoireName: _state.repertoireName,
       pills: pills,
       transpositionMatches: transpositions,
+      showHintArrows: _state.showHintArrows,
     );
     notifyListeners();
   }
@@ -908,8 +922,104 @@ class AddLineController extends ChangeNotifier {
       repertoireName: _state.repertoireName,
       pills: pills,
       transpositionMatches: transpositions,
+      showHintArrows: _state.showHintArrows,
     );
     notifyListeners();
+  }
+
+  // ---- Hint arrows --------------------------------------------------------
+
+  /// Toggles the hint arrows overlay on/off.
+  void toggleHintArrows() {
+    _state = AddLineState(
+      treeCache: _state.treeCache,
+      engine: _state.engine,
+      boardOrientation: _state.boardOrientation,
+      focusedPillIndex: _state.focusedPillIndex,
+      currentFen: _state.currentFen,
+      preMoveFen: _state.preMoveFen,
+      aggregateDisplayName: _state.aggregateDisplayName,
+      isLoading: _state.isLoading,
+      repertoireName: _state.repertoireName,
+      pills: _state.pills,
+      transpositionMatches: _state.transpositionMatches,
+      showHintArrows: !_state.showHintArrows,
+    );
+    notifyListeners();
+  }
+
+  /// Returns arrow shapes for all existing repertoire moves at the current
+  /// position, including transposition-equivalent moves.
+  ///
+  /// Direct children of the current tree node use a darker grey; children of
+  /// transposition-equivalent nodes use a lighter grey. Arrows are
+  /// deduplicated by from/to/promotion, with the direct-child colour taking
+  /// priority.
+  ISet<Shape> getHintArrows() {
+    if (!_state.showHintArrows) return const ISetConst({});
+    final cache = _state.treeCache;
+    if (cache == null) return const ISetConst({});
+
+    final currentFen = _state.currentFen;
+
+    // Determine the current move ID at the focused pill (if any).
+    final focusedIndex = _state.focusedPillIndex;
+    final int? currentMoveId = focusedIndex != null
+        ? getMoveIdAtPillIndex(focusedIndex)
+        : null;
+
+    // Compute direct children of the current tree node.
+    final List<RepertoireMove> directChildren;
+    if (currentMoveId != null) {
+      directChildren = cache.getChildren(currentMoveId);
+    } else if (currentFen == kInitialFEN) {
+      directChildren = cache.getRootMoves();
+    } else {
+      directChildren = [];
+    }
+
+    // Build a set of direct-child IDs for fast membership testing.
+    final directChildIds = directChildren.map((m) => m.id).toSet();
+
+    // Compute position-key children (includes transpositions).
+    final positionKey = RepertoireTreeCache.normalizePositionKey(currentFen);
+    final allPositionChildren = cache.getChildrenAtPosition(positionKey);
+
+    // At the initial position, getChildrenAtPosition returns nothing because
+    // no move results in kInitialFEN. Include root moves explicitly.
+    final List<RepertoireMove> mergedChildren;
+    if (currentFen == kInitialFEN) {
+      // Direct children first (root moves), then position children (which is
+      // empty at initial position, but include for correctness).
+      mergedChildren = [...directChildren, ...allPositionChildren];
+    } else {
+      // Direct children first for priority, then position children.
+      mergedChildren = [...directChildren, ...allPositionChildren];
+    }
+
+    // Parse the current position for SAN resolution.
+    final parentPosition = Chess.fromSetup(Setup.parseFen(currentFen));
+
+    // Iterate and deduplicate by from/to/promotion.
+    final seen = <String>{};
+    final shapes = <Shape>[];
+
+    for (final child in mergedChildren) {
+      final move = sanToMove(parentPosition, child.san);
+      if (move == null) continue;
+
+      final dedupKey =
+          '${move.from.name}-${move.to.name}-${move.promotion?.name ?? ''}';
+      if (seen.contains(dedupKey)) continue;
+      seen.add(dedupKey);
+
+      final color = directChildIds.contains(child.id)
+          ? const Color(0x60000000)
+          : const Color(0x30000000);
+      shapes.add(Arrow(color: color, orig: move.from, dest: move.to));
+    }
+
+    return ISet(shapes);
   }
 
   // ---- Board orientation --------------------------------------------------
@@ -930,6 +1040,7 @@ class AddLineController extends ChangeNotifier {
       repertoireName: _state.repertoireName,
       pills: _state.pills,
       transpositionMatches: _state.transpositionMatches,
+      showHintArrows: _state.showHintArrows,
     );
     notifyListeners();
   }

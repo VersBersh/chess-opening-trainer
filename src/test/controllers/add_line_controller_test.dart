@@ -1,3 +1,6 @@
+import 'dart:ui' show Color;
+
+import 'package:chessground/chessground.dart' show Arrow;
 import 'package:dartchess/dartchess.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
@@ -3001,6 +3004,417 @@ void main() {
 
       // Transposition should still be detected.
       expect(controller.state.transpositionMatches, isNotEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // CT-58: Hint arrows
+  // -------------------------------------------------------------------------
+
+  group('toggleHintArrows', () {
+    test('defaults to off', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      expect(controller.state.showHintArrows, false);
+
+      controller.dispose();
+    });
+
+    test('toggles showHintArrows on and off', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      controller.toggleHintArrows();
+      expect(controller.state.showHintArrows, true);
+
+      controller.toggleHintArrows();
+      expect(controller.state.showHintArrows, false);
+
+      controller.dispose();
+    });
+
+    test('toggle preserves other state fields', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play a move to populate state.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final fenBefore = controller.state.currentFen;
+      final pillsBefore = controller.state.pills.length;
+      final orientationBefore = controller.state.boardOrientation;
+
+      controller.toggleHintArrows();
+
+      expect(controller.state.currentFen, fenBefore);
+      expect(controller.state.pills.length, pillsBefore);
+      expect(controller.state.boardOrientation, orientationBefore);
+      expect(controller.state.showHintArrows, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('getHintArrows', () {
+    test('returns empty when toggled off (default)', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['d4', 'd5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      // Default is off -- should return empty even though root moves exist.
+      final arrows = controller.getHintArrows();
+      expect(arrows.isEmpty, true);
+
+      controller.dispose();
+    });
+
+    test('returns empty when treeCache is null', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      // Do NOT call loadData(), so treeCache stays null.
+
+      controller.toggleHintArrows();
+      final arrows = controller.getHintArrows();
+      expect(arrows.isEmpty, true);
+
+      controller.dispose();
+    });
+
+    test('shows root move arrows at initial position', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['d4', 'd5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      controller.toggleHintArrows();
+
+      final arrows = controller.getHintArrows();
+      expect(arrows.length, 2);
+      expect(arrows.every((s) => s is Arrow), true);
+
+      // Both arrows should be direct-child colour (darker grey) since
+      // root moves are direct children of the initial position.
+      for (final shape in arrows) {
+        final arrow = shape as Arrow;
+        expect(arrow.color, const Color(0x60000000));
+      }
+
+      controller.dispose();
+    });
+
+    test('shows direct-child arrows with darker color', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['e4', 'c5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4 to navigate to the position with children e5 and c5.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      controller.toggleHintArrows();
+
+      final arrows = controller.getHintArrows();
+      expect(arrows.length, 2);
+      expect(arrows.every((s) => s is Arrow), true);
+
+      // Both are direct children of e4, so both should be darker grey.
+      for (final shape in arrows) {
+        final arrow = shape as Arrow;
+        expect(arrow.color, const Color(0x60000000));
+      }
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('shows transposition arrows with lighter color', () async {
+      // Seed two lines that reach the same position via different move orders,
+      // each with at least one child at that position.
+      // Line A: e4 d6 d4 Nf6  (position after d4 = "e4 d6 d4")
+      // Line B: d4 d6 e4 e5   (position after e4 = "d4 d6 e4", same position)
+      // When we navigate to d4 in line A, "Nf6" is a direct child. "e5" is
+      // a child of the transposed node, so it should appear lighter.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd6', 'd4', 'Nf6'],
+        ['d4', 'd6', 'e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow line A: play e4, d6, d4.
+      final lineA = ['e4', 'd6', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in lineA) {
+        final move = sanToNormalMove(currentFen, san);
+        boardController.playMove(move);
+        controller.onBoardMove(move, boardController);
+        currentFen = boardController.fen;
+      }
+
+      controller.toggleHintArrows();
+
+      final arrows = controller.getHintArrows();
+      // Should have 2 arrows: Nf6 (direct) and e5 (transposition).
+      expect(arrows.length, 2);
+
+      final arrowList = arrows.toList().cast<Arrow>();
+
+      // Nf6 is a direct child (g8->f6) -> darker grey.
+      final nf6Arrow = arrowList.firstWhere(
+          (a) => a.orig == Square.g8 && a.dest == Square.f6);
+      expect(nf6Arrow.color, const Color(0x60000000),
+          reason: 'Direct child Nf6 should use darker grey');
+
+      // e5 is a transposition child (e7->e5) -> lighter grey.
+      final e5Arrow = arrowList.firstWhere(
+          (a) => a.orig == Square.e7 && a.dest == Square.e5);
+      expect(e5Arrow.color, const Color(0x30000000),
+          reason: 'Transposition child e5 should use lighter grey');
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('deduplicates arrows: direct-child colour takes priority', () async {
+      // When the same move exists as both a direct child and a transposition
+      // child, only one arrow should appear, with the darker (direct-child)
+      // colour taking priority.
+      //
+      // Seed two lines that transpose into the same position, both having
+      // the same child SAN:
+      // Line A: e4 d6 d4 Nf6
+      // Line B: d4 d6 e4 Nf6  (same child SAN "Nf6" at same position)
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd6', 'd4', 'Nf6'],
+        ['d4', 'd6', 'e4', 'Nf6'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow line A: play e4, d6, d4.
+      final lineA = ['e4', 'd6', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in lineA) {
+        final move = sanToNormalMove(currentFen, san);
+        boardController.playMove(move);
+        controller.onBoardMove(move, boardController);
+        currentFen = boardController.fen;
+      }
+
+      controller.toggleHintArrows();
+
+      final arrows = controller.getHintArrows();
+      // Nf6 from line A is a direct child, Nf6 from line B is a transposition.
+      // They should be deduplicated to a single arrow.
+      final arrowList = arrows.toList().cast<Arrow>();
+
+      // Count arrows going to the Nf6 destination (g8->f6).
+      final nf6Dest = Square.f6;
+      final nf6Arrows = arrowList.where((a) => a.dest == nf6Dest).toList();
+      expect(nf6Arrows.length, 1,
+          reason: 'Duplicate Nf6 arrows should be deduplicated');
+
+      // The surviving arrow should use the darker direct-child colour.
+      expect(nf6Arrows.first.color, const Color(0x60000000));
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('updates arrows on pill tap (position change)', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+        ['e4', 'c5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5, Nf3 to build up pills.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final move = sanToNormalMove(currentFen, san);
+        boardController.playMove(move);
+        controller.onBoardMove(move, boardController);
+        currentFen = boardController.fen;
+      }
+
+      controller.toggleHintArrows();
+
+      // At Nf3 position (leaf), there are no children.
+      final arrowsAtNf3 = controller.getHintArrows();
+      expect(arrowsAtNf3.isEmpty, true);
+
+      // Tap pill 0 (e4 position) -- has children e5 and c5.
+      controller.onPillTapped(0, boardController);
+      final arrowsAtE4 = controller.getHintArrows();
+      expect(arrowsAtE4.length, 2);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('returns empty when no existing moves at position', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4 (follows existing), then play e5 (buffered, new).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e4Fen = boardController.fen;
+      final e5Move = sanToNormalMove(e4Fen, 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      controller.toggleHintArrows();
+
+      // At e5 position, there are no existing children at all.
+      final arrows = controller.getHintArrows();
+      expect(arrows.isEmpty, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('arrow orig and dest match the move squares', () async {
+      // Seed e4 as a root move so we can verify its arrow squares.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      controller.toggleHintArrows();
+
+      final arrows = controller.getHintArrows();
+      expect(arrows.length, 1);
+
+      final arrow = arrows.first as Arrow;
+      // e4 is a pawn push from e2 to e4.
+      expect(arrow.orig, Square.e2);
+      expect(arrow.dest, Square.e4);
+
+      controller.dispose();
+    });
+
+    test('showHintArrows state survives other state transitions', () async {
+      // Verify that toggling hint arrows on survives move play, take-back,
+      // flip board, etc.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      controller.toggleHintArrows();
+      expect(controller.state.showHintArrows, true);
+
+      // Play a move.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+      expect(controller.state.showHintArrows, true);
+
+      // Flip board.
+      controller.flipBoard();
+      expect(controller.state.showHintArrows, true);
+
+      // Take back.
+      controller.onTakeBack(boardController);
+      expect(controller.state.showHintArrows, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('transposition arrows shown at buffered move position', () async {
+      // When the user plays buffered (unsaved) moves reaching a position that
+      // exists elsewhere in the tree, all arrows should appear as lighter
+      // grey (transposition) since there are no direct children at an unsaved
+      // node.
+      //
+      // Seed: e4 d6 d4 Nf6  (position after d4 has child Nf6)
+      // User plays: d4 (new root, buffered), d6 (buffered), e4 (buffered)
+      // Position after "d4 d6 e4" transposes to "e4 d6 d4".
+      // getChildrenAtPosition returns Nf6, but since the current node is
+      // unsaved, there are no direct children — all arrows are lighter.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd6', 'd4', 'Nf6'],
+      ]);
+      final controller = AddLineController(
+        LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play d4, d6, e4 — all buffered (d4 is a new root move).
+      final bufferedMoves = ['d4', 'd6', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in bufferedMoves) {
+        final move = sanToNormalMove(currentFen, san);
+        boardController.playMove(move);
+        controller.onBoardMove(move, boardController);
+        currentFen = boardController.fen;
+      }
+
+      controller.toggleHintArrows();
+
+      final arrows = controller.getHintArrows();
+      // Should show Nf6 arrow from transposition lookup.
+      expect(arrows.isNotEmpty, true,
+          reason: 'Transposition arrows should appear at buffered position');
+
+      final arrowList = arrows.toList().cast<Arrow>();
+      // All arrows should be lighter grey (no direct children at unsaved node).
+      for (final arrow in arrowList) {
+        expect(arrow.color, const Color(0x30000000),
+            reason: 'All arrows at buffered position should be lighter grey');
+      }
 
       controller.dispose();
       boardController.dispose();

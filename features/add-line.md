@@ -158,6 +158,31 @@ The Add Line screen is accessible from:
 - The **home screen** (a per-repertoire "Add Line" button or action).
 - The **Repertoire Manager** (an "Add Line" action, potentially starting from a selected position in the tree).
 
+## Hint Arrows
+
+The app bar contains a toggle button that, when enabled, overlays grey arrows on the chessboard showing all existing repertoire moves at the current position.
+
+### Toggle
+
+- **Icon:** `visibility_off` when off (default), `visibility` when on.
+- **Tooltip:** "Show existing moves" when off, "Hide existing moves" when on.
+- **Default state:** Off. The toggle is not shown during the loading state.
+- **Scope:** Toggle state is local to the screen session and is not persisted across navigations.
+
+### Arrow display
+
+- Arrows represent all existing moves in the repertoire at the current board position, found via normalized position-key lookup (ignoring halfmove clock and fullmove number). This includes transposition-equivalent moves reached via different move orders.
+- **Direct children** (children of the current tree node) are shown with a darker grey (`0x60000000`).
+- **Transposition children** (children of other nodes at the same position) are shown with a lighter grey (`0x30000000`).
+- At the initial position, root moves are treated as direct children.
+- Arrows are deduplicated by from/to/promotion triple. When a move appears as both a direct child and a transposition child, the darker direct-child colour takes priority.
+
+### Behaviour
+
+- Arrows are **display-only** and do not affect move entry. The board remains fully interactive while arrows are displayed.
+- Arrows update automatically on every position change (move played, take-back, pill tap).
+- The toggle state survives other state transitions (moves, flip board, take-back, confirm).
+
 ## Dependencies
 
 - **Line management:** All entry mechanics come from [line-management.md](line-management.md).

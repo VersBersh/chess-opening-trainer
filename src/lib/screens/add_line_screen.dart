@@ -380,6 +380,20 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
         child: Scaffold(
           appBar: AppBar(
             title: const Text('Add Line'),
+            actions: [
+              if (!state.isLoading)
+                IconButton(
+                  icon: Icon(
+                    state.showHintArrows
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                  ),
+                  tooltip: state.showHintArrows
+                      ? 'Hide existing moves'
+                      : 'Show existing moves',
+                  onPressed: _controller.toggleHintArrows,
+                ),
+            ],
           ),
           bottomNavigationBar:
               state.isLoading ? null : _buildActionBar(context, state),
@@ -452,6 +466,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
                 orientation: state.boardOrientation,
                 playerSide: PlayerSide.both,
                 onMove: _onBoardMove,
+                shapes: _controller.getHintArrows(),
               ),
             ),
           ),
@@ -512,6 +527,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
                         orientation: state.boardOrientation,
                         playerSide: PlayerSide.both,
                         onMove: _onBoardMove,
+                        shapes: _controller.getHintArrows(),
                       ),
                     ),
                   ),

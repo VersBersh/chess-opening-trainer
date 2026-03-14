@@ -13,6 +13,7 @@ import 'package:chess_trainer/repositories/local/local_repertoire_repository.dar
 import 'package:chess_trainer/repositories/local/local_review_repository.dart';
 import 'package:chess_trainer/screens/add_line_screen.dart';
 import 'package:chess_trainer/widgets/chessboard_controller.dart';
+import 'package:chess_trainer/widgets/chessboard_widget.dart';
 import 'package:chess_trainer/widgets/inline_label_editor.dart';
 import 'package:chess_trainer/widgets/move_pills_widget.dart';
 
@@ -2615,6 +2616,186 @@ void main() {
       // Move should be accepted (not blocked).
       expect(result, isA<MoveAccepted>());
       expect(controller.state.pills.length, 4);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // CT-58: Hint arrows toggle
+  // -------------------------------------------------------------------------
+
+  group('hint arrows toggle', () {
+    testWidgets('toggle button appears in app bar when loaded', (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // The toggle button should be in the app bar with a visibility icon.
+      // Default state is off, so expect visibility_off icon.
+      expect(find.byIcon(Icons.visibility_off), findsOneWidget);
+    });
+
+    testWidgets('toggle button not shown during loading', (tester) async {
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+
+      // While loading, the toggle should NOT be visible.
+      expect(find.byIcon(Icons.visibility), findsNothing);
+      expect(find.byIcon(Icons.visibility_off), findsNothing);
+
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('tapping toggle changes icon from off to on', (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Default: off icon.
+      expect(find.byIcon(Icons.visibility_off), findsOneWidget);
+      expect(find.byIcon(Icons.visibility), findsNothing);
+
+      // Tap the toggle button.
+      await tester.tap(find.byIcon(Icons.visibility_off));
+      await tester.pump();
+
+      // After toggle: on icon.
+      expect(find.byIcon(Icons.visibility), findsOneWidget);
+      expect(find.byIcon(Icons.visibility_off), findsNothing);
+    });
+
+    testWidgets('tapping toggle twice returns to off state', (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Toggle on.
+      await tester.tap(find.byIcon(Icons.visibility_off));
+      await tester.pump();
+      expect(find.byIcon(Icons.visibility), findsOneWidget);
+
+      // Toggle off.
+      await tester.tap(find.byIcon(Icons.visibility));
+      await tester.pump();
+      expect(find.byIcon(Icons.visibility_off), findsOneWidget);
+    });
+
+    testWidgets('toggle tooltip shows correct text', (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Find the IconButton in the app bar and verify tooltip.
+      final iconButton = tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byIcon(Icons.visibility_off),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(iconButton.tooltip, 'Show existing moves');
+
+      // Toggle on.
+      await tester.tap(find.byIcon(Icons.visibility_off));
+      await tester.pump();
+
+      final iconButtonOn = tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byIcon(Icons.visibility),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(iconButtonOn.tooltip, 'Hide existing moves');
+    });
+
+    testWidgets('shapes passed to ChessboardWidget when toggled on',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['d4', 'd5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Before toggle: ChessboardWidget should have null or empty shapes.
+      var boardWidget = tester.widget<ChessboardWidget>(
+        find.byType(ChessboardWidget),
+      );
+      final shapesBefore = boardWidget.shapes;
+      expect(shapesBefore == null || shapesBefore.isEmpty, true);
+
+      // Toggle on.
+      await tester.tap(find.byIcon(Icons.visibility_off));
+      await tester.pump();
+
+      // After toggle: ChessboardWidget should have non-empty shapes
+      // (root moves e4 and d4 as arrows).
+      boardWidget = tester.widget<ChessboardWidget>(
+        find.byType(ChessboardWidget),
+      );
+      expect(boardWidget.shapes, isNotNull);
+      expect(boardWidget.shapes!.isNotEmpty, true);
+    });
+
+    testWidgets('shapes removed from ChessboardWidget when toggled off',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Toggle on.
+      await tester.tap(find.byIcon(Icons.visibility_off));
+      await tester.pump();
+
+      var boardWidget = tester.widget<ChessboardWidget>(
+        find.byType(ChessboardWidget),
+      );
+      expect(boardWidget.shapes, isNotNull);
+      expect(boardWidget.shapes!.isNotEmpty, true);
+
+      // Toggle off.
+      await tester.tap(find.byIcon(Icons.visibility));
+      await tester.pump();
+
+      boardWidget = tester.widget<ChessboardWidget>(
+        find.byType(ChessboardWidget),
+      );
+      final shapesAfter = boardWidget.shapes;
+      expect(shapesAfter == null || shapesAfter.isEmpty, true);
+    });
+
+    testWidgets('arrows do not interfere with move entry', (tester) async {
+      // Verify that moves can still be played on the board while arrows
+      // are displayed. The board should remain interactive.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Toggle on.
+      await tester.tap(find.byIcon(Icons.visibility_off));
+      await tester.pump();
+
+      // Board should still be interactive (PlayerSide.both).
+      final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.game?.playerSide, PlayerSide.both);
     });
   });
 }
