@@ -2046,6 +2046,10 @@ void main() {
 
     testWidgets('filter box renders in narrow layout (free practice)',
         (tester) async {
+      const phoneSize = Size(400, 800);
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
       final card = buildReviewCard(whiteLine9);
       final freePracticeConfig = DrillConfig(
         repertoireId: 1,
@@ -2059,7 +2063,7 @@ void main() {
         repertoireRepo: repertoireRepo,
         reviewRepo: reviewRepo,
         config: freePracticeConfig,
-        viewportSize: const Size(400, 800),
+        viewportSize: phoneSize,
       ));
       await tester.pumpAndSettle(const Duration(seconds: 5));
 

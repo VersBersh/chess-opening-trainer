@@ -38,6 +38,15 @@ In Free Practice mode (not regular Drill mode), a **filter box** is shown at the
 - If there is enough space below (e.g., larger screens), the menu may open downward.
 - The direction choice is a layout behavior only; filtering logic is unchanged.
 
+### Mobile Keyboard Handling
+
+- When the filter input gains focus and the soft keyboard is visible, the layout must ensure the input field and suggestion dropdown remain fully visible.
+- **Active-card scaffold (`_buildDrillScaffold`):** The board and line label area are temporarily collapsed (height 0) while the keyboard is open, repositioning the filter near the top of the screen.
+- **Pass-complete screen (`_buildPassComplete`):** The icon and summary text above the filter are temporarily collapsed while the keyboard is open, keeping the filter and dropdown visible.
+- Once the keyboard is dismissed or a filter selection is made, the collapsed content is restored with an animated transition.
+- With the collapsed content hidden, more vertical space is available; the dropdown can open downward instead of the usual upward preference.
+- Desktop/tablet (wide layout, `screenWidth >= 600`) is unaffected — the board and filter are in separate columns, so no collapsing is needed. (Note: `_buildPassComplete` does not have a wide layout branch, but the keyboard issue is minor there because the content is small and centered.)
+
 ## Spaced Repetition
 
 - Free practice sessions **do not affect the spaced repetition schedule**. No review dates, ease factors, or intervals are updated.

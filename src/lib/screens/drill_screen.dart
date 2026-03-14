@@ -180,6 +180,9 @@ class DrillScreen extends ConsumerWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final isWide = screenWidth >= 600;
 
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = keyboardHeight > 0;
+
     final lineLabelWidget = SizedBox(
       key: const ValueKey('drill-line-label-area'),
       height: kLineLabelHeight,
@@ -272,25 +275,50 @@ class DrillScreen extends ConsumerWidget {
               )
             : Column(
                 children: [
-                  Padding(
-                    padding: kBoardHorizontalInsets,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: boardSizeForNarrow(
-                          screenWidth,
-                          MediaQuery.of(context).size.height,
-                          maxHeightFraction: kBoardMaxHeightFraction,
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    clipBehavior: Clip.hardEdge,
+                    child: SizedBox(
+                      key: const ValueKey('drill-board-container'),
+                      height: (isKeyboardOpen && config.isExtraPractice)
+                          ? 0
+                          : null,
+                      child: Padding(
+                        padding: kBoardHorizontalInsets,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: boardSizeForNarrow(
+                              screenWidth,
+                              MediaQuery.of(context).size.height,
+                              maxHeightFraction: kBoardMaxHeightFraction,
+                            ),
+                          ),
+                          child: AspectRatio(
+                            aspectRatio: 1,
+                            child: boardWidget,
+                          ),
                         ),
-                      ),
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: boardWidget,
                       ),
                     ),
                   ),
-                  lineLabelWidget,
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    clipBehavior: Clip.hardEdge,
+                    child: SizedBox(
+                      height: (isKeyboardOpen && config.isExtraPractice)
+                          ? 0
+                          : null,
+                      child: lineLabelWidget,
+                    ),
+                  ),
                   statusWidget,
-                  ?filterWidget,
+                  if (filterWidget != null)
+                    if (isKeyboardOpen && config.isExtraPractice)
+                      Expanded(child: filterWidget)
+                    else
+                      filterWidget,
                 ],
               ),
       ),
@@ -420,13 +448,18 @@ class DrillScreen extends ConsumerWidget {
         ref.read(drillControllerProvider(config).notifier);
     final filterWidget = _buildFilterBox(context, ref);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Free Practice')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = keyboardHeight > 0;
+
+    final columnChildren = [
+      AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          key: const ValueKey('pass-complete-header'),
+          height: isKeyboardOpen ? 0 : null,
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.check_circle_outline,
@@ -444,23 +477,48 @@ class DrillScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
               const SizedBox(height: 48),
-              FilledButton(
-                onPressed: () => notifier.keepGoing(),
-                child: const Text('Keep Going'),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: () => notifier.finishSession(),
-                child: const Text('Finish'),
-              ),
-              if (filterWidget != null) ...[
-                const SizedBox(height: 24),
-                filterWidget,
-              ],
             ],
           ),
         ),
       ),
+      FilledButton(
+        onPressed: () => notifier.keepGoing(),
+        child: const Text('Keep Going'),
+      ),
+      const SizedBox(height: 12),
+      TextButton(
+        onPressed: () => notifier.finishSession(),
+        child: const Text('Finish'),
+      ),
+      if (filterWidget != null) ...[
+        const SizedBox(height: 24),
+        filterWidget,
+      ],
+    ];
+
+    final Widget body;
+    if (isKeyboardOpen) {
+      // When the keyboard is open, use a scrollable layout to prevent
+      // overflow — the buttons + filter can exceed the reduced height.
+      body = SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(children: columnChildren),
+      );
+    } else {
+      body = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: columnChildren,
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Free Practice')),
+      body: body,
     );
   }
 }
@@ -553,6 +611,7 @@ class _DrillFilterAutocompleteState extends State<_DrillFilterAutocomplete> {
       },
       onSelected: (label) {
         _textController.clear();
+        _focusNode.unfocus();
         widget.onSelected(label);
       },
       fieldViewBuilder:

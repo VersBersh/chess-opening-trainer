@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -278,7 +279,23 @@ Widget buildTestApp({
   required FakeReviewRepository reviewRepo,
   DrillConfig config = _freePracticeConfig,
   DateTime Function()? clock,
+  Size? viewportSize,
+  EdgeInsets viewInsets = EdgeInsets.zero,
 }) {
+  Widget home = DrillScreen(config: config);
+
+  // Wrap in MediaQuery when viewport size or viewInsets are specified, so that
+  // MediaQuery.of(context).size / .viewInsets reflect the test parameters.
+  if (viewportSize != null || viewInsets != EdgeInsets.zero) {
+    home = MediaQuery(
+      data: MediaQueryData(
+        size: viewportSize ?? const Size(390, 844),
+        viewInsets: viewInsets,
+      ),
+      child: home,
+    );
+  }
+
   return ProviderScope(
     overrides: [
       repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
@@ -286,9 +303,7 @@ Widget buildTestApp({
       sharedPreferencesProvider.overrideWithValue(_testPrefs),
       if (clock != null) clockProvider.overrideWithValue(clock),
     ],
-    child: MaterialApp(
-      home: DrillScreen(config: config),
-    ),
+    child: MaterialApp(home: home),
   );
 }
 
@@ -756,6 +771,300 @@ void main() {
       // Should find the text field with the hint text
       expect(find.widgetWithText(TextField, 'Filter by label...'),
           findsOneWidget);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // CT-55: Keyboard-triggered layout changes
+  // -------------------------------------------------------------------------
+
+  group('Drill screen — keyboard filter layout', () {
+    // Phone-size surface used for narrow-layout tests.
+    const phoneSize = Size(390, 844);
+
+    // Simulated keyboard height (typical iOS/Android soft keyboard).
+    const keyboardInsets = EdgeInsets.only(bottom: 300);
+
+    /// Builds a test app whose MediaQuery viewInsets can be changed at
+    /// runtime by calling [setViewInsets] and re-pumping. The
+    /// ProviderScope is created once and survives across re-pumps,
+    /// preserving drill controller state.
+    Widget buildKeyboardTestApp({
+      required FakeRepertoireRepository repertoireRepo,
+      required FakeReviewRepository reviewRepo,
+      required ValueNotifier<EdgeInsets> viewInsetsNotifier,
+      DrillConfig config = _freePracticeConfig,
+      Size viewportSize = phoneSize,
+    }) {
+      return ProviderScope(
+        overrides: [
+          repertoireRepositoryProvider.overrideWithValue(repertoireRepo),
+          reviewRepositoryProvider.overrideWithValue(reviewRepo),
+          sharedPreferencesProvider.overrideWithValue(_testPrefs),
+        ],
+        child: MaterialApp(
+          home: ValueListenableBuilder<EdgeInsets>(
+            valueListenable: viewInsetsNotifier,
+            builder: (context, insets, child) => MediaQuery(
+              data: MediaQueryData(
+                size: viewportSize,
+                viewInsets: insets,
+              ),
+              child: child!,
+            ),
+            child: DrillScreen(config: config),
+          ),
+        ),
+      );
+    }
+
+    testWidgets(
+        'board is hidden when keyboard is open in free practice (narrow layout)',
+        (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repertoireRepo = FakeRepertoireRepository(moves: allMoves);
+      final reviewRepo = FakeReviewRepository(
+        allCards: allCards,
+        allMoves: allMoves,
+      );
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: _freePracticeConfig,
+        viewportSize: phoneSize,
+        viewInsets: keyboardInsets,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // The board container should exist but have height 0
+      final boardContainer = find.byKey(const ValueKey('drill-board-container'));
+      expect(boardContainer, findsOneWidget);
+      final boardContainerSize = tester.getSize(boardContainer);
+      expect(
+        boardContainerSize.height,
+        0,
+        reason: 'Board container should be collapsed (height 0) when '
+            'keyboard is open in free practice narrow layout',
+      );
+
+      // The Chessboard widget should still be in the tree (not unmounted)
+      // so that its controller state is preserved — it is clipped, not removed.
+      expect(find.byType(Chessboard), findsOneWidget);
+
+      // The filter text field should still be visible and hittable
+      expect(
+        find.widgetWithText(TextField, 'Filter by label...').hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('board reappears when keyboard is dismissed', (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repertoireRepo = FakeRepertoireRepository(moves: allMoves);
+      final reviewRepo = FakeReviewRepository(
+        allCards: allCards,
+        allMoves: allMoves,
+      );
+
+      // Use ValueNotifier so we can toggle viewInsets without recreating
+      // the ProviderScope (preserving drill session state).
+      final viewInsetsNotifier = ValueNotifier<EdgeInsets>(keyboardInsets);
+
+      await tester.pumpWidget(buildKeyboardTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        viewInsetsNotifier: viewInsetsNotifier,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Verify board is collapsed
+      expect(
+        tester.getSize(find.byKey(const ValueKey('drill-board-container'))).height,
+        0,
+      );
+
+      // Dismiss keyboard by updating the notifier — same ProviderScope
+      viewInsetsNotifier.value = EdgeInsets.zero;
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Board container should now have a non-zero height
+      final boardContainerSize =
+          tester.getSize(find.byKey(const ValueKey('drill-board-container')));
+      expect(
+        boardContainerSize.height,
+        greaterThan(0),
+        reason: 'Board container should be visible when keyboard is dismissed',
+      );
+
+      // Chessboard should render at its expected size
+      final chessboardSize = tester.getSize(find.byType(Chessboard));
+      expect(
+        chessboardSize.height,
+        greaterThan(0),
+        reason: 'Chessboard should render at its normal size',
+      );
+      expect(
+        chessboardSize.width,
+        chessboardSize.height,
+        reason: 'Chessboard should be square (aspect ratio 1:1)',
+      );
+    });
+
+    testWidgets(
+        'pass-complete header is hidden when keyboard is open',
+        (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repertoireRepo = FakeRepertoireRepository(moves: allMoves);
+      final reviewRepo = FakeReviewRepository(
+        allCards: allCards,
+        allMoves: allMoves,
+      );
+
+      // Use ValueNotifier to change viewInsets without recreating the
+      // ProviderScope — this preserves the DrillPassComplete state.
+      final viewInsetsNotifier = ValueNotifier<EdgeInsets>(EdgeInsets.zero);
+
+      await tester.pumpWidget(buildKeyboardTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        viewInsetsNotifier: viewInsetsNotifier,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // Drive the drill to pass-complete state by completing all cards.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DrillScreen)),
+      );
+      final notifier =
+          container.read(drillControllerProvider(_freePracticeConfig).notifier);
+
+      for (var cardIdx = 0; cardIdx < allCards.length; cardIdx++) {
+        await tester.pumpAndSettle(const Duration(seconds: 5));
+        notifier.skipCard();
+        await tester.pumpAndSettle(const Duration(seconds: 5));
+      }
+
+      // Verify we are now in DrillPassComplete state
+      final state =
+          container.read(drillControllerProvider(_freePracticeConfig));
+      expect(
+        state.value,
+        isA<DrillPassComplete>(),
+        reason: 'Should be in DrillPassComplete after completing all cards',
+      );
+
+      // Open the keyboard — same ProviderScope, same drill state
+      viewInsetsNotifier.value = keyboardInsets;
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // The pass-complete header container should have height 0
+      final headerContainer =
+          find.byKey(const ValueKey('pass-complete-header'));
+      expect(headerContainer, findsOneWidget);
+      final headerSize = tester.getSize(headerContainer);
+      expect(
+        headerSize.height,
+        0,
+        reason: 'Pass-complete header should be collapsed when keyboard is open',
+      );
+
+      // The "Keep Going" button should still be visible and hittable
+      expect(find.text('Keep Going').hitTestable(), findsOneWidget);
+
+      // The filter text field should still be visible and hittable
+      expect(
+        find.widgetWithText(TextField, 'Filter by label...').hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'desktop (wide) layout is unaffected by keyboard simulation',
+        (tester) async {
+      const wideSize = Size(700, 844);
+      await tester.binding.setSurfaceSize(wideSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repertoireRepo = FakeRepertoireRepository(moves: allMoves);
+      final reviewRepo = FakeReviewRepository(
+        allCards: allCards,
+        allMoves: allMoves,
+      );
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: _freePracticeConfig,
+        viewportSize: wideSize,
+        viewInsets: keyboardInsets,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // In wide layout (>= 600px width), the board should not collapse
+      // regardless of keyboard state.
+      final chessboardSize = tester.getSize(find.byType(Chessboard));
+      expect(
+        chessboardSize.height,
+        greaterThan(0),
+        reason: 'Board should remain visible in wide layout even with keyboard',
+      );
+      expect(
+        chessboardSize.width,
+        greaterThan(0),
+        reason: 'Board should remain visible in wide layout even with keyboard',
+      );
+    });
+
+    testWidgets(
+        'board is not hidden in regular drill mode even with keyboard',
+        (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      // Use a simple single-line tree for regular drill (no labels needed)
+      final line = buildLine(
+        ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O'],
+      );
+      final card = buildReviewCard(line, cardId: 1);
+
+      final repertoireRepo = FakeRepertoireRepository(moves: line);
+      final reviewRepo = FakeReviewRepository(
+        allCards: [card],
+        allMoves: line,
+      );
+
+      await tester.pumpWidget(buildTestApp(
+        repertoireRepo: repertoireRepo,
+        reviewRepo: reviewRepo,
+        config: _regularDrillConfig,
+        viewportSize: phoneSize,
+        viewInsets: keyboardInsets,
+      ));
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+
+      // In regular drill mode, there is no filter, so the board should never
+      // collapse regardless of keyboard state.
+      final chessboardSize = tester.getSize(find.byType(Chessboard));
+      expect(
+        chessboardSize.height,
+        greaterThan(0),
+        reason: 'Board should not collapse in regular drill mode',
+      );
+      expect(
+        chessboardSize.width,
+        chessboardSize.height,
+        reason: 'Board should be square (aspect ratio 1:1)',
+      );
+
+      // Verify the filter box is absent (regular drill has no filter)
+      expect(find.byKey(const ValueKey('drill-filter-box')), findsNothing);
     });
   });
 }
