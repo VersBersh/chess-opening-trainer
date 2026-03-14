@@ -2381,4 +2381,240 @@ void main() {
       expect(find.text('Line extended'), findsNothing);
     });
   });
+
+  // --------------------------------------------------------------------------
+  // CT-56: Transposition warning widget
+  // --------------------------------------------------------------------------
+
+  group('CT-56: Transposition warning', () {
+    testWidgets('warning appears when transposition exists and disappears on next move',
+        (tester) async {
+      // Seed two branches that transpose:
+      // Branch A: e4 d5 d4
+      // Branch B: d4 d5 e4
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play e4, d5, d4 to trigger transposition.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Transposition warning should be visible.
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+
+      // Play another move to a non-transposed position.
+      final nf6Move = sanToNormalMove(currentFen, 'Nf6');
+      testBoard.playMove(nf6Move);
+      controller.onBoardMove(nf6Move, testBoard);
+      await tester.pump();
+
+      // Warning should disappear.
+      expect(find.textContaining('This position also reached via'), findsNothing);
+    });
+
+    testWidgets('warning shows Reroute button for same-opening matches only',
+        (tester) async {
+      // Branch A: e4 (labeled "Alpha") d5 d4
+      // Branch B: d4 (labeled "Alpha") d5 e4  -> same-opening
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      });
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play e4, d5, d4 to trigger transposition.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Warning should appear with Reroute button (same-opening match).
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+      expect(find.text('Reroute'), findsOneWidget);
+    });
+
+    testWidgets('warning does not show Reroute button for cross-opening matches',
+        (tester) async {
+      // Branch A: e4 d5 d4, Branch B: d4 d5 e4
+      // We label only the ROOT moves uniquely so labels don't cross-contaminate.
+      // labelsOnSan would label ALL moves with that SAN across branches, so we
+      // seed unlabeled and then update root moves directly.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+
+      // Label only the root e4 as "Caro-Kann" and root d4 as "French".
+      final allMoves = await LocalRepertoireRepository(db)
+          .getMovesForRepertoire(repId);
+      for (final m in allMoves) {
+        if (m.parentMoveId == null && m.san == 'e4') {
+          await (db.update(db.repertoireMoves)
+                ..where((t) => t.id.equals(m.id)))
+              .write(const RepertoireMovesCompanion(label: Value('Caro-Kann')));
+        }
+        if (m.parentMoveId == null && m.san == 'd4') {
+          await (db.update(db.repertoireMoves)
+                ..where((t) => t.id.equals(m.id)))
+              .write(const RepertoireMovesCompanion(label: Value('French')));
+        }
+      }
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play e4, d5, d4 to trigger transposition.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Warning should appear but without Reroute button (cross-opening match).
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+      expect(find.text('Reroute'), findsNothing);
+    });
+
+    testWidgets('warning disappears after take-back', (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play e4, d5, d4 to trigger transposition.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Warning should be visible.
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+
+      // Take back d4.
+      controller.onTakeBack(testBoard);
+      await tester.pump();
+
+      // Warning should disappear (position after d5 has no transposition).
+      expect(find.textContaining('This position also reached via'), findsNothing);
+    });
+
+    testWidgets('warning does not block user from continuing to add moves',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play e4, d5, d4 to trigger transposition.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Warning is visible.
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+
+      // User should still be able to play another move.
+      final nf6Move = sanToNormalMove(currentFen, 'Nf6');
+      testBoard.playMove(nf6Move);
+      final result = controller.onBoardMove(nf6Move, testBoard);
+      await tester.pump();
+
+      // Move should be accepted (not blocked).
+      expect(result, isA<MoveAccepted>());
+      expect(controller.state.pills.length, 4);
+    });
+  });
 }

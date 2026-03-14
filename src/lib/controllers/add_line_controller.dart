@@ -29,6 +29,7 @@ class AddLineState {
     this.isLoading = true,
     this.repertoireName = '',
     this.pills = const [],
+    this.transpositionMatches = const [],
   });
 
   final RepertoireTreeCache? treeCache;
@@ -41,6 +42,7 @@ class AddLineState {
   final bool isLoading;
   final String repertoireName;
   final List<MovePillData> pills;
+  final List<TranspositionMatch> transpositionMatches;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,17 +202,23 @@ class AddLineController extends ChangeNotifier {
     // 6. Build pills list.
     final pills = _buildPillsList(engine);
 
+    // 7. Compute transposition matches.
+    final focusedPillIndex = pills.isNotEmpty ? pills.length - 1 : null;
+    final transpositions = _computeTranspositions(
+      engine, startingFen, focusedPillIndex);
+
     _state = AddLineState(
       treeCache: cache,
       engine: engine,
       boardOrientation: _state.boardOrientation,
-      focusedPillIndex: pills.isNotEmpty ? pills.length - 1 : null,
+      focusedPillIndex: focusedPillIndex,
       currentFen: startingFen,
       preMoveFen: startingFen,
       aggregateDisplayName: displayName,
       isLoading: false,
       repertoireName: repertoire.name,
       pills: pills,
+      transpositionMatches: transpositions,
     );
     notifyListeners();
   }
@@ -418,18 +426,22 @@ class AddLineController extends ChangeNotifier {
       _pendingLabels.clear();
       final newPills = _buildPillsList(newEngine);
       final displayName = _computeDisplayNameWithPending(newEngine);
+      final newFocused = newPills.isNotEmpty ? newPills.length - 1 : null;
+      final transpositions = _computeTranspositions(
+        newEngine, resultingFen, newFocused);
 
       _state = AddLineState(
         treeCache: _state.treeCache,
         engine: newEngine,
         boardOrientation: _state.boardOrientation,
-        focusedPillIndex: newPills.isNotEmpty ? newPills.length - 1 : null,
+        focusedPillIndex: newFocused,
         currentFen: resultingFen,
         preMoveFen: resultingFen,
         aggregateDisplayName: displayName,
         isLoading: false,
         repertoireName: _state.repertoireName,
         pills: newPills,
+        transpositionMatches: transpositions,
       );
       notifyListeners();
       return const MoveAccepted();
@@ -441,18 +453,22 @@ class AddLineController extends ChangeNotifier {
     // 5. Rebuild pills and update state.
     final newPills = _buildPillsList(engine);
     final displayName = _computeDisplayNameWithPending(engine);
+    final newFocused = newPills.isNotEmpty ? newPills.length - 1 : null;
+    final transpositions = _computeTranspositions(
+      engine, resultingFen, newFocused);
 
     _state = AddLineState(
       treeCache: _state.treeCache,
       engine: engine,
       boardOrientation: _state.boardOrientation,
-      focusedPillIndex: newPills.isNotEmpty ? newPills.length - 1 : null,
+      focusedPillIndex: newFocused,
       currentFen: resultingFen,
       preMoveFen: resultingFen,
       aggregateDisplayName: displayName,
       isLoading: false,
       repertoireName: _state.repertoireName,
       pills: newPills,
+      transpositionMatches: transpositions,
     );
     notifyListeners();
     return const MoveAccepted();
@@ -470,8 +486,13 @@ class AddLineController extends ChangeNotifier {
 
   /// Navigates the board to the FEN at the tapped pill index.
   void onPillTapped(int index, ChessboardController boardController) {
+    final engine = _state.engine;
     final fen = getFenAtPillIndex(index);
     boardController.setPosition(fen);
+
+    final transpositions = engine != null
+        ? _computeTranspositions(engine, fen, index)
+        : const <TranspositionMatch>[];
 
     _state = AddLineState(
       treeCache: _state.treeCache,
@@ -484,6 +505,7 @@ class AddLineController extends ChangeNotifier {
       isLoading: false,
       repertoireName: _state.repertoireName,
       pills: _state.pills,
+      transpositionMatches: transpositions,
     );
     notifyListeners();
   }
@@ -519,18 +541,22 @@ class AddLineController extends ChangeNotifier {
 
     final newPills = _buildPillsList(engine);
     final displayName = _computeDisplayNameWithPending(engine);
+    final newFocused = newPills.isNotEmpty ? newPills.length - 1 : null;
+    final transpositions = _computeTranspositions(
+      engine, result.fen, newFocused);
 
     _state = AddLineState(
       treeCache: _state.treeCache,
       engine: engine,
       boardOrientation: _state.boardOrientation,
-      focusedPillIndex: newPills.isNotEmpty ? newPills.length - 1 : null,
+      focusedPillIndex: newFocused,
       currentFen: result.fen,
       preMoveFen: result.fen,
       aggregateDisplayName: displayName,
       isLoading: false,
       repertoireName: _state.repertoireName,
       pills: newPills,
+      transpositionMatches: transpositions,
     );
     notifyListeners();
   }
@@ -577,6 +603,7 @@ class AddLineController extends ChangeNotifier {
       isLoading: false,
       repertoireName: _state.repertoireName,
       pills: _state.pills,
+      transpositionMatches: _state.transpositionMatches,
     );
     notifyListeners();
 
@@ -716,6 +743,8 @@ class AddLineController extends ChangeNotifier {
     // Rebuild pills with pending overlay and recompute display name.
     final pills = _buildPillsList(engine);
     final displayName = _computeDisplayNameWithPending(engine);
+    final transpositions = _computeTranspositions(
+      engine, _state.currentFen, _state.focusedPillIndex);
 
     _state = AddLineState(
       treeCache: _state.treeCache,
@@ -728,6 +757,7 @@ class AddLineController extends ChangeNotifier {
       isLoading: false,
       repertoireName: _state.repertoireName,
       pills: pills,
+      transpositionMatches: transpositions,
     );
     notifyListeners();
   }
@@ -778,6 +808,71 @@ class AddLineController extends ChangeNotifier {
     return labels.join(' \u2014 ');
   }
 
+  // ---- Transposition detection --------------------------------------------
+
+  /// Computes the active-path snapshot (move IDs and effective labels) up to
+  /// the given [focusedPillIndex], or the full path if null.
+  ({Set<int> moveIds, List<String> labels}) _computeActivePathSnapshot(
+    LineEntryEngine engine,
+    int? focusedPillIndex,
+  ) {
+    final totalPills = engine.existingPath.length +
+        engine.followedMoves.length +
+        engine.bufferedMoves.length;
+    final effectiveDepth = focusedPillIndex != null
+        ? focusedPillIndex + 1
+        : totalPills;
+
+    final moveIds = <int>{};
+    final labels = <String>[];
+    var index = 0;
+
+    for (final move in engine.existingPath) {
+      if (index >= effectiveDepth) break;
+      moveIds.add(move.id);
+      final label = _pendingLabels.containsKey(index)
+          ? _pendingLabels[index]
+          : move.label;
+      if (label != null && label.isNotEmpty) labels.add(label);
+      index++;
+    }
+
+    for (final move in engine.followedMoves) {
+      if (index >= effectiveDepth) break;
+      moveIds.add(move.id);
+      final label = _pendingLabels.containsKey(index)
+          ? _pendingLabels[index]
+          : move.label;
+      if (label != null && label.isNotEmpty) labels.add(label);
+      index++;
+    }
+
+    for (final buffered in engine.bufferedMoves) {
+      if (index >= effectiveDepth) break;
+      // Buffered moves have no ID.
+      final label = buffered.label;
+      if (label != null && label.isNotEmpty) labels.add(label);
+      index++;
+    }
+
+    return (moveIds: moveIds, labels: labels);
+  }
+
+  /// Computes transposition matches for the current position.
+  List<TranspositionMatch> _computeTranspositions(
+    LineEntryEngine engine,
+    String currentFen,
+    int? focusedPillIndex,
+  ) {
+    if (currentFen == kInitialFEN) return const [];
+    final snapshot = _computeActivePathSnapshot(engine, focusedPillIndex);
+    return engine.findTranspositions(
+      resultingFen: currentFen,
+      activePathMoveIds: snapshot.moveIds,
+      activePathLabels: snapshot.labels,
+    );
+  }
+
   /// Updates the label on a buffered (unsaved) move at the given pill index.
   ///
   /// Mutates the in-memory [BufferedMove.label] and rebuilds pills.
@@ -798,6 +893,8 @@ class AddLineController extends ChangeNotifier {
 
     final pills = _buildPillsList(engine);
     final displayName = _computeDisplayNameWithPending(engine);
+    final transpositions = _computeTranspositions(
+      engine, _state.currentFen, _state.focusedPillIndex);
 
     _state = AddLineState(
       treeCache: _state.treeCache,
@@ -810,6 +907,7 @@ class AddLineController extends ChangeNotifier {
       isLoading: false,
       repertoireName: _state.repertoireName,
       pills: pills,
+      transpositionMatches: transpositions,
     );
     notifyListeners();
   }
@@ -831,6 +929,7 @@ class AddLineController extends ChangeNotifier {
       isLoading: false,
       repertoireName: _state.repertoireName,
       pills: _state.pills,
+      transpositionMatches: _state.transpositionMatches,
     );
     notifyListeners();
   }

@@ -123,6 +123,35 @@ The current **aggregate display name** (computed from labels along the path) is 
 
 The aggregate name must **never** appear above the board or in any widget between the app bar and the board container. Placing it above the board would cause the board to shift when the name appears or disappears, violating the board-layout-consistency contract.
 
+## Transposition Detection
+
+During line entry, the system detects when the current board position has already been reached via a different move sequence in the same repertoire.
+
+### When the warning appears
+
+After each move (board move, take-back, or pill tap), the system normalizes the current FEN to a position key (board, turn, castling, en-passant) and looks up all existing moves in the repertoire tree that reach the same position via `movesByPositionKey`. Moves on the same path as the current line (up to the focused position) are excluded from matches.
+
+### Classification
+
+Matches are classified as **same-opening** or **cross-opening**:
+- **Same-opening:** the active path and the match path share at least one label, or either path has no labels at all.
+- **Cross-opening:** both paths have labels but none overlap.
+
+Same-opening matches are listed before cross-opening matches.
+
+### Display
+
+An inline warning appears below the move pills showing each matching path with:
+- The match's **aggregate display name** (or "Unlabeled line" if empty).
+- The match's **SAN path description** (e.g., "1. d4 1...d5 2. e4").
+- A **Reroute** button for same-opening matches only (wired in CT-57).
+
+### Behavior
+
+- **Non-blocking:** the warning is informational only and does not prevent the user from continuing to add moves.
+- **Disappearance:** the warning disappears when the position changes (next move, take-back, or pill tap to a position without matches).
+- **Label sensitivity:** the classification is recomputed when labels change (via `updateLabel` or `updateBufferedLabel`), ensuring classification stays consistent with what the user sees.
+
 ## Navigation
 
 The Add Line screen is accessible from:

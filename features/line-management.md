@@ -42,6 +42,10 @@ On confirm, the system validates that the line's parity matches the board orient
 
 If there is a mismatch, the system **warns the user** via an **inline warning below the board** — not a popup dialog. The warning offers to **flip the board and confirm as the other color**. The user can ignore the warning and continue editing, or flip the board and reconfirm. See [design/ui-guidelines.md](../design/ui-guidelines.md) for the inline warning convention.
 
+### Transposition Detection During Entry
+
+During line entry, the system detects when the current board position has already been reached via a different move sequence in the repertoire. An inline warning is shown below the move pills, classifying matches as same-opening or cross-opening. See [add-line.md](add-line.md#transposition-detection) for details.
+
 ### Branching from Existing Lines
 
 The user doesn't have to start from the initial position every time. When entering a new line:

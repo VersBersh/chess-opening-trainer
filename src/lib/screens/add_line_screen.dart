@@ -470,6 +470,10 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
                   onPillTapped: _onPillTapped,
                 ),
 
+                // Transposition warning
+                if (state.transpositionMatches.isNotEmpty)
+                  _buildTranspositionWarning(state.transpositionMatches),
+
                 // Inline label editor
                 if (_isLabelEditorVisible) _buildInlineLabelEditor(state),
 
@@ -550,6 +554,10 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
                       focusedIndex: state.focusedPillIndex,
                       onPillTapped: _onPillTapped,
                     ),
+
+                    // Transposition warning
+                    if (state.transpositionMatches.isNotEmpty)
+                      _buildTranspositionWarning(state.transpositionMatches),
 
                     // Inline label editor
                     if (_isLabelEditorVisible)
@@ -651,6 +659,78 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
           setState(() => _isLabelEditorVisible = false);
         }
       },
+    );
+  }
+
+  Widget _buildTranspositionWarning(List<TranspositionMatch> matches) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.merge_type,
+                  size: 18, color: colorScheme.onSecondaryContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'This position also reached via:',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSecondaryContainer,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final match in matches)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          match.aggregateDisplayName.isNotEmpty
+                              ? match.aggregateDisplayName
+                              : 'Unlabeled line',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: colorScheme.onSecondaryContainer,
+                                  ),
+                        ),
+                        Text(
+                          match.pathDescription,
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onSecondaryContainer,
+                                  ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (match.isSameOpening)
+                    TextButton(
+                      onPressed: null,
+                      child: const Text('Reroute'),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 

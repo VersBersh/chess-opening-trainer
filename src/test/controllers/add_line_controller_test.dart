@@ -2725,4 +2725,285 @@ void main() {
       boardController.dispose();
     });
   });
+
+  // --------------------------------------------------------------------------
+  // CT-56: Transposition detection
+  // --------------------------------------------------------------------------
+
+  group('Transposition detection', () {
+    test('transpositionMatches populated after move reaching existing position',
+        () async {
+      // Seed two branches that transpose:
+      // Branch A: e4 d5 d4
+      // Branch B: d4 d5 e4
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play branch A: e4, d5, d4.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // After d4, the position transposes with branch B's e4 endpoint.
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      expect(controller.state.transpositionMatches.length, 1);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('transpositionMatches cleared after take-back to non-transposition position',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play branch A: e4, d5, d4.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Transposition detected at d4.
+      expect(controller.state.transpositionMatches, isNotEmpty);
+
+      // Take back d4 -> position after d5, no transposition expected.
+      controller.onTakeBack(boardController);
+      expect(controller.state.transpositionMatches, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('transpositionMatches updated on pill tap', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play branch A: e4, d5, d4.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Transposition detected at pill index 2 (d4).
+      expect(controller.state.transpositionMatches, isNotEmpty);
+
+      // Tap pill 0 (e4) -- position after e4 should have no transposition.
+      controller.onPillTapped(0, boardController);
+      expect(controller.state.transpositionMatches, isEmpty);
+
+      // Tap pill 2 (d4) -- transposition should reappear.
+      controller.onPillTapped(2, boardController);
+      expect(controller.state.transpositionMatches, isNotEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('transpositionMatches recomputed after updateLabel changes classification',
+        () async {
+      // Both branches share label "Alpha" on e4 initially.
+      // Only e4 is labeled so editing it breaks the overlap entirely.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+      });
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play branch A: e4, d5, d4.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Transposition should be same-opening (shared label "Alpha").
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      expect(controller.state.transpositionMatches[0].isSameOpening, true);
+
+      // Edit label on pill 0 (e4) from "Alpha" to "Beta" via pending label.
+      controller.onPillTapped(0, boardController);
+      controller.updateLabel(0, 'Beta');
+
+      // Navigate back to d4 to see updated transposition.
+      controller.onPillTapped(2, boardController);
+
+      // Now active path has label "Beta", match path has label "Alpha".
+      // They don't overlap -> cross-opening.
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      expect(controller.state.transpositionMatches[0].isSameOpening, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('transpositionMatches recomputed after updateBufferedLabel', () async {
+      // Tree has only branch B: d4 d5 e4 (labeled "Queen Pawn" on d4).
+      // User buffers branch A: e4 d5 d4 (no labels initially).
+      final repId = await seedRepertoire(db, lines: [
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'd4': 'Queen Pawn',
+      });
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4 (doesn't match tree root d4 -> buffered), d5, d4.
+      final fens = computeFens(['e4', 'd5', 'd4']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final d5Move = sanToNormalMove(fens[0], 'd5');
+      boardController.playMove(d5Move);
+      controller.onBoardMove(d5Move, boardController);
+
+      final d4Move = sanToNormalMove(fens[1], 'd4');
+      boardController.playMove(d4Move);
+      controller.onBoardMove(d4Move, boardController);
+
+      // Transposition found: same-opening (active path has no labels).
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      expect(controller.state.transpositionMatches[0].isSameOpening, true);
+
+      // Add a label to the first buffered move (e4) that differs from "Queen Pawn".
+      // Pill 0 is the buffered e4.
+      controller.updateBufferedLabel(0, 'King Pawn');
+
+      // Now active path has "King Pawn", match path has "Queen Pawn" -> cross-opening.
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      expect(controller.state.transpositionMatches[0].isSameOpening, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('transpositionMatches preserved after flipBoard', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play branch A: e4, d5, d4.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final matchesBefore = controller.state.transpositionMatches;
+      expect(matchesBefore, isNotEmpty);
+
+      // Flip the board.
+      controller.flipBoard();
+
+      // Transposition matches should be preserved (unchanged).
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      expect(controller.state.transpositionMatches.length, matchesBefore.length);
+      expect(
+        controller.state.transpositionMatches[0].moveId,
+        matchesBefore[0].moveId,
+      );
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('transpositionMatches empty at initial position', () async {
+      // Even if two branches exist, the initial position should not trigger
+      // transposition warnings.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+        ['d4', 'd5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      // At initial position, no transpositions should be reported.
+      expect(controller.state.transpositionMatches, isEmpty);
+
+      controller.dispose();
+    });
+
+    test('transpositionMatches works for followed (existing) moves', () async {
+      // Seed two branches that transpose.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow branch A (all moves are existing/saved).
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // All pills are saved (following existing moves).
+      for (final pill in controller.state.pills) {
+        expect(pill.isSaved, true);
+      }
+
+      // Transposition should still be detected.
+      expect(controller.state.transpositionMatches, isNotEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
 }

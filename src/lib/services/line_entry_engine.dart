@@ -62,6 +62,21 @@ class ParityMismatch extends ParityValidationResult {
   const ParityMismatch({required this.expectedOrientation});
 }
 
+/// A transposition match: another path in the repertoire tree that reaches
+/// the same board position via a different move sequence.
+class TranspositionMatch {
+  final int moveId;
+  final String aggregateDisplayName;
+  final String pathDescription;
+  final bool isSameOpening;
+  const TranspositionMatch({
+    required this.moveId,
+    required this.aggregateDisplayName,
+    required this.pathDescription,
+    required this.isSameOpening,
+  });
+}
+
 /// Data returned by [LineEntryEngine.getConfirmData] for persistence.
 class ConfirmData {
   final int? parentMoveId;
@@ -300,6 +315,70 @@ class LineEntryEngine {
     for (var i = 0; i < labels.length && i < _bufferedMoves.length; i++) {
       _bufferedMoves[i] = _bufferedMoves[i].copyWith(label: () => labels[i]);
     }
+  }
+
+  /// Finds transposition matches for the given board position.
+  ///
+  /// Returns moves in the repertoire tree that reach the same normalized
+  /// position via a different path. Moves on the active path (identified by
+  /// [activePathMoveIds]) are excluded. Matches are classified as same-opening
+  /// or cross-opening based on label overlap between [activePathLabels] and the
+  /// match path's labels. Same-opening matches are sorted before cross-opening.
+  List<TranspositionMatch> findTranspositions({
+    required String resultingFen,
+    required Set<int> activePathMoveIds,
+    required List<String> activePathLabels,
+  }) {
+    final positionKey = RepertoireTreeCache.normalizePositionKey(resultingFen);
+    final movesAtPosition = _treeCache.movesByPositionKey[positionKey];
+    if (movesAtPosition == null || movesAtPosition.isEmpty) return const [];
+
+    final activeLabelsSet = activePathLabels.toSet();
+
+    final matches = <TranspositionMatch>[];
+    for (final matchMove in movesAtPosition) {
+      // Skip moves on the same path.
+      if (activePathMoveIds.contains(matchMove.id)) continue;
+
+      // Classify as same-opening vs cross-opening.
+      bool isSameOpening;
+      if (activeLabelsSet.isEmpty) {
+        // Unlabeled active path: always same-opening.
+        isSameOpening = true;
+      } else {
+        // Collect labels from the match path.
+        final matchLine = _treeCache.getLine(matchMove.id);
+        final matchLabels = <String>{};
+        for (final m in matchLine) {
+          if (m.label != null && m.label!.isNotEmpty) {
+            matchLabels.add(m.label!);
+          }
+        }
+
+        if (matchLabels.isEmpty) {
+          // Unlabeled match path: same-opening.
+          isSameOpening = true;
+        } else {
+          // Both have labels: check for overlap.
+          isSameOpening = activeLabelsSet.intersection(matchLabels).isNotEmpty;
+        }
+      }
+
+      matches.add(TranspositionMatch(
+        moveId: matchMove.id,
+        aggregateDisplayName: _treeCache.getAggregateDisplayName(matchMove.id),
+        pathDescription: _treeCache.getPathDescription(matchMove.id),
+        isSameOpening: isSameOpening,
+      ));
+    }
+
+    // Sort: same-opening first, then cross-opening.
+    matches.sort((a, b) {
+      if (a.isSameOpening == b.isSameOpening) return 0;
+      return a.isSameOpening ? -1 : 1;
+    });
+
+    return matches;
   }
 
   /// Returns the aggregate display name for the current position in the tree.

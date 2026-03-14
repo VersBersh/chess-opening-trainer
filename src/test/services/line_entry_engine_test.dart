@@ -941,4 +941,426 @@ void main() {
       expect(checkSan, 'Qxf7+');
     });
   });
+
+  // --------------------------------------------------------------------------
+  // CT-56: findTranspositions
+  // --------------------------------------------------------------------------
+
+  group('findTranspositions', () {
+    test('returns empty list when position is unique (no transpositions)', () {
+      // Two non-overlapping lines: 1. e4 and 1. d4 — no shared positions.
+      final lineA = buildLine(['e4', 'e5']);
+      final lineB = buildLine(['d4', 'd5'], startId: 100);
+      final cache = RepertoireTreeCache.build([...lineA, ...lineB]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // Follow e4, e5.
+      engine.acceptMove('e4', lineA[0].fen);
+      engine.acceptMove('e5', lineA[1].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: lineA[1].fen,
+        activePathMoveIds: {lineA[0].id, lineA[1].id},
+        activePathLabels: [],
+      );
+
+      expect(result, isEmpty);
+    });
+
+    test('detects transposition via different move order', () {
+      // Two branches that reach the same position after 2 moves:
+      // Branch A: 1. e4 Nc6
+      // Branch B: 1. Nc3 e5
+      // After A: position has e4+Nc6 played. After B: position has Nc3+e5 played.
+      // These are different positions, so let's use a real transposition:
+      // Branch A: 1. e4 e5 2. Nf3
+      // Branch B: 1. Nf3 e5 2. e4
+      // After A's 2. Nf3 and B's 2. e4, board position differs (pawn on e4 vs not).
+      // Actually let's use:
+      // Branch A: 1. e4 d5 2. d4
+      // Branch B: 1. d4 d5 2. e4
+      // After both: pawns on e4, d4, d5 — same position!
+      final branchA = buildLine(['e4', 'd5', 'd4'], startId: 1);
+      final branchB = buildLine(['d4', 'd5', 'e4'], startId: 100);
+      final cache = RepertoireTreeCache.build([...branchA, ...branchB]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // Follow branch A: e4, d5, d4
+      engine.acceptMove('e4', branchA[0].fen);
+      engine.acceptMove('d5', branchA[1].fen);
+      engine.acceptMove('d4', branchA[2].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: branchA[2].fen,
+        activePathMoveIds: {branchA[0].id, branchA[1].id, branchA[2].id},
+        activePathLabels: [],
+      );
+
+      expect(result, hasLength(1));
+      expect(result[0].moveId, branchB[2].id);
+      expect(result[0].isSameOpening, true); // both unlabeled
+    });
+
+    test('excludes moves on the same path from matches', () {
+      // Single line: 1. e4 d5 2. d4 — the position after d4 should not
+      // match against d4 itself.
+      final line = buildLine(['e4', 'd5', 'd4']);
+      final cache = RepertoireTreeCache.build(line);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      engine.acceptMove('e4', line[0].fen);
+      engine.acceptMove('d5', line[1].fen);
+      engine.acceptMove('d4', line[2].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: line[2].fen,
+        activePathMoveIds: {line[0].id, line[1].id, line[2].id},
+        activePathLabels: [],
+      );
+
+      expect(result, isEmpty);
+    });
+
+    test('same-opening classification when paths share a label', () {
+      // Branch A: 1. e4 (labeled "QP Transpose") d5 2. d4
+      // Branch B: 1. d4 (labeled "QP Transpose") d5 2. e4
+      final branchA = buildLineWithLabel(
+        ['e4', 'd5', 'd4'],
+        labelOnSan: 'e4',
+        label: 'QP Transpose',
+        startId: 1,
+      );
+      final branchB = buildLineWithLabel(
+        ['d4', 'd5', 'e4'],
+        labelOnSan: 'd4',
+        label: 'QP Transpose',
+        startId: 100,
+      );
+      final cache = RepertoireTreeCache.build([...branchA, ...branchB]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      engine.acceptMove('e4', branchA[0].fen);
+      engine.acceptMove('d5', branchA[1].fen);
+      engine.acceptMove('d4', branchA[2].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: branchA[2].fen,
+        activePathMoveIds: {branchA[0].id, branchA[1].id, branchA[2].id},
+        activePathLabels: ['QP Transpose'],
+      );
+
+      expect(result, hasLength(1));
+      expect(result[0].isSameOpening, true);
+    });
+
+    test('same-opening classification when active path has no labels', () {
+      // Branch A: 1. e4 d5 2. d4 (no labels)
+      // Branch B: 1. d4 (labeled "Queen Pawn") d5 2. e4
+      final branchA = buildLine(['e4', 'd5', 'd4'], startId: 1);
+      final branchB = buildLineWithLabel(
+        ['d4', 'd5', 'e4'],
+        labelOnSan: 'd4',
+        label: 'Queen Pawn',
+        startId: 100,
+      );
+      final cache = RepertoireTreeCache.build([...branchA, ...branchB]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      engine.acceptMove('e4', branchA[0].fen);
+      engine.acceptMove('d5', branchA[1].fen);
+      engine.acceptMove('d4', branchA[2].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: branchA[2].fen,
+        activePathMoveIds: {branchA[0].id, branchA[1].id, branchA[2].id},
+        activePathLabels: [], // no labels on active path
+      );
+
+      expect(result, hasLength(1));
+      expect(result[0].isSameOpening, true);
+    });
+
+    test('same-opening classification when match path has no labels', () {
+      // Branch A: 1. e4 (labeled "King Pawn") d5 2. d4
+      // Branch B: 1. d4 d5 2. e4 (no labels)
+      final branchA = buildLineWithLabel(
+        ['e4', 'd5', 'd4'],
+        labelOnSan: 'e4',
+        label: 'King Pawn',
+        startId: 1,
+      );
+      final branchB = buildLine(['d4', 'd5', 'e4'], startId: 100);
+      final cache = RepertoireTreeCache.build([...branchA, ...branchB]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      engine.acceptMove('e4', branchA[0].fen);
+      engine.acceptMove('d5', branchA[1].fen);
+      engine.acceptMove('d4', branchA[2].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: branchA[2].fen,
+        activePathMoveIds: {branchA[0].id, branchA[1].id, branchA[2].id},
+        activePathLabels: ['King Pawn'],
+      );
+
+      expect(result, hasLength(1));
+      expect(result[0].isSameOpening, true);
+    });
+
+    test('cross-opening classification when labels differ', () {
+      // Branch A: 1. e4 (labeled "Caro-Kann") d5 2. d4
+      // Branch B: 1. d4 (labeled "French") d5 2. e4
+      final branchA = buildLineWithLabel(
+        ['e4', 'd5', 'd4'],
+        labelOnSan: 'e4',
+        label: 'Caro-Kann',
+        startId: 1,
+      );
+      final branchB = buildLineWithLabel(
+        ['d4', 'd5', 'e4'],
+        labelOnSan: 'd4',
+        label: 'French',
+        startId: 100,
+      );
+      final cache = RepertoireTreeCache.build([...branchA, ...branchB]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      engine.acceptMove('e4', branchA[0].fen);
+      engine.acceptMove('d5', branchA[1].fen);
+      engine.acceptMove('d4', branchA[2].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: branchA[2].fen,
+        activePathMoveIds: {branchA[0].id, branchA[1].id, branchA[2].id},
+        activePathLabels: ['Caro-Kann'],
+      );
+
+      expect(result, hasLength(1));
+      expect(result[0].isSameOpening, false);
+    });
+
+    test('same-opening matches sorted before cross-opening matches', () {
+      // Branch A: 1. e4 (labeled "Opening-A") d5 2. d4
+      // Branch B: 1. d4 (labeled "Opening-A") d5 2. e4  -> same-opening
+      // Branch C: 1. Nf3 d5 2. e4 (labeled "Opening-C") ...
+      //   We need a third branch that also reaches the same position with a
+      //   different label -> cross-opening.
+      // Actually, constructing 3 branches that transpose is complex. Let's use
+      // a simpler approach: two match branches, one same-opening and one cross.
+      //
+      // We'll use a custom FEN approach:
+      // Branch A (active): e4 d5 d4 labeled "Alpha"
+      // Branch B (match): d4 d5 e4 labeled "Alpha" -> same-opening
+      // Branch C (match): Nf3 d5 e4 ... different position, won't match.
+      //
+      // Instead, let's manually create moves that share a FEN position key.
+      // Two separate branches with the same final position but different labels.
+      final branchA = buildLineWithLabel(
+        ['e4', 'd5', 'd4'],
+        labelOnSan: 'e4',
+        label: 'Alpha',
+        startId: 1,
+      );
+      final branchB = buildLineWithLabel(
+        ['d4', 'd5', 'e4'],
+        labelOnSan: 'd4',
+        label: 'Alpha',
+        startId: 100,
+      );
+      // For cross-opening, we need a different route to the same position.
+      // After e4 d5 d4 and d4 d5 e4, positions match.
+      // But we need a third branch with a different label that also matches.
+      // This is hard with real chess: we'd need another move order to reach
+      // the same position. Instead, let's build the match FEN manually.
+      //
+      // We can create a third branch that shares the same resulting FEN by
+      // constructing a RepertoireMove with the same FEN but different parent chain.
+      // For simplicity, let's just test with two matches by building
+      // two branches: one same-opening, one cross-opening.
+      //
+      // We can do this by adding labels on different moves:
+      // Branch D: 1. d4 (labeled "Beta") e5 2. e4 (resulting in same pos as branch A? No.)
+      //
+      // Actually, a simpler approach: just verify ordering with two match branches
+      // that we can control. We'll create an artificial RepertoireMove with the same
+      // FEN as branchA[2] but a different label path.
+      final crossBranchFen = branchA[2].fen; // same position
+      final crossBranchMove = RepertoireMove(
+        id: 200,
+        repertoireId: 1,
+        parentMoveId: 201,
+        fen: crossBranchFen,
+        san: 'e4',
+        sortOrder: 0,
+      );
+      // Parent move with a different label.
+      final crossBranchParent = RepertoireMove(
+        id: 201,
+        repertoireId: 1,
+        parentMoveId: null,
+        fen: 'some-different-fen w KQkq - 0 1',
+        san: 'd4',
+        label: 'Beta',
+        sortOrder: 0,
+      );
+      final cache = RepertoireTreeCache.build([
+        ...branchA,
+        ...branchB,
+        crossBranchParent,
+        crossBranchMove,
+      ]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      engine.acceptMove('e4', branchA[0].fen);
+      engine.acceptMove('d5', branchA[1].fen);
+      engine.acceptMove('d4', branchA[2].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: branchA[2].fen,
+        activePathMoveIds: {branchA[0].id, branchA[1].id, branchA[2].id},
+        activePathLabels: ['Alpha'],
+      );
+
+      // Should find two matches: branchB (same-opening) and crossBranchMove (cross-opening).
+      expect(result.length, greaterThanOrEqualTo(2));
+      // Same-opening matches come first.
+      final sameOpening = result.where((m) => m.isSameOpening).toList();
+      final crossOpening = result.where((m) => !m.isSameOpening).toList();
+      expect(sameOpening, isNotEmpty);
+      expect(crossOpening, isNotEmpty);
+
+      // Verify ordering: all same-opening before any cross-opening.
+      final firstCrossIndex = result.indexWhere((m) => !m.isSameOpening);
+      final lastSameIndex = result.lastIndexWhere((m) => m.isSameOpening);
+      expect(lastSameIndex, lessThan(firstCrossIndex));
+    });
+
+    test('works for buffered moves (position not in tree)', () {
+      // Tree has branch B: 1. d4 d5 2. e4 which reaches a certain position.
+      // User buffers branch A: e4 d5 d4 (not in tree). The resulting FEN
+      // should match branch B's endpoint.
+      final branchB = buildLine(['d4', 'd5', 'e4'], startId: 100);
+      final cache = RepertoireTreeCache.build(branchB);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      // Buffer all moves (none match the tree since tree starts with d4).
+      final fens = computeFens(['e4', 'd5', 'd4']);
+      engine.acceptMove('e4', fens[0]);
+      engine.acceptMove('d5', fens[1]);
+      engine.acceptMove('d4', fens[2]);
+
+      // The buffered moves have no IDs, so activePathMoveIds is empty.
+      final result = engine.findTranspositions(
+        resultingFen: fens[2],
+        activePathMoveIds: {},
+        activePathLabels: [],
+      );
+
+      expect(result, hasLength(1));
+      expect(result[0].moveId, branchB[2].id);
+    });
+
+    test('classification reflects pending labels', () {
+      // Branch A: 1. e4 d5 2. d4 (no labels in tree)
+      // Branch B: 1. d4 (labeled "Queen Pawn") d5 2. e4
+      // If we pass activePathLabels = ['Sicilian'] (a pending edit), this
+      // differs from "Queen Pawn" -> cross-opening.
+      final branchA = buildLine(['e4', 'd5', 'd4'], startId: 1);
+      final branchB = buildLineWithLabel(
+        ['d4', 'd5', 'e4'],
+        labelOnSan: 'd4',
+        label: 'Queen Pawn',
+        startId: 100,
+      );
+      final cache = RepertoireTreeCache.build([...branchA, ...branchB]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      engine.acceptMove('e4', branchA[0].fen);
+      engine.acceptMove('d5', branchA[1].fen);
+      engine.acceptMove('d4', branchA[2].fen);
+
+      // Simulate a pending label edit: user added "Sicilian" to active path.
+      final result = engine.findTranspositions(
+        resultingFen: branchA[2].fen,
+        activePathMoveIds: {branchA[0].id, branchA[1].id, branchA[2].id},
+        activePathLabels: ['Sicilian'], // pending label, differs from "Queen Pawn"
+      );
+
+      expect(result, hasLength(1));
+      expect(result[0].isSameOpening, false); // cross-opening: no label overlap
+    });
+
+    test('populates aggregateDisplayName and pathDescription', () {
+      final branchA = buildLine(['e4', 'd5', 'd4'], startId: 1);
+      final branchB = buildLineWithLabel(
+        ['d4', 'd5', 'e4'],
+        labelOnSan: 'd4',
+        label: 'Queen Pawn',
+        startId: 100,
+      );
+      final cache = RepertoireTreeCache.build([...branchA, ...branchB]);
+      final engine = LineEntryEngine(
+        treeCache: cache,
+        repertoireId: 1,
+        startingMoveId: null,
+      );
+
+      engine.acceptMove('e4', branchA[0].fen);
+      engine.acceptMove('d5', branchA[1].fen);
+      engine.acceptMove('d4', branchA[2].fen);
+
+      final result = engine.findTranspositions(
+        resultingFen: branchA[2].fen,
+        activePathMoveIds: {branchA[0].id, branchA[1].id, branchA[2].id},
+        activePathLabels: [],
+      );
+
+      expect(result, hasLength(1));
+      // aggregateDisplayName should include "Queen Pawn" (from branchB's label).
+      expect(result[0].aggregateDisplayName, contains('Queen Pawn'));
+      // pathDescription should contain the SAN moves of branchB.
+      expect(result[0].pathDescription, contains('d4'));
+      expect(result[0].pathDescription, contains('e4'));
+    });
+  });
 }
