@@ -13,6 +13,7 @@ Global visual and layout conventions that apply across all screens. Feature-spec
 - **Equal width:** All move pills have the **same width**, regardless of the SAN text length (e.g., "e4" and "Nxd4" get the same pill width). This provides a clean, uniform grid-like appearance.
 - **Wrapping:** Pill rows wrap onto multiple lines when the content exceeds the available width. They must never clip or scroll off-screen invisibly.
 - **Labels on pills:** When a pill has an associated label, the label text is displayed **flat** beneath the pill (not angled or slanted). Labels must be laid out in a **reserved vertical slot** that is part of each row's intrinsic height — not absolutely positioned. Every wrapped row of pills must be tall enough to contain both the pill and the tallest possible label beneath it, whether or not any pill in that row carries a label. A label may extend horizontally into the column space of a neighbouring pill that has no label, but it must never visually overlap the neighbouring pill itself or bleed into an adjacent pill row.
+- **Uniform vertical spacing:** The vertical gap between the board and the first pill row must equal the gap between subsequent pill rows. Pill rows should use consistent, uniform vertical spacing throughout.
 - **No delete (X) on pills:** Pills do not have individual X/delete buttons. Move deletion is handled exclusively by the Take Back button. Individual X buttons are too small to press reliably on a phone and are redundant with Take Back.
 
 ## Action Buttons

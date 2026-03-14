@@ -35,6 +35,8 @@ A horizontal row of **move pills** is displayed below the board and above the ac
 - All pills use the same styling regardless of whether the move is already saved in the database or is new/unsaved.
 - **Equal width:** All pills have the **same width**, regardless of the SAN text length. This provides a clean, uniform appearance.
 - **Styling:** Pills use a blue fill, modest border radius (not full stadium shape), per [design/ui-guidelines.md](../design/ui-guidelines.md).
+- **Compact height:** Pill height should be compact -- not oversized. The vertical padding inside each pill should be minimal while still providing a comfortable tap target.
+- **Uniform gap:** The gap between the board bottom and the first pill row must equal the gap between pill rows (inter-row spacing). The layout must look balanced with 1 row of pills and with 2+ rows.
 - **Wrapping:** The pill row wraps onto multiple lines when moves exceed the available width. Pills must never scroll off-screen invisibly.
 - **Overflow safety:** The pill area has a bounded maximum height (the space between the board and the fixed action buttons). When wrapped rows exceed this height, the pill area must scroll vertically so that all pills remain reachable and the action buttons remain at their fixed position. The board must not be displaced regardless of how many rows are present.
 

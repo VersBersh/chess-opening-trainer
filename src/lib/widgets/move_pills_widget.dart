@@ -9,12 +9,23 @@ const double _kPillWidth = 66;
 /// Minimum interactive height for each pill. Smaller than the Material Design
 /// 48 dp recommendation, but sufficient for this dense chess UI where the
 /// 66 dp pill width provides ample horizontal tap area.
-const double _kPillMinTapTarget = 36;
+const double _kPillMinTapTarget = 32;
 
 /// Fixed height reserved for the label slot beneath every pill, whether or not
 /// a label is present. Sized to accommodate one line of 10 sp text (~14 dp)
 /// while keeping the slot height uniform across all pills in a Wrap row.
 const double _kLabelSlotHeight = 14;
+
+/// Vertical gap between consecutive wrapped pill rows (Wrap.runSpacing).
+const double _kPillRunSpacing = 4;
+
+/// Top padding above the first pill row. Set equal to the visual
+/// body-to-body distance between wrapped rows for vertical symmetry: the
+/// space above the first row matches the space between consecutive rows.
+/// The inter-row body-to-body distance is _kLabelSlotHeight +
+/// _kPillRunSpacing (the label slot sits between pill bodies of adjacent
+/// rows, then runSpacing adds the Wrap gap).
+const double _kPillAreaTopPadding = _kLabelSlotHeight + _kPillRunSpacing; // 18
 
 // ---------------------------------------------------------------------------
 // Pill data model
@@ -75,10 +86,15 @@ class MovePillsWidget extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.only(
+        left: 8,
+        right: 8,
+        top: _kPillAreaTopPadding,
+        bottom: 4,
+      ),
       child: Wrap(
         spacing: 4,
-        runSpacing: 4,
+        runSpacing: _kPillRunSpacing,
         children: [
           for (var i = 0; i < pills.length; i++)
             _MovePill(
@@ -174,7 +190,7 @@ class _MovePill extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: borderColor, width: borderWidth),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
             child: ExcludeSemantics(
               child: Text(
                 data.san,

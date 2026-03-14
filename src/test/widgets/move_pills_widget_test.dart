@@ -248,11 +248,11 @@ void main() {
         matching: find.byType(Semantics),
       ).first);
 
-      // Both pills must have the same height: _kPillMinTapTarget (36) +
-      // _kLabelSlotHeight (14) = 50 dp. The label slot is always reserved
+      // Both pills must have the same height: _kPillMinTapTarget (32) +
+      // _kLabelSlotHeight (14) = 46 dp. The label slot is always reserved
       // in-flow, so labels cannot overflow into adjacent wrapped rows.
       expect(labeledSize.height, unlabeledSize.height);
-      expect(labeledSize.height, 50.0);
+      expect(labeledSize.height, 46.0);
     });
 
     testWidgets('label slot does not cause wrapped rows to overlap',
@@ -281,6 +281,51 @@ void main() {
       // The bottom edge of the first row's item must not exceed the top edge
       // of the second row's item (runSpacing=4 sits between them).
       expect(row0Rect.bottom, lessThanOrEqualTo(row1Rect.top));
+    });
+
+    testWidgets('top padding equals inter-row pill-body gap',
+        (tester) async {
+      // 160 dp container: available Wrap width = 160 - 16 (horiz padding) = 144.
+      // 2 pills fit per row (2×66 + 4 = 136 ≤ 144), so 4 pills → 2 rows.
+      final pills = [
+        const MovePillData(san: 'e4', isSaved: true, label: 'Sicilian'),
+        const MovePillData(san: 'e5', isSaved: true),
+        const MovePillData(san: 'Nf3', isSaved: true),
+        const MovePillData(san: 'Nc6', isSaved: true),
+      ];
+
+      await tester.pumpWidget(buildTestApp(pills: pills, width: 160));
+
+      // Find the Padding that wraps the Wrap (the pill area container).
+      final paddingWidget = find.ancestor(
+        of: find.byType(Wrap),
+        matching: find.byType(Padding),
+      ).first;
+      final pillAreaTopEdge = tester.getRect(paddingWidget).top;
+
+      // Find the pill bodies (GestureDetectors) for row 0 and row 1.
+      // Pills[0] ('e4') is in row 0; pills[2] ('Nf3') is in row 1.
+      final row0PillBody = find.ancestor(
+        of: find.text('e4'),
+        matching: find.byType(GestureDetector),
+      ).first;
+      final row1PillBody = find.ancestor(
+        of: find.text('Nf3'),
+        matching: find.byType(GestureDetector),
+      ).first;
+
+      final row0BodyRect = tester.getRect(row0PillBody);
+      final row1BodyRect = tester.getRect(row1PillBody);
+
+      // Top padding: distance from widget top edge to first pill body.
+      final topGap = row0BodyRect.top - pillAreaTopEdge;
+
+      // Inter-row gap: distance from row 0 pill body bottom to row 1 pill
+      // body top.
+      final interRowBodyGap = row1BodyRect.top - row0BodyRect.bottom;
+
+      // The two gaps must be equal for visual symmetry.
+      expect(topGap, interRowBodyGap);
     });
 
     testWidgets('pills do not render a delete icon', (tester) async {
@@ -438,7 +483,7 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('each pill tap target is at least 36 dp tall', (tester) async {
+    testWidgets('each pill tap target is at least 32 dp tall', (tester) async {
       final pills = [
         const MovePillData(san: 'e4', isSaved: true),
         const MovePillData(san: 'Nf3', isSaved: false),
@@ -453,7 +498,7 @@ void main() {
           matching: find.byType(GestureDetector),
         ).first;
         final size = tester.getSize(gestureDetector);
-        expect(size.height, greaterThanOrEqualTo(36));
+        expect(size.height, greaterThanOrEqualTo(32));
       }
     });
   });
