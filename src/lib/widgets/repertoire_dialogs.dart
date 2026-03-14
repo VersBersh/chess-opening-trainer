@@ -157,6 +157,68 @@ Future<bool?> showNoNameWarningDialog(BuildContext context) {
   );
 }
 
+/// Shows a confirmation dialog for rerouting a line's continuation.
+///
+/// Returns `true` if the user confirms, `false` or `null` if cancelled.
+Future<bool?> showRerouteConfirmationDialog(
+  BuildContext context, {
+  required int continuationLineCount,
+  required String oldPathDescription,
+  required String newPathDescription,
+  String? lineName,
+}) {
+  final linesText = continuationLineCount == 1
+      ? '1 continuation line'
+      : '$continuationLineCount continuation lines';
+
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Reroute line?'),
+      content: Text.rich(
+        TextSpan(
+          children: [
+            const TextSpan(text: 'Move '),
+            TextSpan(
+              text: linesText,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const TextSpan(text: ' from '),
+            TextSpan(
+              text: oldPathDescription,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const TextSpan(text: ' to the current path '),
+            TextSpan(
+              text: newPathDescription,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            if (lineName != null) ...[
+              const TextSpan(text: ' ('),
+              TextSpan(
+                text: lineName,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const TextSpan(text: ')'),
+            ],
+            const TextSpan(text: '? This cannot be undone.'),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Reroute'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Shows a warning dialog listing how descendant display names will change
 /// when a label is modified. Returns `true` if the user confirms ("Apply"),
 /// `false` or `null` if the user cancels.

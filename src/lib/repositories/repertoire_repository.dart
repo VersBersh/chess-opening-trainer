@@ -60,4 +60,21 @@ abstract class RepertoireRepository {
   Future<int> countLeavesInSubtree(int moveId);
   Future<List<RepertoireMove>> getOrphanedLeaves(int repertoireId);
   Future<void> pruneOrphans(int repertoireId);
+
+  /// Atomic reroute operation:
+  /// 1. Insert [newMoves] as a chain starting from [anchorMoveId] (or as root
+  ///    moves if null), creating the new path to the convergence point.
+  /// 2. Re-parent all children of [oldConvergenceId] under the last inserted
+  ///    move (the new convergence node).
+  /// 3. Prune the orphaned old path: walk up from [oldConvergenceId] toward
+  ///    the root, deleting each childless node that has no review card, stopping
+  ///    at the first node that still has children or a review card.
+  /// 4. Apply any pending label updates.
+  /// Returns the list of inserted move IDs.
+  Future<List<int>> rerouteLine({
+    required int? anchorMoveId,
+    required List<RepertoireMovesCompanion> newMoves,
+    required int oldConvergenceId,
+    required List<PendingLabelUpdate> labelUpdates,
+  });
 }

@@ -184,6 +184,15 @@ class FakeRepertoireRepository implements RepertoireRepository {
 
   @override
   Future<void> updateMoveLabel(int moveId, String? label) async {}
+
+  @override
+  Future<List<int>> rerouteLine({
+    required int? anchorMoveId,
+    required List<RepertoireMovesCompanion> newMoves,
+    required int oldConvergenceId,
+    required List<PendingLabelUpdate> labelUpdates,
+  }) =>
+      throw UnimplementedError();
 }
 
 /// A FakeReviewRepository that supports subtree queries by using the tree

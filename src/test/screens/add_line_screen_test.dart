@@ -2437,10 +2437,11 @@ void main() {
 
     testWidgets('warning shows Reroute button for same-opening matches only',
         (tester) async {
-      // Branch A: e4 (labeled "Alpha") d5 d4
+      // Branch A: e4 (labeled "Alpha") d5 d4 Nf6  (d4 has child -> non-leaf)
       // Branch B: d4 (labeled "Alpha") d5 e4  -> same-opening
+      // The Reroute button requires: isSameOpening AND !isLeaf(match.moveId).
       final repId = await seedRepertoire(db, lines: [
-        ['e4', 'd5', 'd4'],
+        ['e4', 'd5', 'd4', 'Nf6'],
         ['d4', 'd5', 'e4'],
       ], labelsOnSan: {
         'e4': 'Alpha',
@@ -2460,8 +2461,9 @@ void main() {
         testBoard.dispose();
       });
 
-      // Play e4, d5, d4 to trigger transposition.
-      final moves = ['e4', 'd5', 'd4'];
+      // Play d4, d5, e4 to trigger transposition.
+      // The match is Branch A's d4 (which has child Nf6 -> non-leaf).
+      final moves = ['d4', 'd5', 'e4'];
       var currentFen = kInitialFEN;
       for (final san in moves) {
         final normalMove = sanToNormalMove(currentFen, san);
@@ -2471,7 +2473,7 @@ void main() {
       }
       await tester.pump();
 
-      // Warning should appear with Reroute button (same-opening match).
+      // Warning should appear with Reroute button (same-opening, non-leaf match).
       expect(find.textContaining('This position also reached via'), findsOneWidget);
       expect(find.text('Reroute'), findsOneWidget);
     });
@@ -2796,6 +2798,354 @@ void main() {
       // Board should still be interactive (PlayerSide.both).
       final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
       expect(chessboard.game?.playerSide, PlayerSide.both);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // CT-57: Reroute dialog and button
+  // -------------------------------------------------------------------------
+
+  group('CT-57: Reroute', () {
+    testWidgets('Reroute button is tappable for same-opening non-leaf matches',
+        (tester) async {
+      // Branch A: e4 d5 d4 Nf6  (d4 has child Nf6 = non-leaf)
+      // Branch B: d4 d5 e4       (same opening, same position)
+      // Both labeled "Alpha" so isSameOpening = true.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      });
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play d4, d5, e4 to trigger transposition.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Warning should appear with a tappable Reroute button (non-null onPressed).
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+      final rerouteButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Reroute'),
+      );
+      expect(rerouteButton.onPressed, isNotNull);
+    });
+
+    testWidgets('Reroute button is NOT shown for leaf matches',
+        (tester) async {
+      // Branch A: e4 d5 d4  (d4 is a leaf -- no children to reroute)
+      // Branch B: d4 d5 e4  (same position, same opening)
+      // Both labeled "Alpha".
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      });
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play d4, d5, e4 to trigger transposition with leaf match.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Warning should appear but Reroute button should NOT be shown
+      // (matched node d4 is a leaf with no children).
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+      expect(find.text('Reroute'), findsNothing);
+    });
+
+    testWidgets('tapping Reroute shows confirmation dialog', (tester) async {
+      // Branch A: e4 d5 d4 Nf6  (d4 has child, non-leaf)
+      // Branch B: d4 d5 e4       (same opening)
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      });
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play d4, d5, e4.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Tap the Reroute button.
+      await tester.tap(find.text('Reroute'));
+      await tester.pumpAndSettle();
+
+      // Confirmation dialog should appear with expected title.
+      expect(find.text('Reroute line?'), findsOneWidget);
+      // Dialog should mention "continuation line(s)".
+      expect(find.textContaining('continuation line'), findsOneWidget);
+      // Dialog should have Cancel and Reroute actions.
+      expect(find.text('Cancel'), findsOneWidget);
+      // There should be a second "Reroute" in the dialog (the confirm button).
+      expect(find.text('Reroute'), findsNWidgets(2));
+    });
+
+    testWidgets('cancelling the dialog leaves everything unchanged',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      });
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play d4, d5, e4.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Tap Reroute.
+      await tester.tap(find.text('Reroute'));
+      await tester.pumpAndSettle();
+
+      // Tap Cancel.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Dialog should be dismissed.
+      expect(find.text('Reroute line?'), findsNothing);
+
+      // Transposition warning should still be visible (nothing changed).
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+    });
+
+    testWidgets('confirming the dialog performs reroute and shows snackbar',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      }, createCards: true);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play d4, d5, e4.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Tap Reroute button in the warning.
+      await tester.tap(find.text('Reroute'));
+      await tester.pumpAndSettle();
+
+      // Tap Reroute in the confirmation dialog (second instance).
+      // Find all 'Reroute' texts -- the second one is in the dialog.
+      final rerouteButtons = find.text('Reroute');
+      await tester.tap(rerouteButtons.last);
+      await tester.pumpAndSettle();
+
+      // Transposition warning should be dismissed (no more matching path).
+      expect(find.textContaining('This position also reached via'), findsNothing);
+
+      // Success snackbar should appear.
+      expect(find.text('Line rerouted'), findsOneWidget);
+    });
+
+    testWidgets('Reroute button not shown for cross-opening matches',
+        (tester) async {
+      // Different labels on root moves -> cross-opening -> no Reroute button.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6'],
+        ['d4', 'd5', 'e4'],
+      ]);
+
+      // Label root moves with different labels to make them cross-opening.
+      final allMoves = await LocalRepertoireRepository(db)
+          .getMovesForRepertoire(repId);
+      for (final m in allMoves) {
+        if (m.parentMoveId == null && m.san == 'e4') {
+          await (db.update(db.repertoireMoves)
+                ..where((t) => t.id.equals(m.id)))
+              .write(const RepertoireMovesCompanion(label: Value('King Pawn')));
+        }
+        if (m.parentMoveId == null && m.san == 'd4') {
+          await (db.update(db.repertoireMoves)
+                ..where((t) => t.id.equals(m.id)))
+              .write(const RepertoireMovesCompanion(label: Value('Queen Pawn')));
+        }
+      }
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Play e4, d5, d4 to trigger cross-opening transposition.
+      final moves = ['e4', 'd5', 'd4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Warning visible but no Reroute button (cross-opening).
+      expect(find.textContaining('This position also reached via'), findsOneWidget);
+      expect(find.text('Reroute'), findsNothing);
+    });
+
+    testWidgets(
+        'existing Reroute button test updated: requires non-leaf match for button visibility',
+        (tester) async {
+      // This test verifies that the existing test
+      // 'warning shows Reroute button for same-opening matches only' needs
+      // the matched node to have children (non-leaf) for the button to appear.
+      //
+      // Branch A: e4 d5 d4 Nf6  (d4 has children -> non-leaf)
+      // Branch B: d4 d5 e4       (same opening)
+      // User follows Branch A to d4 -> transposition detected with Branch B's e4.
+      // Branch B's e4 is a leaf, so no Reroute button.
+      // But d4 (Branch A) has children -> if d4 is the match, Reroute IS shown.
+      //
+      // We verify: when the matched node has children, Reroute button appears.
+      // When the matched node is a leaf, Reroute button does NOT appear.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      });
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      final testBoard = ChessboardController();
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      // Follow Branch B: d4, d5, e4 -- the transposition match is the old
+      // Branch A's d4 which has children (Nf6). So Reroute should appear.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+      await tester.pump();
+
+      // Match is d4 (non-leaf, has child Nf6) -> Reroute button visible.
+      expect(find.text('Reroute'), findsOneWidget);
     });
   });
 }

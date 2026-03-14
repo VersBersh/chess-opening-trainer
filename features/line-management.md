@@ -46,6 +46,10 @@ If there is a mismatch, the system **warns the user** via an **inline warning be
 
 During line entry, the system detects when the current board position has already been reached via a different move sequence in the repertoire. An inline warning is shown below the move pills, classifying matches as same-opening or cross-opening. See [add-line.md](add-line.md#transposition-detection) for details.
 
+### Rerouting
+
+When transposition detection identifies that an existing line reaches the current position via a different move order (same-opening match), the user can **reroute** the existing line's continuation to go through the current path instead. This re-parents the continuation moves without deleting them or losing their review card state. See [add-line.md](add-line.md#reroute) for the full UI flow.
+
 ### Branching from Existing Lines
 
 The user doesn't have to start from the initial position every time. When entering a new line:

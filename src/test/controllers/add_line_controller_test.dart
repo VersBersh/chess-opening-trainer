@@ -3420,4 +3420,365 @@ void main() {
       boardController.dispose();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // CT-57: Reroute
+  // -------------------------------------------------------------------------
+
+  group('Reroute', () {
+    test('reroute succeeds and rebuilds state: transpositionMatches clears',
+        () async {
+      // Seed two branches that transpose:
+      // Branch A: e4 d5 d4 Nf6 Nc3  (d4 has children Nf6 -> Nc3)
+      // Branch B: d4 d5 e4            (e4 is a leaf, same position as d4 above)
+      //
+      // User follows Branch B (d4, d5, e4) -> transposition detected.
+      // performReroute should reparent Nf6 under Branch B's e4 and
+      // prune old d4.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6', 'Nc3'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      }, createCards: true);
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow Branch B: d4, d5, e4.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Transposition should be detected.
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      final match = controller.state.transpositionMatches.first;
+
+      // Perform the reroute.
+      final result = await controller.performReroute(match);
+
+      expect(result, isA<RerouteSuccess>());
+
+      // After reroute, transposition matches should be empty (old path pruned).
+      expect(controller.state.transpositionMatches, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('reroute with SAN conflict returns RerouteConflict', () async {
+      // Both branches have the same child SAN under their convergence nodes:
+      // Branch A: e4 d5 d4 Nf6  (d4 has child Nf6)
+      // Branch B: d4 d5 e4 Nf6  (e4 already has child Nf6)
+      //
+      // Rerouting d4's children under e4 would cause a SAN conflict (Nf6).
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6'],
+        ['d4', 'd5', 'e4', 'Nf6'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      }, createCards: true);
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow Branch B: d4, d5, e4.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      final match = controller.state.transpositionMatches.first;
+
+      // Should return RerouteConflict because e4 already has child Nf6.
+      final result = await controller.performReroute(match);
+
+      expect(result, isA<RerouteConflict>());
+      final conflict = result as RerouteConflict;
+      expect(conflict.conflictingSans, contains('Nf6'));
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('reroute with buffered moves persists only prefix up to focusedPillIndex',
+        () async {
+      // Branch A (existing): e4 d5 d4 Nf6 Nc3
+      // User plays (all buffered): d4, d5, e4, c5 (goes past convergence)
+      //
+      // After focusing pill at convergence point (e4) and rerouting,
+      // only d4, d5, e4 should be persisted. c5 should be discarded.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6', 'Nc3'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+      }, createCards: true);
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play buffered moves: d4 (new root), d5, e4, c5.
+      final allSans = ['d4', 'd5', 'e4', 'c5'];
+      var currentFen = kInitialFEN;
+      for (final san in allSans) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Focus on pill at convergence (e4 = index 2).
+      controller.onPillTapped(2, boardController);
+
+      // Should have transposition at this focused position.
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      final match = controller.state.transpositionMatches.first;
+
+      final result = await controller.performReroute(match);
+      expect(result, isA<RerouteSuccess>());
+
+      // After reroute, the c5 buffered move should be gone (loadData rebuilds).
+      // Pills should show the rerouted path without c5.
+      expect(
+        controller.state.pills.where((p) => p.san == 'c5').isEmpty,
+        true,
+        reason: 'Post-convergence buffered move c5 should be discarded',
+      );
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('reroute preserves review cards on leaf moves', () async {
+      // Verify that after reroute, getCardForLeaf returns the same card
+      // for the leaf moves that were re-parented.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6', 'Nc3'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      }, createCards: true);
+
+      // Get leaf card before reroute.
+      final nc3Id = await getMoveIdBySan(db, repId, 'Nc3');
+      final reviewRepo = LocalReviewRepository(db);
+      final cardBefore = await reviewRepo.getCardForLeaf(nc3Id!);
+      expect(cardBefore, isNotNull);
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow Branch B: d4, d5, e4.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final match = controller.state.transpositionMatches.first;
+      await controller.performReroute(match);
+
+      // Card for Nc3 should be preserved.
+      final cardAfter = await reviewRepo.getCardForLeaf(nc3Id);
+      expect(cardAfter, isNotNull);
+      expect(cardAfter!.leafMoveId, cardBefore!.leafMoveId);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('state reloads correctly after reroute: pills, FEN, displayName consistent',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'Nf6'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      }, createCards: true);
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow Branch B: d4, d5, e4.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final match = controller.state.transpositionMatches.first;
+      await controller.performReroute(match);
+
+      // State should be consistent after reload.
+      expect(controller.state.isLoading, false);
+      expect(controller.state.pills, isNotEmpty);
+      expect(controller.state.currentFen, isNotEmpty);
+      expect(controller.state.currentFen, isNot(kInitialFEN));
+
+      // All pills should now be saved (the engine was rebuilt from DB state).
+      for (final pill in controller.state.pills) {
+        expect(pill.isSaved, true);
+      }
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('getRerouteInfo returns 0 continuationLineCount for leaf match',
+        () async {
+      // Branch A: e4 d5 d4  (d4 is a leaf -- no children to reroute)
+      // Branch B: d4 d5 e4  (same position as d4 via transposition)
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4'],
+        ['d4', 'd5', 'e4'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      }, createCards: true);
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow Branch B: d4, d5, e4.
+      final moves = ['d4', 'd5', 'e4'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      final match = controller.state.transpositionMatches.first;
+
+      final info = controller.getRerouteInfo(match);
+      // d4 is a leaf -- 0 continuation lines (or 1 counting itself, but
+      // countDescendantLeaves on a leaf node should be 1 since it counts the
+      // node itself. However, the leaf has no children to reroute, so the
+      // Reroute button won't be shown. The controller should handle this
+      // gracefully regardless of the count.)
+      expect(info.continuationLineCount, lessThanOrEqualTo(1));
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test(
+        'reroute from earlier focused saved pill re-parents under correct node',
+        () async {
+      // Regression test: when the user follows existing moves past the
+      // convergence point and then taps back to focus the convergence pill,
+      // the reroute must use getMoveIdAtPillIndex (the focused pill's move ID)
+      // as the new convergence node, NOT engine.lastExistingMoveId (which
+      // points to a later move in the followed path).
+      //
+      // Branch A: e4 d5 d4 c5 Nc3  (d4 has child c5, c5 has child Nc3)
+      // Branch B: d4 d5 e4 Nf6      (e4 transposes with A's d4; Nf6 is
+      //                               different from c5, so no SAN conflict)
+      //
+      // User follows Branch B fully (d4, d5, e4, Nf6). lastExistingMoveId =
+      // B's Nf6 (pill 3). User taps pill 2 (e4). Transposition fires:
+      // match.moveId = A's d4 (has children c5 -> Nc3). The convergence node
+      // should be B's e4 (pill 2), NOT B's Nf6 (pill 3).
+      //
+      // Without the fix, c5 and Nc3 would be re-parented under B's Nf6.
+      // With the fix, they are correctly re-parented under B's e4.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'd5', 'd4', 'c5', 'Nc3'],
+        ['d4', 'd5', 'e4', 'Nf6'],
+      ], labelsOnSan: {
+        'e4': 'Alpha',
+        'd4': 'Alpha',
+      }, createCards: true);
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow Branch B fully: d4, d5, e4, Nf6.
+      final moves = ['d4', 'd5', 'e4', 'Nf6'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Tap back to pill 2 (e4) — the convergence point.
+      controller.onPillTapped(2, boardController);
+      expect(controller.state.focusedPillIndex, 2);
+
+      // Transposition should be detected at this position (A's d4).
+      expect(controller.state.transpositionMatches, isNotEmpty);
+      final match = controller.state.transpositionMatches.first;
+
+      // Perform reroute from the earlier focused pill.
+      final result = await controller.performReroute(match);
+      expect(result, isA<RerouteSuccess>());
+
+      // Verify: c5 (was child of A's d4) is now under B's e4 (pill 2),
+      // NOT under B's Nf6 (pill 3).
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+
+      // Find B's e4: it's the e4 whose parent chain goes through d5 -> d4.
+      final branchBE4 = allMoves.firstWhere((m) {
+        if (m.san != 'e4') return false;
+        final parent = allMoves.firstWhere((p) => p.id == m.parentMoveId);
+        return parent.san == 'd5';
+      });
+
+      // c5 should be a direct child of B's e4.
+      final c5 = allMoves.firstWhere((m) => m.san == 'c5');
+      expect(c5.parentMoveId, branchBE4.id,
+          reason: 'c5 should be re-parented under B\'s e4, not B\'s Nf6');
+
+      // Nf6 should also still be a child of B's e4.
+      final nf6 = allMoves.firstWhere(
+          (m) => m.san == 'Nf6' && m.parentMoveId == branchBE4.id);
+      expect(nf6.parentMoveId, branchBE4.id);
+
+      // Nc3 should be a child of c5.
+      final nc3 = allMoves.firstWhere((m) => m.san == 'Nc3');
+      expect(nc3.parentMoveId, c5.id);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
 }

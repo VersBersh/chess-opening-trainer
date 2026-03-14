@@ -144,7 +144,20 @@ Same-opening matches are listed before cross-opening matches.
 An inline warning appears below the move pills showing each matching path with:
 - The match's **aggregate display name** (or "Unlabeled line" if empty).
 - The match's **SAN path description** (e.g., "1. d4 1...d5 2. e4").
-- A **Reroute** button for same-opening matches only (wired in CT-57).
+- A **Reroute** button for same-opening non-leaf matches (see Reroute section below).
+
+### Reroute
+
+When a same-opening transposition match has continuation moves (the matched node is not a leaf), a **Reroute** button appears on that match row. Tapping it shows a confirmation dialog with details of what will change (number of continuation lines, old vs new path). On confirm:
+
+1. Buffered moves up to the focused pill (convergence point) are persisted.
+2. Children of the old convergence node are re-parented under the new convergence node.
+3. The orphaned old path is pruned back to the nearest branching ancestor (or node with a review card).
+4. The tree cache is rebuilt and the transposition warning dismisses.
+
+SAN conflicts (the new convergence node already has a child with the same SAN as one being re-parented) block the reroute with an explanatory message. The reroute is atomic -- all-or-nothing within a single transaction.
+
+Leaf matches (where the matched node has no children) do not show the Reroute button, as there is nothing to re-parent.
 
 ### Behavior
 

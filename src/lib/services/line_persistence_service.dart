@@ -6,8 +6,18 @@ import '../repositories/review_repository.dart';
 import 'line_entry_engine.dart';
 
 // ---------------------------------------------------------------------------
-// Result type
+// Result types
 // ---------------------------------------------------------------------------
+
+/// Result of a reroute operation.
+class PersistenceRerouteResult {
+  final List<int> insertedMoveIds;
+  final int newConvergenceId;
+  const PersistenceRerouteResult({
+    required this.insertedMoveIds,
+    required this.newConvergenceId,
+  });
+}
 
 /// Result of persisting new moves via [LinePersistenceService].
 class PersistResult {
@@ -148,6 +158,48 @@ class LinePersistenceService {
       isExtension: false,
       newLeafMoveId: insertedIds.last,
       insertedMoveIds: insertedIds,
+    );
+  }
+
+  /// Reroutes an existing line's continuation to go through a new path.
+  ///
+  /// Converts [movesToPersist] to companions, delegates to
+  /// [RepertoireRepository.rerouteLine], and returns a [PersistenceRerouteResult].
+  Future<PersistenceRerouteResult> reroute({
+    required int? anchorMoveId,
+    required List<BufferedMove> movesToPersist,
+    required int oldConvergenceId,
+    required int repertoireId,
+    required int sortOrder,
+    required List<PendingLabelUpdate> labelUpdates,
+  }) async {
+    final companions = <RepertoireMovesCompanion>[];
+    for (var i = 0; i < movesToPersist.length; i++) {
+      final buffered = movesToPersist[i];
+      companions.add(RepertoireMovesCompanion.insert(
+        repertoireId: repertoireId,
+        fen: buffered.fen,
+        san: buffered.san,
+        label: buffered.label != null
+            ? Value(buffered.label)
+            : const Value.absent(),
+        sortOrder: i == 0 ? sortOrder : 0,
+      ));
+    }
+
+    final insertedIds = await _repertoireRepo.rerouteLine(
+      anchorMoveId: anchorMoveId,
+      newMoves: companions,
+      oldConvergenceId: oldConvergenceId,
+      labelUpdates: labelUpdates,
+    );
+
+    final newConvergenceId =
+        insertedIds.isNotEmpty ? insertedIds.last : anchorMoveId!;
+
+    return PersistenceRerouteResult(
+      insertedMoveIds: insertedIds,
+      newConvergenceId: newConvergenceId,
     );
   }
 }

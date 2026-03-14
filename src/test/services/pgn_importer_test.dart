@@ -188,6 +188,19 @@ class SpyRepertoireRepository implements RepertoireRepository {
           List<PendingLabelUpdate> labelUpdates) =>
       _delegate.saveBranchWithLabelUpdates(
           parentMoveId, newMoves, labelUpdates);
+  @override
+  Future<List<int>> rerouteLine({
+    required int? anchorMoveId,
+    required List<RepertoireMovesCompanion> newMoves,
+    required int oldConvergenceId,
+    required List<PendingLabelUpdate> labelUpdates,
+  }) =>
+      _delegate.rerouteLine(
+        anchorMoveId: anchorMoveId,
+        newMoves: newMoves,
+        oldConvergenceId: oldConvergenceId,
+        labelUpdates: labelUpdates,
+      );
 }
 
 // ---------------------------------------------------------------------------

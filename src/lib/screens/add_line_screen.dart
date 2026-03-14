@@ -332,6 +332,65 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     setState(() => _parityWarning = null);
   }
 
+  Future<void> _onReroute(TranspositionMatch match) async {
+    // 1. Get reroute info for the confirmation dialog.
+    final info = _controller.getRerouteInfo(match);
+
+    // 2. Show confirmation dialog.
+    final confirmed = await showRerouteConfirmationDialog(
+      context,
+      continuationLineCount: info.continuationLineCount,
+      oldPathDescription: info.oldPathDescription,
+      newPathDescription: info.newPathDescription,
+      lineName: info.lineName,
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    // 3. Perform the reroute.
+    final result = await _controller.performReroute(match);
+    if (!mounted) return;
+
+    // 4. Handle the result.
+    switch (result) {
+      case RerouteSuccess():
+        // Sync the board to the controller's current FEN after reroute.
+        final fen = _controller.state.currentFen;
+        if (fen == kInitialFEN) {
+          _boardController.resetToInitial();
+        } else {
+          _boardController.setPosition(fen);
+        }
+        _localMessengerKey.currentState?.showSnackBar(
+          const SnackBar(
+            content: Text('Line rerouted'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 3),
+          ),
+        );
+
+      case RerouteConflict(:final conflictingSans):
+        _localMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Cannot reroute: move ${conflictingSans.join(", ")} already exists at the target position',
+            ),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+
+      case RerouteError(:final userMessage):
+        _localMessengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text(userMessage),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+    }
+  }
+
   Future<void> _handlePopWithUnsavedMoves(
       bool didPop, Object? result) async {
     if (didPop) return;
@@ -737,9 +796,10 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
                       ],
                     ),
                   ),
-                  if (match.isSameOpening)
+                  if (match.isSameOpening &&
+                      !_controller.state.treeCache!.isLeaf(match.moveId))
                     TextButton(
-                      onPressed: null,
+                      onPressed: () => _onReroute(match),
                       child: const Text('Reroute'),
                     ),
                 ],

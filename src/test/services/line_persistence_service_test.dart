@@ -480,4 +480,439 @@ void main() {
       expect(e4After.label, isNull);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // CT-57: rerouteLine repository-level tests
+  // ---------------------------------------------------------------------------
+
+  group('rerouteLine', () {
+    test('basic reroute: re-parents children and prunes old path', () async {
+      // Seed two branches that transpose at the same position:
+      // Branch A (old): e4 d5 d4 Nf6 Nc3  (d4 is the convergence point)
+      // Branch B (new): d4 d5 e4            (e4 is the new convergence point)
+      //
+      // After reroute, Nf6 and its subtree should be children of branch B's e4,
+      // and the old d4 (now childless) should be pruned along with its orphaned
+      // ancestors up to the nearest branching node.
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6', 'Nc3'],
+            ['d4', 'd5', 'e4'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+
+      // Old convergence node: d4 under e4 -> d5 path
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5UnderE4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5UnderE4.id);
+
+      // New convergence node: e4 under d4 -> d5 path
+      final rootD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == null);
+      final d5UnderD4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootD4.id);
+      final newE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == d5UnderD4.id);
+
+      // Reroute: no new moves needed (convergence node already exists)
+      final insertedIds = await repRepo.rerouteLine(
+        anchorMoveId: newE4.id,
+        newMoves: [],
+        oldConvergenceId: oldD4.id,
+        labelUpdates: [],
+      );
+
+      expect(insertedIds, isEmpty);
+
+      // Verify children of old convergence (Nf6) are now under new convergence.
+      final newChildren = await repRepo.getChildMoves(newE4.id);
+      expect(newChildren.length, 1);
+      expect(newChildren.first.san, 'Nf6');
+
+      // Verify old convergence node is pruned (no more d4 under d5).
+      final oldD4Still = await repRepo.getMove(oldD4.id);
+      expect(oldD4Still, isNull);
+
+      // Verify review card on Nc3 leaf still exists.
+      final nc3Move = allMoves.firstWhere((m) => m.san == 'Nc3');
+      final card = await reviewRepo.getCardForLeaf(nc3Move.id);
+      expect(card, isNotNull);
+    });
+
+    test('reroute with empty newMoves: convergence node already exists',
+        () async {
+      // Both paths already exist in the tree, so no new moves to insert.
+      // Branch A: e4 c5 Nf3 d6
+      // Branch B: e4 c5 d3 (shares root with A)
+      // Transpose scenario: new path leads to same position as Nf3
+      // For simplicity, we test that rerouteLine with empty newMoves
+      // re-parents and prunes correctly.
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6'],
+            ['d4', 'd5', 'e4'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5UnderE4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5UnderE4.id);
+      final rootD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == null);
+      final d5UnderD4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootD4.id);
+      final newE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == d5UnderD4.id);
+
+      final insertedIds = await repRepo.rerouteLine(
+        anchorMoveId: newE4.id,
+        newMoves: [],
+        oldConvergenceId: oldD4.id,
+        labelUpdates: [],
+      );
+
+      expect(insertedIds, isEmpty);
+
+      // Verify Nf6 now under newE4.
+      final children = await repRepo.getChildMoves(newE4.id);
+      expect(children.any((m) => m.san == 'Nf6'), true);
+    });
+
+    test('reroute with buffered moves to persist: inserts chain and re-parents',
+        () async {
+      // Old path: e4 d5 d4 Nf6 Nc3 (d4 is old convergence with children)
+      // New path will diverge at root: user played c4, d5, e4 (buffered)
+      // The new moves c4 and the subsequent d5/e4 need to be inserted.
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6', 'Nc3'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5Move = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5Move.id);
+
+      // Compute FENs for the new path: c4, d5, e4.
+      final newFens = computeFens(['c4', 'd5', 'e4']);
+
+      // Build companions for the new path.
+      final newMoves = [
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId, fen: newFens[0], san: 'c4', sortOrder: 0),
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId, fen: newFens[1], san: 'd5', sortOrder: 0),
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId, fen: newFens[2], san: 'e4', sortOrder: 0),
+      ];
+
+      final insertedIds = await repRepo.rerouteLine(
+        anchorMoveId: null, // new root
+        newMoves: newMoves,
+        oldConvergenceId: oldD4.id,
+        labelUpdates: [],
+      );
+
+      expect(insertedIds.length, 3);
+
+      // The last inserted move is the new convergence node.
+      final newConvergenceId = insertedIds.last;
+
+      // Verify children of old convergence are now under new convergence.
+      final newChildren = await repRepo.getChildMoves(newConvergenceId);
+      expect(newChildren.length, 1);
+      expect(newChildren.first.san, 'Nf6');
+
+      // Verify old convergence pruned.
+      final oldD4Still = await repRepo.getMove(oldD4.id);
+      expect(oldD4Still, isNull);
+
+      // Verify inserted moves form a chain: c4 -> d5 -> e4.
+      final c4Move = await repRepo.getMove(insertedIds[0]);
+      final d5New = await repRepo.getMove(insertedIds[1]);
+      final e4New = await repRepo.getMove(insertedIds[2]);
+      expect(c4Move!.parentMoveId, isNull);
+      expect(d5New!.parentMoveId, c4Move.id);
+      expect(e4New!.parentMoveId, d5New.id);
+    });
+
+    test('no SAN conflict when new parent has no children', () async {
+      // Reroute to a freshly created node that has no existing children.
+      // Should succeed without any SAN conflicts.
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5Move = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5Move.id);
+
+      // Insert a new path c4, d5, e4 where the new convergence has no children.
+      final newFens = computeFens(['c4', 'd5', 'e4']);
+      final newMoves = [
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId, fen: newFens[0], san: 'c4', sortOrder: 0),
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId, fen: newFens[1], san: 'd5', sortOrder: 0),
+        RepertoireMovesCompanion.insert(
+          repertoireId: repId, fen: newFens[2], san: 'e4', sortOrder: 0),
+      ];
+
+      // This should succeed -- no conflicts possible.
+      final insertedIds = await repRepo.rerouteLine(
+        anchorMoveId: null,
+        newMoves: newMoves,
+        oldConvergenceId: oldD4.id,
+        labelUpdates: [],
+      );
+
+      expect(insertedIds.length, 3);
+
+      // Verify Nf6 reparented under new convergence.
+      final newChildren = await repRepo.getChildMoves(insertedIds.last);
+      expect(newChildren.length, 1);
+      expect(newChildren.first.san, 'Nf6');
+    });
+
+    test('SAN conflict at DB level: reroute fails when duplicate SAN exists',
+        () async {
+      // Set up: new parent already has a child with the same SAN as one being
+      // moved. The DB constraint should cause a failure.
+      //
+      // Branch A (old): e4 d5 d4 Nf6
+      // Branch B (new): d4 d5 e4 Nf6  (already has Nf6 as child of e4)
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6'],
+            ['d4', 'd5', 'e4', 'Nf6'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5UnderE4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5UnderE4.id);
+      final rootD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == null);
+      final d5UnderD4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootD4.id);
+      final newE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == d5UnderD4.id);
+
+      // Reroute should fail: newE4 already has a child 'Nf6'.
+      expect(
+        () => repRepo.rerouteLine(
+          anchorMoveId: newE4.id,
+          newMoves: [],
+          oldConvergenceId: oldD4.id,
+          labelUpdates: [],
+        ),
+        throwsA(anything),
+      );
+    });
+
+    test('pruning stops at branching ancestor', () async {
+      // Old path shares a prefix with another line:
+      // e4 d5 d4 Nf6  (old convergence = d4)
+      // e4 d5 c4       (sibling of d4 under d5)
+      //
+      // After reroute, d4 is pruned but d5 is NOT (it still has child c4).
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6'],
+            ['e4', 'd5', 'c4'],
+            ['d4', 'd5', 'e4'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5UnderE4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5UnderE4.id);
+      final rootD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == null);
+      final d5UnderD4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootD4.id);
+      final newE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == d5UnderD4.id);
+
+      await repRepo.rerouteLine(
+        anchorMoveId: newE4.id,
+        newMoves: [],
+        oldConvergenceId: oldD4.id,
+        labelUpdates: [],
+      );
+
+      // d4 (old convergence) should be pruned.
+      final oldD4Still = await repRepo.getMove(oldD4.id);
+      expect(oldD4Still, isNull);
+
+      // d5 under e4 should still exist (has sibling c4).
+      final d5Still = await repRepo.getMove(d5UnderE4.id);
+      expect(d5Still, isNotNull);
+
+      // Root e4 should still exist.
+      final rootE4Still = await repRepo.getMove(rootE4.id);
+      expect(rootE4Still, isNotNull);
+    });
+
+    test('pruning stops at node with review card', () async {
+      // Old path: e4 d5 d4 Nf6  (d4 is old convergence)
+      // d5 has a review card (would be pruned otherwise since it becomes childless).
+      // After reroute, d4 is pruned but d5 is preserved because it has a card.
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6'],
+            ['d4', 'd5', 'e4'],
+          ],
+          createCards: false);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5UnderE4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5UnderE4.id);
+      final rootD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == null);
+      final d5UnderD4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootD4.id);
+      final newE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == d5UnderD4.id);
+
+      // Manually create a review card on d5 under e4 to stop pruning.
+      await db.into(db.reviewCards).insert(
+            ReviewCardsCompanion.insert(
+              repertoireId: repId,
+              leafMoveId: d5UnderE4.id,
+              nextReviewDate: DateTime.now(),
+            ),
+          );
+
+      await repRepo.rerouteLine(
+        anchorMoveId: newE4.id,
+        newMoves: [],
+        oldConvergenceId: oldD4.id,
+        labelUpdates: [],
+      );
+
+      // d4 (old convergence) should be pruned.
+      final oldD4Still = await repRepo.getMove(oldD4.id);
+      expect(oldD4Still, isNull);
+
+      // d5 under e4 should still exist (has a review card).
+      final d5Still = await repRepo.getMove(d5UnderE4.id);
+      expect(d5Still, isNotNull);
+    });
+
+    test('label updates applied atomically', () async {
+      // Verify that pending label updates are persisted in the same transaction
+      // as the reroute.
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6'],
+            ['d4', 'd5', 'e4'],
+          ],
+          createCards: true);
+
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5UnderE4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5UnderE4.id);
+      final rootD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == null);
+      final d5UnderD4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootD4.id);
+      final newE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == d5UnderD4.id);
+
+      final labelUpdates = [
+        PendingLabelUpdate(moveId: rootD4.id, label: 'Queen Pawn'),
+      ];
+
+      await repRepo.rerouteLine(
+        anchorMoveId: newE4.id,
+        newMoves: [],
+        oldConvergenceId: oldD4.id,
+        labelUpdates: labelUpdates,
+      );
+
+      // Verify the label was updated on rootD4.
+      final updatedD4 = await repRepo.getMove(rootD4.id);
+      expect(updatedD4!.label, 'Queen Pawn');
+    });
+
+    test('review cards preserved after reroute: leaf cards unchanged',
+        () async {
+      // Verify that review cards keyed by leaf_move_id are preserved after
+      // reroute, since only parent_move_id changes on intermediate nodes.
+      final repId = await seedRepertoire(db,
+          lines: [
+            ['e4', 'd5', 'd4', 'Nf6', 'Nc3'],
+            ['d4', 'd5', 'e4'],
+          ],
+          createCards: true);
+
+      // Get the card for the Nc3 leaf before reroute.
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final nc3Move = allMoves.firstWhere((m) => m.san == 'Nc3');
+      final cardBefore = await reviewRepo.getCardForLeaf(nc3Move.id);
+      expect(cardBefore, isNotNull);
+
+      final rootE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == null);
+      final d5UnderE4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootE4.id);
+      final oldD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == d5UnderE4.id);
+      final rootD4 = allMoves.firstWhere(
+          (m) => m.san == 'd4' && m.parentMoveId == null);
+      final d5UnderD4 = allMoves.firstWhere(
+          (m) => m.san == 'd5' && m.parentMoveId == rootD4.id);
+      final newE4 = allMoves.firstWhere(
+          (m) => m.san == 'e4' && m.parentMoveId == d5UnderD4.id);
+
+      await repRepo.rerouteLine(
+        anchorMoveId: newE4.id,
+        newMoves: [],
+        oldConvergenceId: oldD4.id,
+        labelUpdates: [],
+      );
+
+      // Card for Nc3 should still exist with same SR state.
+      final cardAfter = await reviewRepo.getCardForLeaf(nc3Move.id);
+      expect(cardAfter, isNotNull);
+      expect(cardAfter!.leafMoveId, cardBefore!.leafMoveId);
+      expect(cardAfter.nextReviewDate, cardBefore.nextReviewDate);
+    });
+  });
 }

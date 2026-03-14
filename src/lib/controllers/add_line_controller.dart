@@ -109,6 +109,25 @@ class ConfirmError extends ConfirmResult {
   const ConfirmError({required this.userMessage, required this.error});
 }
 
+/// Result of [AddLineController.performReroute].
+sealed class RerouteResult {
+  const RerouteResult();
+}
+
+class RerouteSuccess extends RerouteResult {
+  const RerouteSuccess();
+}
+
+class RerouteConflict extends RerouteResult {
+  final List<String> conflictingSans;
+  const RerouteConflict({required this.conflictingSans});
+}
+
+class RerouteError extends RerouteResult {
+  final String userMessage;
+  const RerouteError({required this.userMessage});
+}
+
 // ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
@@ -713,6 +732,159 @@ class AddLineController extends ChangeNotifier {
     if (capturedGeneration != _undoGeneration) return;
     await _repertoireRepo.undoNewLine(insertedMoveIds);
     await loadData();
+  }
+
+  // ---- Reroute -------------------------------------------------------------
+
+  /// Returns information needed for the reroute confirmation dialog.
+  ({int continuationLineCount, String oldPathDescription, String newPathDescription, String? lineName})
+    getRerouteInfo(TranspositionMatch match) {
+    final treeCache = _state.treeCache!;
+    final continuationLineCount = treeCache.countDescendantLeaves(match.moveId);
+    final oldPathDescription = treeCache.getPathDescription(match.moveId);
+
+    // Compute the new path description from the current active path.
+    final engine = _state.engine!;
+    final totalPills = engine.existingPath.length +
+        engine.followedMoves.length +
+        engine.bufferedMoves.length;
+    final focusedIndex = _state.focusedPillIndex ?? (totalPills - 1);
+
+    final pathParts = <String>[];
+    var index = 0;
+    for (final move in engine.existingPath) {
+      if (index > focusedIndex) break;
+      pathParts.add(treeCache.getMoveNotation(move.id, plyCount: index + 1));
+      index++;
+    }
+    for (final move in engine.followedMoves) {
+      if (index > focusedIndex) break;
+      pathParts.add(treeCache.getMoveNotation(move.id, plyCount: index + 1));
+      index++;
+    }
+    for (final buffered in engine.bufferedMoves) {
+      if (index > focusedIndex) break;
+      // Buffered moves are not in the tree cache, so format manually.
+      final moveNumber = (index + 2) ~/ 2;
+      final isBlack = (index + 1).isEven;
+      if (isBlack) {
+        pathParts.add('$moveNumber...${buffered.san}');
+      } else {
+        pathParts.add('$moveNumber. ${buffered.san}');
+      }
+      index++;
+    }
+    final newPathDescription = pathParts.join(' ');
+
+    final displayName = treeCache.getAggregateDisplayName(match.moveId);
+    final lineName = displayName.isNotEmpty ? displayName : null;
+
+    return (
+      continuationLineCount: continuationLineCount,
+      oldPathDescription: oldPathDescription,
+      newPathDescription: newPathDescription,
+      lineName: lineName,
+    );
+  }
+
+  /// Performs a reroute operation for the given transposition match.
+  ///
+  /// Re-parents the children of the matched convergence node under the current
+  /// path's convergence node. Buffered moves up to the focused pill are
+  /// persisted; any moves after the focused pill are discarded by the
+  /// [_loadData] rebuild.
+  Future<RerouteResult> performReroute(TranspositionMatch match) async {
+    final engine = _state.engine;
+    final treeCache = _state.treeCache;
+    if (engine == null || treeCache == null) {
+      return const RerouteError(userMessage: 'Cannot reroute: no data loaded.');
+    }
+
+    // 1. Compute the buffered moves to persist, sliced to focusedPillIndex.
+    final totalPills = engine.existingPath.length +
+        engine.followedMoves.length +
+        engine.bufferedMoves.length;
+    final focusedIndex = _state.focusedPillIndex ?? (totalPills - 1);
+    final savedCount =
+        engine.existingPath.length + engine.followedMoves.length;
+    final bufferedCountToReroute =
+        (focusedIndex + 1 - savedCount).clamp(0, engine.bufferedMoves.length);
+    final movesToPersist =
+        engine.bufferedMoves.sublist(0, bufferedCountToReroute);
+
+    // 2. SAN conflict pre-check (in-memory).
+    if (movesToPersist.isEmpty) {
+      // Convergence node already exists. Determine its move ID.
+      final newConvergenceId = getMoveIdAtPillIndex(focusedIndex);
+      if (newConvergenceId != null) {
+        final newChildren = treeCache.getChildren(newConvergenceId);
+        final oldChildren = treeCache.getChildren(match.moveId);
+
+        final newChildSans = newChildren.map((m) => m.san).toSet();
+        final conflicting = oldChildren
+            .where((m) => newChildSans.contains(m.san))
+            .map((m) => m.san)
+            .toList();
+
+        if (conflicting.isNotEmpty) {
+          return RerouteConflict(conflictingSans: conflicting);
+        }
+      }
+    }
+
+    // 3. Determine the anchor move ID.
+    // When there are buffered moves to persist, the anchor is the parent of
+    // the first new move (engine.lastExistingMoveId).
+    // When there are no buffered moves, the convergence node already exists
+    // in the tree — the anchor IS the convergence node itself (the focused
+    // pill's move ID), not the tail of the followed path.
+    final int? anchorMoveId;
+    if (movesToPersist.isNotEmpty) {
+      anchorMoveId = engine.lastExistingMoveId;
+    } else {
+      anchorMoveId = getMoveIdAtPillIndex(focusedIndex);
+    }
+
+    // 4. Build pending label updates for saved moves.
+    final labelUpdates = <PendingLabelUpdate>[];
+    for (final entry in _pendingLabels.entries) {
+      final moveId = getMoveIdAtPillIndex(entry.key);
+      if (moveId != null) {
+        labelUpdates
+            .add(PendingLabelUpdate(moveId: moveId, label: entry.value));
+      }
+    }
+
+    // 5. Compute sort order for the first buffered move.
+    final int sortOrder;
+    if (anchorMoveId != null) {
+      sortOrder = treeCache.getChildren(anchorMoveId).length;
+    } else {
+      sortOrder = treeCache.getRootMoves().length;
+    }
+
+    try {
+      // 6. Call persistence service.
+      final result = await _persistenceService.reroute(
+        anchorMoveId: anchorMoveId,
+        movesToPersist: movesToPersist,
+        oldConvergenceId: match.moveId,
+        repertoireId: _repertoireId,
+        sortOrder: sortOrder,
+        labelUpdates: labelUpdates,
+      );
+
+      // 7. Reload data, focusing on the new convergence node.
+      await _loadData(leafMoveId: result.newConvergenceId);
+
+      return const RerouteSuccess();
+    } on Object {
+      // Restore consistent state from DB.
+      await _loadData();
+      return RerouteError(
+        userMessage: 'Could not reroute the line. Please try again.',
+      );
+    }
   }
 
   // ---- Label editing ------------------------------------------------------

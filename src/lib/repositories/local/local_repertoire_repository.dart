@@ -389,4 +389,80 @@ class LocalRepertoireRepository implements RepertoireRepository {
       }
     }
   }
+
+  @override
+  Future<List<int>> rerouteLine({
+    required int? anchorMoveId,
+    required List<RepertoireMovesCompanion> newMoves,
+    required int oldConvergenceId,
+    required List<PendingLabelUpdate> labelUpdates,
+  }) {
+    return _db.transaction(() async {
+      // 1. Apply pending label updates.
+      for (final update in labelUpdates) {
+        await (_db.update(_db.repertoireMoves)
+              ..where((m) => m.id.equals(update.moveId)))
+            .write(RepertoireMovesCompanion(label: Value(update.label)));
+      }
+
+      // 2. Insert new moves in a chain from anchorMoveId.
+      final insertedIds = <int>[];
+      int? parentId = anchorMoveId;
+      for (final move in newMoves) {
+        final withParent = parentId != null
+            ? move.copyWith(parentMoveId: Value(parentId))
+            : move;
+        parentId = await _db.into(_db.repertoireMoves).insert(withParent);
+        insertedIds.add(parentId);
+      }
+
+      // The new convergence node is the last inserted move, or anchorMoveId
+      // if no new moves were inserted.
+      final newConvergenceId =
+          insertedIds.isNotEmpty ? insertedIds.last : anchorMoveId!;
+
+      // 3. Read children of oldConvergenceId and re-parent them.
+      final oldChildren = await (_db.select(_db.repertoireMoves)
+            ..where((m) => m.parentMoveId.equals(oldConvergenceId)))
+          .get();
+
+      for (final child in oldChildren) {
+        await (_db.update(_db.repertoireMoves)
+              ..where((m) => m.id.equals(child.id)))
+            .write(RepertoireMovesCompanion(
+                parentMoveId: Value(newConvergenceId)));
+      }
+
+      // 4. Prune orphaned old path: walk up from oldConvergenceId.
+      int? currentId = oldConvergenceId;
+      while (currentId != null) {
+        // Check if the current node still has children.
+        final children = await (_db.select(_db.repertoireMoves)
+              ..where((m) => m.parentMoveId.equals(currentId!)))
+            .get();
+        if (children.isNotEmpty) break;
+
+        // Check if the current node has a review card.
+        final card = await (_db.select(_db.reviewCards)
+              ..where((c) => c.leafMoveId.equals(currentId!)))
+            .getSingleOrNull();
+        if (card != null) break;
+
+        // Read the parent before deleting.
+        final currentMove = await (_db.select(_db.repertoireMoves)
+              ..where((m) => m.id.equals(currentId!)))
+            .getSingleOrNull();
+        final nextParent = currentMove?.parentMoveId;
+
+        // Delete the current node.
+        await (_db.delete(_db.repertoireMoves)
+              ..where((m) => m.id.equals(currentId!)))
+            .go();
+
+        currentId = nextParent;
+      }
+
+      return insertedIds;
+    });
+  }
 }

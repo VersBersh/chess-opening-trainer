@@ -120,6 +120,15 @@ class FakeRepertoireRepository implements RepertoireRepository {
           List<RepertoireMovesCompanion> newMoves,
           List<PendingLabelUpdate> labelUpdates) async =>
       [];
+
+  @override
+  Future<List<int>> rerouteLine({
+    required int? anchorMoveId,
+    required List<RepertoireMovesCompanion> newMoves,
+    required int oldConvergenceId,
+    required List<PendingLabelUpdate> labelUpdates,
+  }) =>
+      throw UnimplementedError();
 }
 
 class FakeReviewRepository implements ReviewRepository {

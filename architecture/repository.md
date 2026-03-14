@@ -43,6 +43,16 @@ abstract class RepertoireRepository {
   /// Returns count of leaves (moves with no children) under a node.
   Future<int> countLeavesInSubtree(int moveId);
 
+  /// Atomic reroute: insert new path, re-parent children, prune orphans.
+  /// The SAN conflict check is done in-memory in the controller via
+  /// RepertoireTreeCache; the DB unique index is the safety net.
+  Future<List<int>> rerouteLine({
+    required int? anchorMoveId,
+    required List<RepertoireMovesCompanion> newMoves,
+    required int oldConvergenceId,
+    required List<PendingLabelUpdate> labelUpdates,
+  });
+
 }
 ```
 
