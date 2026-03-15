@@ -315,7 +315,7 @@ class DrillScreen extends ConsumerWidget {
                   ),
                   statusWidget,
                   if (filterWidget != null)
-                    if (isKeyboardOpen && config.isExtraPractice)
+                    if (config.isExtraPractice)
                       Expanded(child: filterWidget)
                     else
                       filterWidget,
