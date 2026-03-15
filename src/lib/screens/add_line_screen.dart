@@ -179,7 +179,13 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     // Warn if the line has no label anywhere along its path.
     if (!_controller.hasLineLabel) {
       final proceed = await showNoNameWarningDialog(context);
-      if (proceed != true) return;
+      if (proceed == false) {
+        // User chose "Add name" — auto-open the inline label editor.
+        if (!mounted) return;
+        setState(() => _isLabelEditorVisible = true);
+        return;
+      }
+      if (proceed != true) return; // null = dialog dismissed
       if (!mounted) return;
     }
 

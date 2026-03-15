@@ -1985,6 +1985,9 @@ void main() {
       // Dialog should be gone.
       expect(find.text('Line has no name'), findsNothing);
 
+      // The inline label editor should have been auto-opened.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
       // Moves should NOT be persisted.
       final repRepo = LocalRepertoireRepository(db);
       final moves = await repRepo.getMovesForRepertoire(result.repId);
@@ -1993,6 +1996,63 @@ void main() {
       // The screen should still be visible with the unsaved pill.
       expect(find.text('Add Line'), findsOneWidget);
       expect(find.text('e4'), findsOneWidget);
+    });
+
+    testWidgets(
+        '"Add name" opens editor when a non-leaf pill is focused',
+        (tester) async {
+      // Seed an empty repertoire. Play e4 then e5 (two pills).
+      final repId = await seedRepertoire(db);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      // Play e4, e5 via test board controller.
+      final testBoard = ChessboardController();
+      final e4NormalMove = sanToNormalMove(kInitialFEN, 'e4');
+      testBoard.playMove(e4NormalMove);
+      controller.onBoardMove(e4NormalMove, testBoard);
+
+      final e4Fen = testBoard.fen;
+      final e5NormalMove = sanToNormalMove(e4Fen, 'e5');
+      testBoard.playMove(e5NormalMove);
+      controller.onBoardMove(e5NormalMove, testBoard);
+
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      await tester.pump();
+
+      // Tap the first pill (e4) so focusedPillIndex moves away from the leaf.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // No-name dialog should appear.
+      expect(find.text('Line has no name'), findsOneWidget);
+
+      // Tap "Add name".
+      await tester.tap(find.text('Add name'));
+      await tester.pumpAndSettle();
+
+      // Dialog should be dismissed.
+      expect(find.text('Line has no name'), findsNothing);
+
+      // The inline label editor should be visible.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // No moves should be persisted.
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves, isEmpty);
     });
 
     testWidgets('confirming a line with a label does NOT show the warning',
@@ -2097,7 +2157,8 @@ void main() {
       expect(find.text('Line has no name'), findsNothing);
 
       // Parity warning should NOT have been shown (short-circuited).
-      expect(find.text('Line parity mismatch'), findsNothing);
+      expect(find.textContaining('should end on a'), findsNothing);
+      expect(find.textContaining('Flip and confirm as'), findsNothing);
 
       // No moves should be persisted.
       final moves = await repRepo.getMovesForRepertoire(repId);
