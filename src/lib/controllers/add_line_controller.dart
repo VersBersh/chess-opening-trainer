@@ -192,8 +192,22 @@ class AddLineController extends ChangeNotifier {
   /// the leaf position. When [leafMoveId] is null, the engine is created
   /// with the controller's original [_startingMoveId], which resets to the
   /// screen's initial position.
-  Future<void> _loadData({int? leafMoveId}) async {
+  /// Reloads data from the DB and rebuilds state.
+  ///
+  /// When [preservePosition] is true, the current focused pill index and
+  /// board FEN are preserved instead of being recomputed from the leaf.
+  /// This is used for label-only saves where the user's position should
+  /// not change.
+  Future<void> _loadData({
+    int? leafMoveId,
+    bool preservePosition = false,
+  }) async {
     _pendingLabels.clear();
+
+    // Capture position before reload (used when preservePosition is true).
+    final savedFocusedPillIndex = _state.focusedPillIndex;
+    final savedCurrentFen = _state.currentFen;
+    final savedPreMoveFen = _state.preMoveFen;
 
     // 1. Load the repertoire name.
     final repertoire = await _repertoireRepo.getRepertoire(_repertoireId);
@@ -213,13 +227,24 @@ class AddLineController extends ChangeNotifier {
       startingMoveId: effectiveStartId,
     );
 
-    // 4. Compute starting FEN.
-    final String startingFen;
-    if (effectiveStartId != null) {
-      final move = cache.movesById[effectiveStartId];
-      startingFen = move?.fen ?? kInitialFEN;
+    // 4. Compute FEN and focus.
+    final int? focusedPillIndex;
+    final String currentFen;
+    final String preMoveFen;
+    if (preservePosition) {
+      focusedPillIndex = savedFocusedPillIndex;
+      currentFen = savedCurrentFen;
+      preMoveFen = savedPreMoveFen;
     } else {
-      startingFen = kInitialFEN;
+      final pills = _buildPillsList(engine);
+      focusedPillIndex = pills.isNotEmpty ? pills.length - 1 : null;
+      if (effectiveStartId != null) {
+        final move = cache.movesById[effectiveStartId];
+        currentFen = move?.fen ?? kInitialFEN;
+      } else {
+        currentFen = kInitialFEN;
+      }
+      preMoveFen = currentFen;
     }
 
     // 5. Compute display name.
@@ -229,17 +254,16 @@ class AddLineController extends ChangeNotifier {
     final pills = _buildPillsList(engine);
 
     // 7. Compute transposition matches.
-    final focusedPillIndex = pills.isNotEmpty ? pills.length - 1 : null;
     final transpositions = _computeTranspositions(
-      engine, startingFen, focusedPillIndex);
+      engine, currentFen, focusedPillIndex);
 
     _state = AddLineState(
       treeCache: cache,
       engine: engine,
       boardOrientation: _state.boardOrientation,
       focusedPillIndex: focusedPillIndex,
-      currentFen: startingFen,
-      preMoveFen: startingFen,
+      currentFen: currentFen,
+      preMoveFen: preMoveFen,
       aggregateDisplayName: displayName,
       isLoading: false,
       repertoireName: repertoire.name,
@@ -371,12 +395,20 @@ class AddLineController extends ChangeNotifier {
   /// Whether there are new (buffered) moves to persist.
   bool get hasNewMoves => _state.engine?.hasNewMoves ?? false;
 
+  /// Whether there are pending label changes on saved moves.
+  bool get hasPendingLabelChanges => _pendingLabels.isNotEmpty;
+
+  /// Whether there are any unsaved changes (new moves or pending labels).
+  bool get hasUnsavedChanges => hasNewMoves || hasPendingLabelChanges;
+
   /// Whether the current pill list represents an existing line with no new moves.
   ///
   /// True when pills are visible (the user has navigated/followed moves) but
-  /// there are no buffered (new) moves to persist. This is the condition
-  /// where Confirm is disabled but the user needs an explanation why.
-  bool get isExistingLine => _state.pills.isNotEmpty && !hasNewMoves;
+  /// there are no buffered (new) moves to persist and no pending label changes.
+  /// This is the condition where Confirm is disabled but the user needs an
+  /// explanation why.
+  bool get isExistingLine =>
+      _state.pills.isNotEmpty && !hasNewMoves && !hasPendingLabelChanges;
 
   /// Whether any move along the current line's path has a label.
   ///
@@ -597,8 +629,15 @@ class AddLineController extends ChangeNotifier {
   /// Validates parity, persists new moves, and returns a result.
   Future<ConfirmResult> confirmAndPersist() async {
     final engine = _state.engine;
-    if (engine == null || !engine.hasNewMoves) {
+    if (engine == null) return const ConfirmNoNewMoves();
+
+    if (!engine.hasNewMoves && _pendingLabels.isEmpty) {
       return const ConfirmNoNewMoves();
+    }
+
+    if (!engine.hasNewMoves && _pendingLabels.isNotEmpty) {
+      // Label-only persist path.
+      return _persistLabelsOnly();
     }
 
     // 1. Validate parity.
@@ -616,8 +655,14 @@ class AddLineController extends ChangeNotifier {
   /// Called after the user accepts parity flip. Flips orientation and persists.
   Future<ConfirmResult> flipAndConfirm() async {
     final engine = _state.engine;
-    if (engine == null || !engine.hasNewMoves) {
+    if (engine == null) return const ConfirmNoNewMoves();
+
+    if (!engine.hasNewMoves && _pendingLabels.isEmpty) {
       return const ConfirmNoNewMoves();
+    }
+
+    if (!engine.hasNewMoves && _pendingLabels.isNotEmpty) {
+      return _persistLabelsOnly();
     }
 
     // Flip orientation.
@@ -652,6 +697,49 @@ class AddLineController extends ChangeNotifier {
     return _persistMoves(engine);
   }
 
+  /// Persists only pending label changes (no new moves).
+  ///
+  /// Reloads data via [_loadData] with position preservation so the user's
+  /// focused pill and board FEN are not reset.
+  Future<ConfirmResult> _persistLabelsOnly() async {
+    _undoGeneration++;
+
+    final labelUpdates = _buildPendingLabelUpdates();
+
+    // Determine the leaf move ID for reload (last saved pill).
+    final engine = _state.engine!;
+    final savedMoves = [...engine.existingPath, ...engine.followedMoves];
+    final leafMoveId = savedMoves.isNotEmpty ? savedMoves.last.id : _startingMoveId;
+
+    try {
+      await _persistenceService.persistLabelsOnly(labelUpdates);
+      await _loadData(leafMoveId: leafMoveId, preservePosition: true);
+
+      return const ConfirmSuccess(
+        isExtension: false,
+        insertedMoveIds: [],
+      );
+    } on Object catch (e) {
+      await _loadData();
+      return ConfirmError(
+        userMessage: 'Could not save labels. Please try again.',
+        error: e,
+      );
+    }
+  }
+
+  /// Builds a list of [PendingLabelUpdate] from [_pendingLabels].
+  List<PendingLabelUpdate> _buildPendingLabelUpdates() {
+    final labelUpdates = <PendingLabelUpdate>[];
+    for (final entry in _pendingLabels.entries) {
+      final moveId = getMoveIdAtPillIndex(entry.key);
+      if (moveId != null) {
+        labelUpdates.add(PendingLabelUpdate(moveId: moveId, label: entry.value));
+      }
+    }
+    return labelUpdates;
+  }
+
   static SqliteException? _extractSqliteException(Object error) {
     if (error is SqliteException) return error;
     if (error is DriftWrappedException) {
@@ -664,14 +752,7 @@ class AddLineController extends ChangeNotifier {
   Future<ConfirmResult> _persistMoves(LineEntryEngine engine) async {
     final confirmData = engine.getConfirmData();
 
-    // Build pending label updates for saved moves.
-    final labelUpdates = <PendingLabelUpdate>[];
-    for (final entry in _pendingLabels.entries) {
-      final moveId = getMoveIdAtPillIndex(entry.key);
-      if (moveId != null) {
-        labelUpdates.add(PendingLabelUpdate(moveId: moveId, label: entry.value));
-      }
-    }
+    final labelUpdates = _buildPendingLabelUpdates();
 
     try {
       final result = await _persistenceService.persistNewMoves(

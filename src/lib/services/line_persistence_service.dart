@@ -161,6 +161,16 @@ class LinePersistenceService {
     );
   }
 
+  /// Persists pending label updates without inserting any moves.
+  ///
+  /// Used for the label-only confirm path when the user has edited labels
+  /// on existing moves but has not added any new moves.
+  Future<void> persistLabelsOnly(List<PendingLabelUpdate> labelUpdates) async {
+    for (final update in labelUpdates) {
+      await _repertoireRepo.updateMoveLabel(update.moveId, update.label);
+    }
+  }
+
   /// Reroutes an existing line's continuation to go through a new path.
   ///
   /// Converts [movesToPersist] to companions, delegates to

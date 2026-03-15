@@ -3781,4 +3781,491 @@ void main() {
       boardController.dispose();
     });
   });
+
+  // --------------------------------------------------------------------------
+  // CT-59: Label-only confirm
+  // --------------------------------------------------------------------------
+
+  group('CT-59: hasPendingLabelChanges and hasUnsavedChanges', () {
+    test('hasPendingLabelChanges is false with no label edits', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      expect(controller.hasPendingLabelChanges, false);
+      expect(controller.hasNewMoves, false);
+      expect(controller.hasUnsavedChanges, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('hasPendingLabelChanges is true after updateLabel', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Edit label on saved pill.
+      controller.updateLabel(0, 'Sicilian');
+
+      expect(controller.hasPendingLabelChanges, true);
+      expect(controller.hasNewMoves, false);
+      expect(controller.hasUnsavedChanges, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('hasUnsavedChanges is true when hasNewMoves is true but no pending labels',
+        () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play a new move (buffered).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.hasPendingLabelChanges, false);
+      expect(controller.hasUnsavedChanges, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('hasUnsavedChanges is true when both new moves and pending labels exist',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (saved).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Edit label on saved pill.
+      controller.updateLabel(0, 'King Pawn');
+
+      // Buffer e5 (new move).
+      final fens = computeFens(['e4']);
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.hasPendingLabelChanges, true);
+      expect(controller.hasUnsavedChanges, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('CT-59: confirmAndPersist with label-only edits', () {
+    test('confirmAndPersist persists label-only edits when no new moves',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (saved, no new moves).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      expect(controller.hasNewMoves, false);
+
+      // Edit label.
+      controller.updateLabel(0, 'Sicilian');
+
+      expect(controller.hasPendingLabelChanges, true);
+      expect(controller.hasUnsavedChanges, true);
+
+      // Confirm.
+      final result = await controller.confirmAndPersist();
+
+      // Should succeed with empty insertedMoveIds (label-only path).
+      expect(result, isA<ConfirmSuccess>());
+      final success = result as ConfirmSuccess;
+      expect(success.isExtension, false);
+      expect(success.insertedMoveIds, isEmpty);
+
+      // Label should be persisted in DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Db.label, 'Sicilian');
+
+      // Pending labels should be cleared after confirm.
+      expect(controller.pendingLabels, isEmpty);
+      expect(controller.hasPendingLabelChanges, false);
+      expect(controller.hasUnsavedChanges, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('confirmAndPersist returns ConfirmNoNewMoves when no changes at all',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (saved, no new moves, no label edits).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      expect(controller.hasNewMoves, false);
+      expect(controller.hasPendingLabelChanges, false);
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmNoNewMoves>());
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('label-only confirm preserves focusedPillIndex and currentFen',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all 3 existing moves.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      final fens = computeFens(moves);
+
+      // Navigate to pill index 0 (e4).
+      controller.onPillTapped(0, boardController);
+      expect(controller.state.focusedPillIndex, 0);
+      expect(controller.state.currentFen, fens[0]);
+
+      // Edit label on pill 0.
+      controller.updateLabel(0, 'King Pawn');
+
+      // Confirm (label-only, no new moves).
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // Focus and FEN should be preserved (not reset to the leaf).
+      expect(controller.state.focusedPillIndex, 0);
+      expect(controller.state.currentFen, fens[0]);
+
+      // Board orientation should be preserved.
+      expect(controller.state.boardOrientation, Side.white);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('label-only confirm increments undoGeneration', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Record undoGeneration before label-only confirm.
+      final genBefore = controller.undoGeneration;
+
+      // Edit label and confirm.
+      controller.updateLabel(0, 'King Pawn');
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // undoGeneration should have incremented.
+      expect(controller.undoGeneration, greaterThan(genBefore));
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('label-only confirm persists multiple label changes in one confirm',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 and e5.
+      final moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Edit labels on both saved pills.
+      controller.updateLabel(0, 'King Pawn');
+      controller.updateLabel(1, 'Open Game');
+
+      expect(controller.pendingLabels.length, 2);
+
+      // Confirm.
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // Verify both labels are persisted in DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      final e5Db = allMoves.firstWhere((m) => m.san == 'e5');
+      expect(e4Db.label, 'King Pawn');
+      expect(e5Db.label, 'Open Game');
+
+      // Pending labels should be cleared.
+      expect(controller.pendingLabels, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('existing new-move confirm flow is unchanged (regression)', () async {
+      // This test verifies the existing confirm path still works correctly.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ], createCards: true);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (leaf), then play e5 (new).
+      final fens = computeFens(['e4', 'e5']);
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final e5Move = sanToNormalMove(fens[0], 'e5');
+      boardController.playMove(e5Move);
+      controller.onBoardMove(e5Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+
+      // Line is 2-ply (even) so expected orientation is black. Flip to match.
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+      final success = result as ConfirmSuccess;
+      expect(success.isExtension, true);
+      expect(success.insertedMoveIds.length, 1);
+
+      // Verify DB state: new move exists.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 2); // e4 + e5
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('CT-59: flipAndConfirm with label-only edits', () {
+    test('flipAndConfirm persists label-only edits when no new moves',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (saved, no new moves).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Edit label.
+      controller.updateLabel(0, 'Sicilian');
+
+      expect(controller.hasNewMoves, false);
+      expect(controller.hasPendingLabelChanges, true);
+
+      // flipAndConfirm should also handle label-only edits.
+      final result = await controller.flipAndConfirm();
+
+      expect(result, isA<ConfirmSuccess>());
+      final success = result as ConfirmSuccess;
+      expect(success.isExtension, false);
+      expect(success.insertedMoveIds, isEmpty);
+
+      // Label should be persisted in DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      final e4Db = allMoves.firstWhere((m) => m.san == 'e4');
+      expect(e4Db.label, 'Sicilian');
+
+      // Pending labels should be cleared.
+      expect(controller.pendingLabels, isEmpty);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('flipAndConfirm returns ConfirmNoNewMoves when no changes at all',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (saved, no new moves, no label edits).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final result = await controller.flipAndConfirm();
+      expect(result, isA<ConfirmNoNewMoves>());
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('CT-59: isExistingLine with pending label changes', () {
+    test('isExistingLine is false when hasPendingLabelChanges is true',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow e4 (saved pill).
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Before label edit: isExistingLine should be true (saved pills, no new moves).
+      expect(controller.isExistingLine, true);
+
+      // Edit label.
+      controller.updateLabel(0, 'Sicilian');
+
+      // After label edit: isExistingLine should be false (pending changes).
+      expect(controller.isExistingLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
+
+  group('CT-59: stale undo invalidation after label-only confirm', () {
+    test('label-only confirm after a new-move confirm invalidates prior undo',
+        () async {
+      // Seed empty repertoire, play e4, e5, flip, confirm first line.
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, e5 for the first line.
+      var moves = ['e4', 'e5'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      controller.flipBoard();
+
+      final result1 = await controller.confirmAndPersist();
+      expect(result1, isA<ConfirmSuccess>());
+      final success1 = result1 as ConfirmSuccess;
+      final gen1 = controller.undoGeneration;
+
+      // Post-confirm: follow existing moves (no new moves). Edit a label.
+      // The confirmed line has pills [e4, e5]. Edit label on e4.
+      controller.updateLabel(0, 'King Pawn');
+      expect(controller.hasPendingLabelChanges, true);
+
+      // Confirm label-only.
+      final result2 = await controller.confirmAndPersist();
+      expect(result2, isA<ConfirmSuccess>());
+
+      // undoGeneration should have incremented again.
+      expect(controller.undoGeneration, greaterThan(gen1));
+
+      // Attempting undo with the old generation should be a no-op.
+      await controller.undoNewLine(gen1, success1.insertedMoveIds);
+
+      // Verify both moves still exist (undo was no-op due to generation mismatch).
+      final repRepo = LocalRepertoireRepository(db);
+      final allMoves = await repRepo.getMovesForRepertoire(repId);
+      expect(allMoves.length, 2); // e4 + e5 still present
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
 }

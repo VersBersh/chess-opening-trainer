@@ -174,7 +174,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
   Future<void> _onConfirmLine() async {
     setState(() => _isLabelEditorVisible = false);
 
-    if (!_controller.hasNewMoves) return;
+    if (!_controller.hasUnsavedChanges) return;
 
     // Warn if the line has no label anywhere along its path.
     if (!_controller.hasLineLabel) {
@@ -407,9 +407,9 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Discard unsaved line?'),
+        title: const Text('Discard unsaved changes?'),
         content: const Text(
-          'You have unsaved moves. Do you want to discard them?',
+          'You have unsaved changes. Do you want to discard them?',
         ),
         actions: [
           TextButton(
@@ -432,7 +432,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     final state = _controller.state;
 
     return PopScope(
-      canPop: !_controller.hasNewMoves,
+      canPop: !_controller.hasUnsavedChanges,
       onPopInvokedWithResult: _handlePopWithUnsavedMoves,
       child: ScaffoldMessenger(
         key: _localMessengerKey,
@@ -911,7 +911,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
 
             // Confirm line
             TextButton.icon(
-              onPressed: _controller.hasNewMoves ? _onConfirmLine : null,
+              onPressed: _controller.hasUnsavedChanges ? _onConfirmLine : null,
               icon: const Icon(Icons.check, size: 18),
               label: const Text('Confirm'),
             ),

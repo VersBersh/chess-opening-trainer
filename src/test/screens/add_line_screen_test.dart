@@ -3148,4 +3148,275 @@ void main() {
       expect(find.text('Reroute'), findsOneWidget);
     });
   });
+
+  // --------------------------------------------------------------------------
+  // CT-59: Label-only confirm widget tests
+  // --------------------------------------------------------------------------
+
+  group('CT-59: Label-only confirm flow', () {
+    testWidgets('confirm enabled and persists label-only edits',
+        (tester) async {
+      // Seed a repertoire with an existing line e4 -> e5 with a label on e4.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ], labelsOnSan: {'e4': 'Main'});
+
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: e5Id));
+      await tester.pumpAndSettle();
+
+      // Verify the Confirm button is initially disabled (no new moves, no
+      // pending label changes).
+      var confirmButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Confirm'),
+      );
+      expect(confirmButton.onPressed, isNull);
+
+      // Tap the e4 pill to focus it.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Tap the e4 pill again (re-tap focused pill) to open the label editor.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Change the label.
+      await tester.enterText(find.byType(TextField), 'French');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Verify the Confirm button is now enabled (pending label change).
+      confirmButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Confirm'),
+      );
+      expect(confirmButton.onPressed, isNotNull);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Verify the label is persisted in the DB.
+      final repRepo = LocalRepertoireRepository(db);
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      final e4Move = moves.firstWhere((m) => m.san == 'e4');
+      expect(e4Move.label, 'French');
+
+      // Verify the Confirm button is disabled again after confirm.
+      confirmButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Confirm'),
+      );
+      expect(confirmButton.onPressed, isNull);
+    });
+
+    testWidgets('label-only confirm preserves focused pill and board position',
+        (tester) async {
+      // Seed a repertoire with e4 -> e5 -> Nf3.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller =
+          AddLineController(repRepo, reviewRepo, repId, startingMoveId: nf3Id);
+
+      await tester.pumpWidget(
+        buildTestApp(db, repId, startingMoveId: nf3Id, controller: controller),
+      );
+      await tester.pumpAndSettle();
+
+      addTearDown(() {
+        controller.dispose();
+      });
+
+      // Tap the e4 pill (pill index 0) to focus it.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Record the FEN at e4 position.
+      final fens = computeFens(['e4', 'e5', 'Nf3']);
+      expect(controller.state.focusedPillIndex, 0);
+      expect(controller.state.currentFen, fens[0]);
+
+      // Open the label editor by tapping the focused pill again.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Change the label.
+      await tester.enterText(find.byType(TextField), 'King Pawn');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Tap Confirm (should be enabled now).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Verify the focused pill index is still 0 (on e4), not reset to leaf.
+      expect(controller.state.focusedPillIndex, 0);
+
+      // Verify the board FEN matches the position after e4 (not the leaf).
+      expect(controller.state.currentFen, fens[0]);
+    });
+
+    testWidgets('discard dialog shown when only pending labels exist',
+        (tester) async {
+      // Seed a repertoire with an existing line.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      // Build with a route so we can test back-navigation.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            repertoireRepositoryProvider
+                .overrideWithValue(LocalRepertoireRepository(db)),
+            reviewRepositoryProvider
+                .overrideWithValue(LocalReviewRepository(db)),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => AddLineScreen(
+                            repertoireId: repId,
+                            startingMoveId: nf3Id,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Go'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Navigate to AddLineScreen.
+      await tester.tap(find.text('Go'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add Line'), findsOneWidget);
+
+      // Open the label editor on the focused pill (Nf3 is focused by default).
+      await tester.tap(find.text('Nf3'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Change the label (no new moves, only label edit).
+      await tester.enterText(find.byType(TextField), 'Knight Opening');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Trigger back navigation — should show discard dialog.
+      final dynamic widgetsAppState = tester.state(find.byType(WidgetsApp));
+      await widgetsAppState.didPopRoute();
+      await tester.pumpAndSettle();
+
+      // Verify the discard dialog appears.
+      expect(find.text('Discard unsaved changes?'), findsOneWidget);
+      expect(find.text('Discard'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+    });
+
+    testWidgets('no undo snackbar shown for label-only confirm',
+        (tester) async {
+      // Seed a repertoire with an existing line and labels.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ], labelsOnSan: {'e4': 'Main'});
+
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      await tester.pumpWidget(buildTestApp(db, repId, startingMoveId: e5Id));
+      await tester.pumpAndSettle();
+
+      // Tap e4 pill to focus, then re-tap to open editor.
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+
+      // Change the label.
+      await tester.enterText(find.byType(TextField), 'French');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // No undo snackbar should appear (label-only confirm produces
+      // ConfirmSuccess with empty insertedMoveIds, which skips both
+      // the extension and new-line snackbar paths).
+      expect(find.text('Line extended'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+    });
+
+    testWidgets(
+        'existing new-move confirm flow still works after label-only changes (regression)',
+        (tester) async {
+      // Seed a repertoire with a labeled existing line.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4'],
+      ], labelsOnSan: {'e4': 'Main'}, createCards: true);
+
+      final e4Id = await getMoveIdBySan(db, repId, 'e4');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller =
+          AddLineController(repRepo, reviewRepo, repId, startingMoveId: e4Id);
+
+      await tester.pumpWidget(
+        buildTestApp(db, repId, startingMoveId: e4Id, controller: controller),
+      );
+      await tester.pumpAndSettle();
+
+      // Play extending move e5 using a test-local board controller.
+      final testBoard = ChessboardController();
+      final e4Fen = controller.state.currentFen;
+      testBoard.setPosition(e4Fen);
+      final e5NormalMove = sanToNormalMove(e4Fen, 'e5');
+      testBoard.playMove(e5NormalMove);
+      controller.onBoardMove(e5NormalMove, testBoard);
+
+      // Flip board for parity (2-ply = even = black expected).
+      controller.flipBoard();
+
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      await tester.pump();
+
+      // Confirm should work the same as before.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Extension undo snackbar should appear.
+      expect(find.text('Line extended'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+
+      // Verify the move was persisted.
+      final moves = await repRepo.getMovesForRepertoire(repId);
+      expect(moves.length, 2); // e4 + e5
+    });
+  });
 }
