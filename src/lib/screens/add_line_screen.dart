@@ -514,42 +514,66 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
       maxHeightFraction: kBoardMaxHeightFraction,
     );
 
+    // Collapse the board (and banner) when the label editor keyboard is open,
+    // so the text field is visible above the keyboard (CT-66).
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = keyboardHeight > 0;
+    final shouldCollapseBoard = isKeyboardOpen && _isLabelEditorVisible;
+
     return Column(
       children: [
         // Aggregate display name banner
         if (displayName.isNotEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: Text(
-              displayName,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(
+              key: const ValueKey('add-line-banner-container'),
+              height: shouldCollapseBoard ? 0 : null,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Text(
+                  displayName,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
           ),
 
         // Chessboard — responsive width-based sizing with height guard
-        Padding(
-          padding: kBoardHorizontalInsets,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: maxBoard,
-            ),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: ChessboardWidget(
-                controller: _boardController,
-                orientation: state.boardOrientation,
-                playerSide: PlayerSide.both,
-                onMove: _onBoardMove,
-                shapes: _controller.getHintArrows(),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          clipBehavior: Clip.hardEdge,
+          child: SizedBox(
+            key: const ValueKey('add-line-board-container'),
+            height: shouldCollapseBoard ? 0 : null,
+            child: Padding(
+              padding: kBoardHorizontalInsets,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: maxBoard,
+                ),
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: ChessboardWidget(
+                    controller: _boardController,
+                    orientation: state.boardOrientation,
+                    playerSide: PlayerSide.both,
+                    onMove: _onBoardMove,
+                    shapes: _controller.getHintArrows(),
+                  ),
+                ),
               ),
             ),
           ),

@@ -159,6 +159,45 @@ Widget buildTestApp(
   int repertoireId, {
   int? startingMoveId,
   AddLineController? controller,
+  Size? viewportSize,
+  EdgeInsets viewInsets = EdgeInsets.zero,
+}) {
+  Widget home = AddLineScreen(
+    repertoireId: repertoireId,
+    startingMoveId: startingMoveId,
+    controllerOverride: controller,
+  );
+  if (viewportSize != null || viewInsets != EdgeInsets.zero) {
+    home = MediaQuery(
+      data: MediaQueryData(
+        size: viewportSize ?? const Size(390, 844),
+        viewInsets: viewInsets,
+      ),
+      child: home,
+    );
+  }
+  return ProviderScope(
+    overrides: [
+      repertoireRepositoryProvider
+          .overrideWithValue(LocalRepertoireRepository(db)),
+      reviewRepositoryProvider.overrideWithValue(LocalReviewRepository(db)),
+    ],
+    child: MaterialApp(
+      home: home,
+    ),
+  );
+}
+
+/// Builds a test app that allows runtime toggling of keyboard state via
+/// [viewInsetsNotifier]. The [AddLineScreen] is the `child` of the
+/// [ValueListenableBuilder], so it is preserved across keyboard toggles.
+Widget buildKeyboardTestApp({
+  required AppDatabase db,
+  required int repertoireId,
+  required ValueNotifier<EdgeInsets> viewInsetsNotifier,
+  int? startingMoveId,
+  AddLineController? controller,
+  Size viewportSize = const Size(390, 844),
 }) {
   return ProviderScope(
     overrides: [
@@ -167,10 +206,20 @@ Widget buildTestApp(
       reviewRepositoryProvider.overrideWithValue(LocalReviewRepository(db)),
     ],
     child: MaterialApp(
-      home: AddLineScreen(
-        repertoireId: repertoireId,
-        startingMoveId: startingMoveId,
-        controllerOverride: controller,
+      home: ValueListenableBuilder<EdgeInsets>(
+        valueListenable: viewInsetsNotifier,
+        builder: (context, insets, child) => MediaQuery(
+          data: MediaQueryData(
+            size: viewportSize,
+            viewInsets: insets,
+          ),
+          child: child!,
+        ),
+        child: AddLineScreen(
+          repertoireId: repertoireId,
+          startingMoveId: startingMoveId,
+          controllerOverride: controller,
+        ),
       ),
     ),
   );
@@ -3748,6 +3797,313 @@ void main() {
 
       // Label editor should be gone.
       expect(find.byType(InlineLabelEditor), findsNothing);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // CT-66: Keyboard label editor layout (board collapse)
+  // --------------------------------------------------------------------------
+
+  group('CT-66: Keyboard label editor layout', () {
+    const phoneSize = Size(560, 900);
+    const keyboardInsets = EdgeInsets.only(bottom: 300);
+
+    testWidgets(
+        'board collapses when label editor is active and keyboard is open (narrow)',
+        (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      // Seed a repertoire with one line so we have pills to tap.
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(
+          repRepo, reviewRepo, repId,
+          startingMoveId: e5Id);
+      addTearDown(() => controller.dispose());
+
+      // Build with keyboard open (viewInsets) and narrow viewport.
+      await tester.pumpWidget(buildTestApp(
+        db,
+        repId,
+        startingMoveId: e5Id,
+        controller: controller,
+        viewportSize: phoneSize,
+        viewInsets: keyboardInsets,
+      ));
+      await tester.pumpAndSettle();
+
+      // Tap the focused pill (e5) to open the label editor.
+      await tester.tap(find.text('e5'));
+      await tester.pumpAndSettle();
+
+      // InlineLabelEditor should be visible.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // The board container (keyed 'add-line-board-container') should
+      // be collapsed to height 0.
+      final boardContainer =
+          find.byKey(const ValueKey('add-line-board-container'));
+      expect(boardContainer, findsOneWidget);
+      final boardSize = tester.getSize(boardContainer);
+      expect(
+        boardSize.height,
+        0,
+        reason: 'Board container should be collapsed (height 0) when '
+            'label editor is active and keyboard is open on narrow layout',
+      );
+
+      // The Chessboard widget should still be in the tree (clipped, not
+      // removed) so its controller state is preserved.
+      expect(find.byType(Chessboard), findsOneWidget);
+
+      // The label editor TextField should be visible and hittable.
+      expect(
+        find.byType(TextField).hitTestable(),
+        findsOneWidget,
+        reason: 'Label editor text field should be visible above the keyboard',
+      );
+    });
+
+    testWidgets('board reappears when keyboard is dismissed', (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(
+          repRepo, reviewRepo, repId,
+          startingMoveId: e5Id);
+      addTearDown(() => controller.dispose());
+
+      // Start with keyboard open.
+      final viewInsetsNotifier = ValueNotifier<EdgeInsets>(keyboardInsets);
+
+      await tester.pumpWidget(buildKeyboardTestApp(
+        db: db,
+        repertoireId: repId,
+        startingMoveId: e5Id,
+        controller: controller,
+        viewInsetsNotifier: viewInsetsNotifier,
+        viewportSize: phoneSize,
+      ));
+      await tester.pumpAndSettle();
+
+      // Open the label editor by re-tapping the focused pill.
+      await tester.tap(find.text('e5'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Verify board is collapsed.
+      final boardContainer =
+          find.byKey(const ValueKey('add-line-board-container'));
+      expect(
+        tester.getSize(boardContainer).height,
+        0,
+        reason: 'Board should be collapsed with keyboard open + label editor',
+      );
+
+      // Dismiss the keyboard by setting viewInsets to zero.
+      viewInsetsNotifier.value = EdgeInsets.zero;
+      await tester.pumpAndSettle();
+
+      // Board container should now have a non-zero height.
+      final boardSizeAfter = tester.getSize(boardContainer);
+      expect(
+        boardSizeAfter.height,
+        greaterThan(0),
+        reason: 'Board should reappear when keyboard is dismissed',
+      );
+    });
+
+    testWidgets(
+        'board reappears when label editor is closed (keyboard still open)',
+        (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(
+          repRepo, reviewRepo, repId,
+          startingMoveId: e5Id);
+      addTearDown(() => controller.dispose());
+
+      // Keep keyboard open for the entire test.
+      final viewInsetsNotifier = ValueNotifier<EdgeInsets>(keyboardInsets);
+
+      await tester.pumpWidget(buildKeyboardTestApp(
+        db: db,
+        repertoireId: repId,
+        startingMoveId: e5Id,
+        controller: controller,
+        viewInsetsNotifier: viewInsetsNotifier,
+        viewportSize: phoneSize,
+      ));
+      await tester.pumpAndSettle();
+
+      // Open label editor.
+      await tester.tap(find.text('e5'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Verify board is collapsed.
+      final boardContainer =
+          find.byKey(const ValueKey('add-line-board-container'));
+      expect(
+        tester.getSize(boardContainer).height,
+        0,
+        reason: 'Board should be collapsed with keyboard open + label editor',
+      );
+
+      // Close the label editor by submitting the text field (triggers onClose).
+      // The keyboard stays "open" (viewInsetsNotifier remains at keyboardInsets).
+      await tester.enterText(find.byType(TextField), 'Test Label');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Board container should now have a non-zero height because the label
+      // editor is closed, even though the keyboard is still "open".
+      final boardSizeAfter = tester.getSize(boardContainer);
+      expect(
+        boardSizeAfter.height,
+        greaterThan(0),
+        reason: 'Board should reappear when label editor is closed, '
+            'regardless of keyboard state',
+      );
+    });
+
+    testWidgets('wide layout unaffected by keyboard', (tester) async {
+      const wideSize = Size(700, 844);
+      await tester.binding.setSurfaceSize(wideSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5'],
+      ]);
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(
+          repRepo, reviewRepo, repId,
+          startingMoveId: e5Id);
+      addTearDown(() => controller.dispose());
+
+      // Build with keyboard open and wide viewport (>= 600px triggers wide layout).
+      await tester.pumpWidget(buildTestApp(
+        db,
+        repId,
+        startingMoveId: e5Id,
+        controller: controller,
+        viewportSize: wideSize,
+        viewInsets: keyboardInsets,
+      ));
+      await tester.pumpAndSettle();
+
+      // Open the label editor by tapping Label button.
+      // First we need to make sure a pill is focused. e5 should be focused
+      // as the last pill in the existing path.
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // The chessboard should have a non-zero height (not collapsed).
+      // In wide layout, the board is in a separate column so there is no
+      // 'add-line-board-container' key — we check the Chessboard widget itself.
+      final chessboardSize = tester.getSize(find.byType(Chessboard));
+      expect(
+        chessboardSize.height,
+        greaterThan(0),
+        reason: 'Wide layout board should not collapse when keyboard is open',
+      );
+    });
+
+    testWidgets(
+        'banner collapses along with board when label editor is active',
+        (tester) async {
+      await tester.binding.setSurfaceSize(phoneSize);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      // Seed a repertoire with a labeled move so aggregateDisplayName is
+      // non-empty and the banner is rendered.
+      final repId = await seedRepertoire(
+        db,
+        lines: [
+          ['e4', 'e5', 'Nf3'],
+        ],
+        labelsOnSan: {'e4': 'King Pawn'},
+      );
+
+      // Start from Nf3 so the existing path includes e4 (labeled) and the
+      // aggregate display name shows "King Pawn".
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(
+          repRepo, reviewRepo, repId,
+          startingMoveId: nf3Id);
+      addTearDown(() => controller.dispose());
+
+      // Build with keyboard open and narrow viewport.
+      await tester.pumpWidget(buildTestApp(
+        db,
+        repId,
+        startingMoveId: nf3Id,
+        controller: controller,
+        viewportSize: phoneSize,
+        viewInsets: keyboardInsets,
+      ));
+      await tester.pumpAndSettle();
+
+      // Verify the banner text ("King Pawn") is present in the widget tree.
+      expect(find.text('King Pawn'), findsAtLeastNWidgets(1));
+
+      // Open the label editor by tapping the Label button (Nf3 is focused).
+      await tester.tap(find.text('Label'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // The board container should be collapsed.
+      final boardContainer =
+          find.byKey(const ValueKey('add-line-board-container'));
+      expect(boardContainer, findsOneWidget);
+      expect(
+        tester.getSize(boardContainer).height,
+        0,
+        reason: 'Board should be collapsed when label editor is active + keyboard open',
+      );
+
+      // The banner should also be collapsed to height 0.
+      final bannerContainer =
+          find.byKey(const ValueKey('add-line-banner-container'));
+      expect(bannerContainer, findsOneWidget);
+      expect(
+        tester.getSize(bannerContainer).height,
+        0,
+        reason: 'Banner should be collapsed (height 0) along with board',
+      );
     });
   });
 }
