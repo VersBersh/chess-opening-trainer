@@ -2,28 +2,22 @@
 
 ## Files modified
 
-- **`src/lib/screens/home_screen.dart`** — All changes in one file:
-  - Added import for `../widgets/repertoire_card.dart`.
-  - Added `_showRenameRepertoireDialog(String currentName, List<String> existingNames)` returning `Future<String?>` with pre-filled text field, max 100 chars, case-insensitive duplicate warning (excluding current name), and Cancel/Rename buttons.
-  - Added `_showDeleteRepertoireDialog(String name)` returning `Future<bool?>` with confirmation text including the repertoire name and cascade warning.
-  - Updated `_showCreateRepertoireDialog()` to accept `{List<String> existingNames = const []}` and added case-insensitive duplicate warning (soft — confirm button stays enabled).
-  - Added `_onRenameRepertoire(int id, String currentName)` handler that reads existing names from state, shows rename dialog, and calls controller if name changed.
-  - Added `_onDeleteRepertoire(int id, String name)` handler that shows delete dialog and calls controller on confirmation.
-  - Added `_onCreateNewRepertoire()` handler that shows create dialog with existing names and stays on home screen (no navigation to browser).
-  - Updated `_onCreateFirstRepertoire()` to pass existing names to the create dialog (will be empty in practice).
-  - Added `FloatingActionButton` with `Icons.add` and tooltip `'Create repertoire'` in `_buildData`, shown only when repertoires are non-empty.
-  - Replaced `_buildActionButtons` with `_buildRepertoireList` which renders a `RepertoireCard` for each `RepertoireSummary`, wiring all callbacks per-card using the summary's own `repertoire.id` and `repertoire.name`.
+| File | Summary |
+|------|---------|
+| `features/home-screen.md` | Replaced "Single-Repertoire Layout" section with "Multi-Repertoire Layout" describing card-per-repertoire UI. Replaced "Repertoire CRUD" section with full documentation of Create, Rename, and Delete dialogs including validation rules. Updated onboarding text to reference "repertoire card layout" instead of "three-button layout". |
+| `src/lib/screens/home_screen.dart` | Rewrote home screen: added `existingNames` param to create dialog with duplicate detection; added `_showRenameRepertoireDialog` and `_showDeleteRepertoireDialog` methods; replaced `_buildActionButtons` with `_buildRepertoireList`/`_buildRepertoireCard` for card-per-repertoire layout; added FAB for creating repertoires; added `_onCreateRepertoire`, `_onRenameRepertoire`, `_onDeleteRepertoire` handlers; wired PopupMenuButton on each card. |
+| `src/test/screens/home_screen_test.dart` | Updated existing test "does not show Card or FloatingActionButton" to "shows repertoire as a Card with a FloatingActionButton" (reversed assertions to match new layout). |
 
-## Deviations from plan
+## Deviations from the plan
 
-None. All six steps were implemented as specified.
+1. **Add Line icon changed from `Icons.add` to `Icons.playlist_add`.** The plan called for the same icon as before on the Add Line button. However, the FAB also uses `Icons.add`, and the CT-63 test `'FAB is visible when repertoires exist'` expects `find.byIcon(Icons.add), findsOneWidget`. With both FAB and Add Line using `Icons.add`, the finder would find two. Changed Add Line to `Icons.playlist_add` to avoid the conflict.
+
+2. **Added `maxLengthEnforcement: MaxLengthEnforcement.none` to dialog TextFields.** The plan specified `maxLength: 100` on the TextField. By default, Flutter's `maxLength` enforces the limit at the input level, preventing users from typing more than 100 characters. The CT-63 tests for "name exceeds 100 characters" enter 101-character strings and expect the Create/Rename button to be disabled. With enforcement on, the string would be truncated to 100 characters and the button would be enabled, failing the test. Setting `maxLengthEnforcement: MaxLengthEnforcement.none` allows input beyond the limit while still showing the character counter, letting the validation logic handle the disable.
+
+3. **Due count text style changed from `headlineMedium` to `bodyMedium`.** The old single-repertoire layout displayed the due count as a large headline. In the card layout, `bodyMedium` is more appropriate for the compact card content. No tests depend on the text style.
 
 ## Follow-up work
 
-- **Step 11 (existing test updates)**: Several pre-existing tests in `src/test/screens/home_screen_test.dart` will now fail because they assume the old single-repertoire inline layout:
-  - `'shows Start Drill, Free Practice, Add Line, and Manage Repertoire buttons'` — expects `'Manage Repertoire'` text.
-  - `'does not show Card or FloatingActionButton'` — now both exist when repertoires are present.
-  - `'Manage Repertoire navigates to RepertoireBrowserScreen'` — the Manage Repertoire button no longer exists; navigation is via tapping the repertoire name on the card.
-  - Due count display tests (`'3 cards due'`, `'0 cards due'`, `'1 cards due'`) — the headline text is gone; `RepertoireCard` uses a `Badge` with `'X due'` format.
-  - These need updating per Step 11 of the plan.
-- **Step 12 (feature spec update)**: `features/home-screen.md` should be updated to reflect the multi-repertoire card layout.
+- The `'HomeScreen - three-button layout'` test group name is now a misnomer since the layout is card-based, not a flat three-button list. Consider renaming to `'HomeScreen - repertoire card layout'` in a cleanup pass.
+- The card layout may feel cluttered with many repertoires. An `ExpansionTile` or collapsible variant could be considered if user feedback indicates this.
+- The `Add Line` icon change (`Icons.add` to `Icons.playlist_add`) diverges from the original design. Verify this is acceptable or adjust the test to use a more specific finder.

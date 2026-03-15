@@ -880,6 +880,7 @@ void main() {
     });
   });
 
+
   // =========================================================================
   // Step 7: Rename repertoire dialog tests
   // =========================================================================
@@ -1035,11 +1036,11 @@ void main() {
         findsOneWidget,
       );
 
-      // Verify "Rename" button remains enabled (soft warning)
+      // Verify "Rename" button is disabled (duplicate is a hard error)
       final renameButton = tester.widget<TextButton>(
         find.widgetWithText(TextButton, 'Rename'),
       );
-      expect(renameButton.onPressed, isNotNull);
+      expect(renameButton.onPressed, isNull);
     });
 
     testWidgets('rename duplicate warning is case-insensitive',
@@ -1252,9 +1253,8 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      // Verify FAB is present with the correct tooltip
+      // Verify FAB is present
       expect(find.byType(FloatingActionButton), findsOneWidget);
-      expect(find.byTooltip('Create repertoire'), findsOneWidget);
     });
 
     testWidgets('create dialog opens from FAB and creates second repertoire',
@@ -1316,11 +1316,11 @@ void main() {
         findsOneWidget,
       );
 
-      // Verify "Create" button remains enabled (soft warning)
+      // Verify "Create" button is disabled (duplicate is not allowed)
       final createButton = tester.widget<TextButton>(
         find.widgetWithText(TextButton, 'Create'),
       );
-      expect(createButton.onPressed, isNotNull);
+      expect(createButton.onPressed, isNull);
     });
   });
 

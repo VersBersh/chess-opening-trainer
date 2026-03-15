@@ -37,6 +37,7 @@ Each card contains:
      - If there are no due cards, the button is visually muted. Tapping it shows a brief message: "No cards due for review. Come back later!"
   2. **Free Practice** — enters free practice mode for this repertoire (available as long as the repertoire has cards). See [free-practice.md](free-practice.md).
   3. **Add Line** — navigates to the Add Line screen for this repertoire. See [add-line.md](add-line.md).
+  4. **Manage Repertoire** — navigates to the repertoire browser for this repertoire. See [repertoire-browser.md](repertoire-browser.md).
 
 ### Due Count Updates
 
@@ -70,20 +71,24 @@ A future "Import" action will be accessible from the home screen or from within 
 
 - On first launch (zero repertoires), a "Create your first repertoire" button is shown (see Onboarding). On creation, the home screen navigates to the repertoire browser.
 - When repertoires already exist, a floating action button (FAB) with a "+" icon opens the creation dialog. On creation, the new repertoire card appears in the list and the user stays on the home screen.
-- The creation dialog has a single text field for the repertoire name (max 100 characters) and a confirm button. The confirm button is disabled when the name is empty.
-- **Duplicate name warning:** If the entered name matches an existing repertoire (case-insensitive), an inline warning is shown: "A repertoire with this name already exists." This is a soft warning — the user can still create the repertoire.
+- **Create Repertoire dialog:** Single text field for name. Validation:
+  - Create button is disabled when the name is empty or whitespace-only.
+  - Max length 100 characters (enforced by `maxLength` on the text field).
+  - Inline error text ("A repertoire with this name already exists") when a repertoire with the same name (case-insensitive trimmed comparison) already exists.
+- On confirm, calls `HomeController.createRepertoire(name)`. The new repertoire appears in the list immediately.
 
 ### Rename Repertoire
 
 - Accessible from each repertoire card's context menu (three-dot popup → "Rename").
-- The rename dialog pre-fills the current name, validates non-empty (max 100 characters), and shows the same duplicate name warning as the create dialog (excluding the current name from the check).
-- If the user confirms with the same name, no change is made.
+- **Rename Repertoire dialog:** Pre-filled text field with the current name (text selected for easy replacement). Same validation as create (empty, whitespace-only, max length, duplicate), except the repertoire being renamed is excluded from the duplicate check (renaming to the same name is a no-op but does not show an error).
+- Title: "Rename repertoire". Confirm button text: "Rename".
+- On confirm, calls `HomeController.renameRepertoire(id, newName)`.
 
 ### Delete Repertoire
 
 - Accessible from each repertoire card's context menu (three-dot popup → "Delete").
 - A confirmation dialog warns: `Delete "<name>" and all its lines and review cards? This cannot be undone.`
-- Deletion cascades: the repertoire, all its moves, and all its review cards are deleted. This is handled by the `ON DELETE CASCADE` foreign keys defined in [architecture/repository.md](../architecture/repository.md).
+- On confirm, calls `HomeController.deleteRepertoire(id)`. Deletion cascades: the repertoire, all its moves, and all its review cards are deleted via `ON DELETE CASCADE` foreign keys defined in [architecture/repository.md](../architecture/repository.md).
 - If the last repertoire is deleted, the home screen transitions to the empty state.
 
 ## Onboarding
