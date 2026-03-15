@@ -3528,4 +3528,225 @@ void main() {
       expect(moves.length, 2); // e4 + e5
     });
   });
+
+  // --------------------------------------------------------------------------
+  // CT-64: New Line reset button
+  // --------------------------------------------------------------------------
+
+  group('CT-64: New Line reset button', () {
+    testWidgets('New Line button not shown when no confirmed line',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // No "New Line" button should exist in the tree.
+      expect(find.text('New Line'), findsNothing);
+    });
+
+    testWidgets(
+        'New Line button not shown when merely following an existing line',
+        (tester) async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(
+          buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      // Follow all existing moves using a test board controller.
+      final testBoard = ChessboardController();
+      var currentFen = kInitialFEN;
+      for (final san in ['e4', 'e5', 'Nf3']) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        testBoard.playMove(normalMove);
+        controller.onBoardMove(normalMove, testBoard);
+        currentFen = testBoard.fen;
+      }
+
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      await tester.pump();
+
+      // isExistingLine is true, but no confirm happened.
+      expect(controller.isExistingLine, true);
+      expect(controller.canResetForNewLine, false);
+
+      // No "New Line" button should be rendered.
+      expect(find.text('New Line'), findsNothing);
+    });
+
+    testWidgets(
+        'New Line button shown and enabled after confirming a line',
+        (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Tap Confirm.
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+
+      // Dismiss the no-name warning dialog.
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // "New Line" button should now be visible and enabled.
+      expect(find.text('New Line'), findsOneWidget);
+
+      final newLineButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'New Line'),
+      );
+      expect(newLineButton.onPressed, isNotNull);
+    });
+
+    testWidgets(
+        'tapping New Line resets board and pills to starting position',
+        (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Confirm the new line (e4).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // Post-confirm: verify pill is present and "Existing line" info shown.
+      expect(find.text('e4'), findsOneWidget);
+      expect(find.text('Existing line'), findsOneWidget);
+
+      // "New Line" button should be visible.
+      expect(find.text('New Line'), findsOneWidget);
+
+      // Tap "New Line".
+      await tester.tap(find.text('New Line'));
+      await tester.pumpAndSettle();
+
+      // After reset: pills should be empty (back to initial position).
+      expect(find.text('e4'), findsNothing);
+      expect(find.text('Existing line'), findsNothing);
+      expect(find.text('Play a move to begin'), findsOneWidget);
+
+      // Board should be at initial FEN.
+      final chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.fen, kInitialFEN);
+
+      // Confirm button should be disabled.
+      final confirmButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Confirm'),
+      );
+      expect(confirmButton.onPressed, isNull);
+
+      // "New Line" button should no longer be rendered (flag cleared).
+      expect(find.text('New Line'), findsNothing);
+    });
+
+    testWidgets('New Line preserves repertoire and board orientation',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+      final repRepo = LocalRepertoireRepository(db);
+      final reviewRepo = LocalReviewRepository(db);
+      final controller = AddLineController(repRepo, reviewRepo, repId);
+
+      await tester.pumpWidget(
+          buildTestApp(db, repId, controller: controller));
+      await tester.pumpAndSettle();
+
+      // Play e4 using a test board controller.
+      final testBoard = ChessboardController();
+      final e4NormalMove = sanToNormalMove(kInitialFEN, 'e4');
+      testBoard.playMove(e4NormalMove);
+      controller.onBoardMove(e4NormalMove, testBoard);
+
+      addTearDown(() {
+        controller.dispose();
+        testBoard.dispose();
+      });
+
+      await tester.pump();
+
+      // Confirm (1-ply, odd = white expected, board is white -> matches).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // Flip board to black after confirm.
+      await tester.ensureVisible(find.byIcon(Icons.swap_vert));
+      await tester.tap(find.byIcon(Icons.swap_vert));
+      await tester.pump();
+
+      // Verify board is black.
+      var chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.orientation, Side.black);
+
+      // Tap "New Line".
+      await tester.ensureVisible(find.text('New Line'));
+      await tester.tap(find.text('New Line'));
+      await tester.pumpAndSettle();
+
+      // Board orientation should still be black.
+      chessboard = tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(chessboard.orientation, Side.black);
+
+      // Screen title should still be visible (same screen, same repertoire).
+      expect(find.text('Add Line'), findsOneWidget);
+    });
+
+    testWidgets('New Line clears active snackbar', (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Confirm the new line (e4).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // "Line saved" snackbar should be visible.
+      expect(find.text('Line saved'), findsOneWidget);
+
+      // Tap "New Line".
+      await tester.tap(find.text('New Line'));
+      await tester.pumpAndSettle();
+
+      // Snackbar should be gone.
+      expect(find.text('Line saved'), findsNothing);
+    });
+
+    testWidgets('New Line clears label editor',
+        (tester) async {
+      await pumpWithNewLine(tester, db);
+
+      // Confirm (1-ply, odd = white expected, board is white -> matches).
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save without name'));
+      await tester.pumpAndSettle();
+
+      // Post-confirm: tap the saved pill (e4) to focus it, then open label
+      // editor via the Label button (the standard pattern used across tests).
+      await tester.tap(find.text('e4'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Label'));
+      await tester.pumpAndSettle();
+
+      // Inline label editor should be visible.
+      expect(find.byType(InlineLabelEditor), findsOneWidget);
+
+      // Tap "New Line".
+      await tester.ensureVisible(find.text('New Line'));
+      await tester.tap(find.text('New Line'));
+      await tester.pumpAndSettle();
+
+      // Label editor should be gone.
+      expect(find.byType(InlineLabelEditor), findsNothing);
+    });
+  });
 }

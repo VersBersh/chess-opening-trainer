@@ -4,40 +4,30 @@
 
 | File | Role |
 |------|------|
-| `src/lib/controllers/add_line_controller.dart` | Controller owning `_pendingLabels` map, `hasNewMoves`, `confirmAndPersist()`, and all confirm/label logic |
-| `src/lib/screens/add_line_screen.dart` | Screen widget; wires Confirm button enable/disable via `_controller.hasNewMoves`, guards `_onConfirmLine` with `if (!_controller.hasNewMoves) return`, manages `PopScope.canPop` |
-| `src/lib/services/line_entry_engine.dart` | Pure engine; `hasNewMoves` checks `_bufferedMoves.isNotEmpty`; unaware of pending labels |
-| `src/lib/services/line_persistence_service.dart` | Orchestrates DB writes; `persistNewMoves()` requires non-empty `confirmData.newMoves`; no label-only persist path exists |
-| `src/lib/repositories/repertoire_repository.dart` | Abstract repo; defines `updateMoveLabel(int, String?)` for single-label writes; no batch-label-only method |
-| `src/lib/repositories/local/local_repertoire_repository.dart` | Concrete repo; implements `updateMoveLabel` and `*WithLabelUpdates` transaction variants |
-| `src/lib/widgets/move_pills_widget.dart` | `MovePillData` model used in pills list |
-| `features/add-line.md` | Spec: "On confirm, any pending label changes ... are persisted along with the new moves" (step 6 of entry flow) |
-| `features/line-management.md` | Spec: deferred label persistence model -- pending-labels map, persisted on Confirm |
-| `src/test/controllers/add_line_controller_test.dart` | Unit tests for the controller |
-| `src/test/screens/add_line_screen_test.dart` | Widget tests for the screen |
+| `src/lib/controllers/add_line_controller.dart` | Controller owning AddLineState, LineEntryEngine, pending-labels map, and all business logic (hasNewMoves, hasUnsavedChanges, hasPendingLabelChanges, confirmAndPersist, _persistLabelsOnly, updateLabel). This is the primary file for this task. |
+| `src/lib/screens/add_line_screen.dart` | UI widget. Reads `hasUnsavedChanges` to enable/disable the Confirm button (line 914) and to guard the PopScope/discard dialog (line 435). Calls `_onConfirmLine()` which delegates to `controller.confirmAndPersist()`. |
+| `src/lib/services/line_persistence_service.dart` | Service layer that persists moves and labels to DB. Contains `persistLabelsOnly()` which writes pending label updates without inserting moves. |
+| `src/lib/services/line_entry_engine.dart` | Engine tracking existingPath, followedMoves, and bufferedMoves. Provides `hasNewMoves` property. Not directly changed for this task. |
+| `src/lib/widgets/move_pills_widget.dart` | Defines `MovePillData` (san, isSaved, label). Display-only; not changed. |
+| `src/lib/repositories/repertoire_repository.dart` | Defines `PendingLabelUpdate` and `updateMoveLabel`. Already supports label persistence. |
+| `src/test/controllers/add_line_controller_test.dart` | Existing controller unit tests, including a CT-59 group verifying `hasPendingLabelChanges`, `hasUnsavedChanges`, `confirmAndPersist` with label-only edits, and position preservation. |
+| `src/test/screens/add_line_screen_test.dart` | Existing widget tests, including a CT-59 group verifying the Confirm button enables/disables for label-only edits, label persistence in DB, discard dialog with pending labels, no undo snackbar for label-only confirms, and regression for existing new-move confirm flow. |
+| `features/add-line.md` | Spec for the Add Line screen. Defines deferred persistence, confirm-to-save, and the "Existing line" info label behavior. |
 
 ## Architecture
 
-The Add Line subsystem follows a controller/screen split:
+The Add Line screen uses a **controller + immutable state** pattern:
 
-- **`LineEntryEngine`** is a pure model that tracks three move lists: `existingPath` (root-to-start), `followedMoves` (existing moves the user re-played), and `bufferedMoves` (new unsaved moves). Its `hasNewMoves` property returns `bufferedMoves.isNotEmpty`.
+1. **AddLineController** (ChangeNotifier) owns:
+   - A `LineEntryEngine` that tracks three lists: `existingPath` (the starting saved moves from DB), `followedMoves` (saved moves the user navigated through), and `bufferedMoves` (new unsaved moves).
+   - A `_pendingLabels` map (`Map<int, String?>`) keyed by pill index, tracking label edits on saved moves. Buffered moves store their labels directly on `BufferedMove.label`.
+   - Computed properties: `hasNewMoves` (buffered moves exist), `hasPendingLabelChanges` (pending labels map non-empty), `hasUnsavedChanges` (either of the previous two), `isExistingLine` (pills visible, no new moves, no pending labels).
 
-- **`AddLineController`** wraps the engine and adds label tracking. It maintains a `_pendingLabels` map (`Map<int, String?>`) keyed by pill index for label edits on saved moves. Buffered-pill labels live directly on `BufferedMove.label`. On confirm, `confirmAndPersist()` collects `_pendingLabels` entries into `PendingLabelUpdate` objects and passes them alongside the new moves to `LinePersistenceService.persistNewMoves()`.
+2. **Confirm flow**: `confirmAndPersist()` has three paths:
+   - No changes at all: returns `ConfirmNoNewMoves`.
+   - Label-only (no new moves, pending labels non-empty): calls `_persistLabelsOnly()` which writes labels to DB via `LinePersistenceService.persistLabelsOnly()`, then reloads data with `preservePosition: true`.
+   - New moves: validates parity, then calls `_persistMoves()` which delegates to `LinePersistenceService.persistNewMoves()`.
 
-- **`AddLineScreen`** enables the Confirm button with `_controller.hasNewMoves ? _onConfirmLine : null`. The `_onConfirmLine` handler also early-returns if `!_controller.hasNewMoves`. The `PopScope.canPop` similarly uses `!_controller.hasNewMoves` to guard navigation.
+3. **UI wiring**: The screen's `_buildActionBar` enables/disables the Confirm button based on `_controller.hasUnsavedChanges`. The `_onConfirmLine` handler has an early return `if (!_controller.hasUnsavedChanges) return` guard. The `PopScope.canPop` also uses `hasUnsavedChanges` to trigger the discard dialog.
 
-### The Bug
-
-When a user follows an existing line (no buffered moves) and edits labels on saved pills, `_pendingLabels` accumulates entries but `hasNewMoves` remains `false`. As a result:
-
-1. The Confirm button stays disabled (null `onPressed`).
-2. `_onConfirmLine` early-returns even if somehow invoked.
-3. `confirmAndPersist()` returns `ConfirmNoNewMoves` early.
-4. Navigating away is allowed without the discard dialog (since `canPop` is `true`).
-5. Pending labels are silently discarded.
-
-### Key Constraints
-
-- **No immediate writes:** The spec requires deferred persistence -- labels must be saved on Confirm, not on each keystroke.
-- **Existing transaction paths assume new moves:** `LinePersistenceService.persistNewMoves()` throws if `confirmData.newMoves` is empty. The `*WithLabelUpdates` repo methods wrap label updates inside the same transaction as move inserts.
-- **Label-only persist needs a new path:** There is no `persistLabelsOnly` method on `LinePersistenceService` or batch-update method on `RepertoireRepository`.
+4. **Key constraint**: The label-only confirm path returns `ConfirmSuccess(isExtension: false, insertedMoveIds: [])`. The screen's `_handleConfirmSuccess` only shows undo snackbars when `insertedMoveIds` is non-empty or `isExtension` is true with an old card, so label-only confirms correctly produce no undo snackbar.

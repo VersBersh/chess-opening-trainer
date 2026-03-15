@@ -315,6 +315,24 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     _controller.flipBoard();
   }
 
+  Future<void> _onNewLine() async {
+    setState(() {
+      _isLabelEditorVisible = false;
+      _parityWarning = null;
+    });
+    _localMessengerKey.currentState?.clearSnackBars();
+    await _controller.resetForNewLine();
+    if (mounted) {
+      _boardController.resetToInitial();
+      // If the controller's starting position is not the initial FEN,
+      // sync the board to it.
+      final fen = _controller.state.currentFen;
+      if (fen != kInitialFEN) {
+        _boardController.setPosition(fen);
+      }
+    }
+  }
+
   Future<void> _onFlipAndConfirm() async {
     setState(() => _parityWarning = null);
     final result = await _controller.flipAndConfirm();
@@ -935,6 +953,14 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
             ),
 
             labelAction,
+
+            // New Line -- only shown after a successful confirm
+            if (_controller.canResetForNewLine)
+              TextButton.icon(
+                onPressed: _onNewLine,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('New Line'),
+              ),
           ],
         ),
       ),

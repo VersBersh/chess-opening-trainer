@@ -164,6 +164,9 @@ class AddLineController extends ChangeNotifier {
 
   AddLineState _state = const AddLineState();
 
+  /// Whether a confirm has succeeded since the last reset/load.
+  bool _hasConfirmedSinceLastReset = false;
+
   /// Generation counter for invalidating stale undo snackbars.
   int _undoGeneration = 0;
 
@@ -182,7 +185,10 @@ class AddLineController extends ChangeNotifier {
   ///
   /// This is the public entry point used by the screen on init and by undo
   /// handlers. It resets to the controller's original [_startingMoveId].
-  Future<void> loadData() => _loadData();
+  Future<void> loadData() {
+    _hasConfirmedSinceLastReset = false;
+    return _loadData();
+  }
 
   /// Internal data-loading method.
   ///
@@ -400,6 +406,12 @@ class AddLineController extends ChangeNotifier {
 
   /// Whether there are any unsaved changes (new moves or pending labels).
   bool get hasUnsavedChanges => hasNewMoves || hasPendingLabelChanges;
+
+  /// Whether the "New Line" reset action is available.
+  ///
+  /// True only after a successful confirm in the current session. Cleared
+  /// on initial load, undo, or when the user taps "New Line" to reset.
+  bool get canResetForNewLine => _hasConfirmedSinceLastReset;
 
   /// Whether the current pill list represents an existing line with no new moves.
   ///
@@ -715,6 +727,10 @@ class AddLineController extends ChangeNotifier {
       await _persistenceService.persistLabelsOnly(labelUpdates);
       await _loadData(leafMoveId: leafMoveId, preservePosition: true);
 
+      // Note: _hasConfirmedSinceLastReset is NOT set here. Label-only saves
+      // do not create a new line, so the "New Line" reset action should not
+      // appear after a label-only confirm.
+
       return const ConfirmSuccess(
         isExtension: false,
         insertedMoveIds: [],
@@ -764,6 +780,8 @@ class AddLineController extends ChangeNotifier {
       // so that pills persist and the user can branch from this position.
       await _loadData(leafMoveId: result.newLeafMoveId);
 
+      _hasConfirmedSinceLastReset = true;
+
       return ConfirmSuccess(
         isExtension: result.isExtension,
         oldLeafMoveId: result.oldLeafMoveId,
@@ -812,6 +830,17 @@ class AddLineController extends ChangeNotifier {
   ) async {
     if (capturedGeneration != _undoGeneration) return;
     await _repertoireRepo.undoNewLine(insertedMoveIds);
+    await loadData();
+  }
+
+  // ---- Reset for new line ---------------------------------------------------
+
+  /// Resets the screen for a new line entry.
+  ///
+  /// Invalidates any pending undo snackbar and reloads to the starting
+  /// position, preserving the repertoire and board orientation.
+  Future<void> resetForNewLine() async {
+    _undoGeneration++;
     await loadData();
   }
 

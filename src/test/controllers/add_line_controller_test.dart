@@ -4268,4 +4268,308 @@ void main() {
       boardController.dispose();
     });
   });
+
+  // --------------------------------------------------------------------------
+  // CT-64: Reset for new line
+  // --------------------------------------------------------------------------
+
+  group('Reset for new line', () {
+    test('canResetForNewLine is false on initial load', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      await controller.loadData();
+
+      expect(controller.canResetForNewLine, false);
+
+      controller.dispose();
+    });
+
+    test('canResetForNewLine is false when merely following an existing line',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow all existing moves: e4, e5, Nf3.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // isExistingLine should be true, but canResetForNewLine should be false.
+      expect(controller.isExistingLine, true);
+      expect(controller.canResetForNewLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('canResetForNewLine is false when loading with startingMoveId',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      // Get the move ID for e5 (mid-tree).
+      final e5Id = await getMoveIdBySan(db, repId, 'e5');
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId,
+          startingMoveId: e5Id);
+      await controller.loadData();
+
+      // isExistingLine is true after loadData with startingMoveId.
+      expect(controller.isExistingLine, true);
+      // But canResetForNewLine should be false (no confirm happened).
+      expect(controller.canResetForNewLine, false);
+
+      controller.dispose();
+    });
+
+    test('canResetForNewLine is false before confirm and true after', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4 (1-ply, odd = white expected). Default orientation is white.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      expect(controller.hasNewMoves, true);
+      expect(controller.canResetForNewLine, false);
+
+      // Confirm.
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      expect(controller.canResetForNewLine, true);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('resetForNewLine clears pills and returns to starting position',
+        () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4 (1-ply, odd = white expected). Default orientation is white.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      // Confirm.
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // Post-confirm: pills present, canResetForNewLine true.
+      expect(controller.state.pills, isNotEmpty);
+      expect(controller.canResetForNewLine, true);
+
+      // Reset for new line.
+      await controller.resetForNewLine();
+
+      // After reset: pills empty, back to initial position, flag cleared.
+      expect(controller.state.pills, isEmpty);
+      expect(controller.hasNewMoves, false);
+      expect(controller.state.currentFen, kInitialFEN);
+      expect(controller.canResetForNewLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('resetForNewLine increments undoGeneration', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, confirm.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // Capture undoGeneration after confirm.
+      final genAfterConfirm = controller.undoGeneration;
+
+      // Reset for new line.
+      await controller.resetForNewLine();
+
+      // undoGeneration should have incremented.
+      expect(controller.undoGeneration, greaterThan(genAfterConfirm));
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('resetForNewLine preserves board orientation', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Flip board to black.
+      controller.flipBoard();
+      expect(controller.state.boardOrientation, Side.black);
+
+      // Play e4 (1-ply, odd = white expected). Board is black -> parity
+      // mismatch. Use flipAndConfirm instead, or flip back and confirm.
+      // Simplest: flip back to white, play e4, confirm, then verify
+      // orientation is preserved through reset.
+      controller.flipBoard(); // back to white
+      expect(controller.state.boardOrientation, Side.white);
+
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // Flip to black after confirm.
+      controller.flipBoard();
+      expect(controller.state.boardOrientation, Side.black);
+
+      // Reset for new line.
+      await controller.resetForNewLine();
+
+      // Board orientation should be preserved after reset.
+      expect(controller.state.boardOrientation, Side.black);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('canResetForNewLine is cleared by undo', () async {
+      final repId = await seedRepertoire(db);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play e4, confirm.
+      final e4Move = sanToNormalMove(kInitialFEN, 'e4');
+      boardController.playMove(e4Move);
+      controller.onBoardMove(e4Move, boardController);
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+      final success = result as ConfirmSuccess;
+      final gen = controller.undoGeneration;
+
+      expect(controller.canResetForNewLine, true);
+
+      // Undo the new line.
+      await controller.undoNewLine(gen, success.insertedMoveIds);
+
+      // canResetForNewLine should be cleared by the undo (which calls loadData).
+      expect(controller.canResetForNewLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('canResetForNewLine is false after label-only confirm', () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Follow existing moves to reach Nf3.
+      final moves = ['e4', 'e5', 'Nf3'];
+      var currentFen = kInitialFEN;
+      for (final san in moves) {
+        final normalMove = sanToNormalMove(currentFen, san);
+        boardController.playMove(normalMove);
+        controller.onBoardMove(normalMove, boardController);
+        currentFen = boardController.fen;
+      }
+
+      // Edit a label on an existing pill (no new moves).
+      controller.updateLabel(0, 'King Pawn');
+      expect(controller.hasPendingLabelChanges, true);
+      expect(controller.hasNewMoves, false);
+
+      // Label-only confirm.
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+
+      // canResetForNewLine should NOT be true — no new line was created.
+      expect(controller.canResetForNewLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+
+    test('resetForNewLine returns to startingMoveId position when set',
+        () async {
+      final repId = await seedRepertoire(db, lines: [
+        ['e4', 'e5', 'Nf3'],
+      ]);
+
+      // Start from Nf3 (leaf).
+      final nf3Id = await getMoveIdBySan(db, repId, 'Nf3');
+
+      final controller = AddLineController(
+          LocalRepertoireRepository(db), LocalReviewRepository(db), repId,
+          startingMoveId: nf3Id);
+      final boardController = ChessboardController();
+      await controller.loadData();
+
+      // Play Nc6 (extending from Nf3).
+      final nf3Fens = computeFens(['e4', 'e5', 'Nf3']);
+      final nc6Move = sanToNormalMove(nf3Fens[2], 'Nc6');
+      boardController.playMove(nc6Move);
+      controller.onBoardMove(nc6Move, boardController);
+
+      // Flip for parity (4-ply = even = black expected). Flip to match.
+      controller.flipBoard();
+
+      final result = await controller.confirmAndPersist();
+      expect(result, isA<ConfirmSuccess>());
+      expect(controller.canResetForNewLine, true);
+
+      // Reset for new line.
+      await controller.resetForNewLine();
+
+      // Should return to the starting position (Nf3), not the absolute root.
+      // Pills should show the existing path to Nf3.
+      expect(controller.state.pills.length, 3); // e4, e5, Nf3
+      expect(controller.state.pills[0].san, 'e4');
+      expect(controller.state.pills[1].san, 'e5');
+      expect(controller.state.pills[2].san, 'Nf3');
+      for (final pill in controller.state.pills) {
+        expect(pill.isSaved, true);
+      }
+      expect(controller.state.currentFen, nf3Fens[2]);
+      expect(controller.canResetForNewLine, false);
+
+      controller.dispose();
+      boardController.dispose();
+    });
+  });
 }

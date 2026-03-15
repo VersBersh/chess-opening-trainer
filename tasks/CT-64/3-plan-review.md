@@ -1,0 +1,10 @@
+**Verdict** — `Needs Revision`
+
+**Issues**
+1. **Major — Step 1 / Step 2:** `canResetForNewLine => isExistingLine` is not a correct proxy for “the user has just confirmed a line.” In the current code, `isExistingLine` is already `true` when the user simply follows an existing line with no buffered moves, and also immediately after `loadData()` when `startingMoveId` is set. That would make the new action available before any confirm. Fix: introduce a dedicated post-confirm flag/state, set only after a successful move-confirm and cleared on initial load, reset, and any new unsaved change.
+
+2. **Major — Step 2 / Step 4:** The plan changes the requirement from “appears after a line has been confirmed” to “always visible but disabled.” That is not what the goal says, and the current UI does not establish a rule that every action must always remain visible. Fix: conditionally render the button only in the post-confirm state, or explicitly revise the requirement if disabled-before-confirm is acceptable.
+
+3. **Minor — Step 2a:** `_onNewLine()` does not clear the screen’s transient UI state. Existing handlers such as `_onTakeBack()` and `_onPillTapped()` clear `_isLabelEditorVisible` and `_parityWarning` before resetting controller state. Without that, a reset from a non-root `startingMoveId` can leave the inline label editor visible immediately after reset. Fix: clear those local flags before calling the reset.
+
+4. **Minor — Step 3 / Step 4:** The proposed tests do not cover the cases that expose issue 1. The current test suite already proves that `isExistingLine` is `true` when following an existing line and when opening with `startingMoveId`; the new tests only cover empty-root before confirm and post-confirm. Fix: add tests asserting the New Line action is absent/unavailable when merely viewing an existing saved line or loading mid-tree, and make the widget assertions match the intended visibility behavior.
