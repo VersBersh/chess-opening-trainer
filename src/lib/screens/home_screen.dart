@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../controllers/home_controller.dart';
 import '../widgets/home_empty_state.dart';
+import '../widgets/repertoire_card.dart';
 import 'add_line_screen.dart';
 import 'drill_screen.dart';
 import 'repertoire_browser_screen.dart';
@@ -69,7 +70,80 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // ---- Dialogs --------------------------------------------------------------
 
-  Future<String?> _showCreateRepertoireDialog() {
+  Future<String?> _showRenameRepertoireDialog(
+      String currentName, List<String> existingNames) {
+    final controller = TextEditingController(text: currentName);
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final trimmed = controller.text.trim();
+            final isValid = trimmed.isNotEmpty && trimmed.length <= 100;
+
+            // Duplicate check: case-insensitive, excluding currentName
+            final isDuplicate = existingNames.any((name) =>
+                name.toLowerCase() == trimmed.toLowerCase() &&
+                name.toLowerCase() != currentName.toLowerCase());
+
+            return AlertDialog(
+              title: const Text('Rename repertoire'),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                maxLength: 100,
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  errorText: isDuplicate
+                      ? 'A repertoire with this name already exists'
+                      : null,
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(null),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: isValid
+                      ? () => Navigator.of(context).pop(trimmed)
+                      : null,
+                  child: const Text('Rename'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<bool?> _showDeleteRepertoireDialog(String name) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete repertoire'),
+        content: Text(
+          'Delete "$name" and all its lines and review cards? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _showCreateRepertoireDialog({
+    List<String> existingNames = const [],
+  }) {
     final controller = TextEditingController();
     return showDialog<String>(
       context: context,
@@ -79,13 +153,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             final trimmed = controller.text.trim();
             final isValid = trimmed.isNotEmpty && trimmed.length <= 100;
 
+            // Duplicate check: case-insensitive
+            final isDuplicate = existingNames.any(
+                (name) => name.toLowerCase() == trimmed.toLowerCase());
+
             return AlertDialog(
               title: const Text('Create repertoire'),
               content: TextField(
                 controller: controller,
                 autofocus: true,
                 maxLength: 100,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  errorText: isDuplicate
+                      ? 'A repertoire with this name already exists'
+                      : null,
+                ),
                 onChanged: (_) => setDialogState(() {}),
               ),
               actions: [
@@ -156,87 +239,74 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       body: homeState.repertoires.isEmpty
           ? HomeEmptyState(onCreateFirstRepertoire: _onCreateFirstRepertoire)
-          : _buildActionButtons(context, homeState),
+          : _buildRepertoireList(context, homeState),
+      floatingActionButton: homeState.repertoires.isNotEmpty
+          ? FloatingActionButton(
+              onPressed: _onCreateNewRepertoire,
+              tooltip: 'Create repertoire',
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 
   // -------------------------------------------------------------------------
-  // Three-button action layout
+  // Multi-repertoire card list
   // -------------------------------------------------------------------------
 
-  Widget _buildActionButtons(BuildContext context, HomeState homeState) {
-    final theme = Theme.of(context);
-    final summary = homeState.repertoires.first;
-    final repertoireId = summary.repertoire.id;
-    final hasDueCards = summary.dueCount > 0;
-    final hasCards = summary.totalCardCount > 0;
-
+  Widget _buildRepertoireList(BuildContext context, HomeState homeState) {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '${summary.dueCount} cards due',
-            style: theme.textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () {
-              if (hasDueCards) {
-                _startDrill(repertoireId);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'No cards due for review. Come back later!'),
-                  ),
-                );
-              }
-            },
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-              backgroundColor: hasDueCards
-                  ? null
-                  : theme.colorScheme.primary.withValues(alpha: 0.38),
+          for (final summary in homeState.repertoires)
+            RepertoireCard(
+              summary: summary,
+              onStartDrill: () => _startDrill(summary.repertoire.id),
+              onFreePractice: () => _startFreePractice(summary.repertoire.id),
+              onAddLine: () => _onAddLine(summary.repertoire.id),
+              onTapName: () => _onRepertoireTap(summary.repertoire.id),
+              onRename: () => _onRenameRepertoire(
+                  summary.repertoire.id, summary.repertoire.name),
+              onDelete: () => _onDeleteRepertoire(
+                  summary.repertoire.id, summary.repertoire.name),
             ),
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Start Drill'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: hasCards ? () => _startFreePractice(repertoireId) : null,
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-            ),
-            icon: const Icon(Icons.fitness_center),
-            label: const Text('Free Practice'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => _onAddLine(repertoireId),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-            ),
-            icon: const Icon(Icons.add),
-            label: const Text('Add Line'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => _onRepertoireTap(repertoireId),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-            ),
-            icon: const Icon(Icons.library_books),
-            label: const Text('Manage Repertoire'),
-          ),
         ],
       ),
     );
   }
 
+  // -------------------------------------------------------------------------
+  // Handlers
+  // -------------------------------------------------------------------------
+
+  void _onRenameRepertoire(int id, String currentName) async {
+    final homeState = ref.read(homeControllerProvider).valueOrNull;
+    final existingNames =
+        homeState?.repertoires.map((s) => s.repertoire.name).toList() ?? [];
+
+    final result =
+        await _showRenameRepertoireDialog(currentName, existingNames);
+    if (result == null || result == currentName) return;
+
+    await ref.read(homeControllerProvider.notifier).renameRepertoire(id, result);
+  }
+
+  void _onDeleteRepertoire(int id, String name) async {
+    final result = await _showDeleteRepertoireDialog(name);
+    if (result != true) return;
+
+    await ref.read(homeControllerProvider.notifier).deleteRepertoire(id);
+  }
+
   void _onCreateFirstRepertoire() async {
-    final name = await _showCreateRepertoireDialog();
+    final homeState = ref.read(homeControllerProvider).valueOrNull;
+    final existingNames =
+        homeState?.repertoires.map((s) => s.repertoire.name).toList() ?? [];
+
+    final name =
+        await _showCreateRepertoireDialog(existingNames: existingNames);
     if (name == null) return;
 
     final id = await ref
@@ -251,5 +321,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ))
           .then((_) => ref.read(homeControllerProvider.notifier).refresh());
     }
+  }
+
+  void _onCreateNewRepertoire() async {
+    final homeState = ref.read(homeControllerProvider).valueOrNull;
+    final existingNames =
+        homeState?.repertoires.map((s) => s.repertoire.name).toList() ?? [];
+
+    final name =
+        await _showCreateRepertoireDialog(existingNames: existingNames);
+    if (name == null) return;
+
+    await ref.read(homeControllerProvider.notifier).createRepertoire(name);
   }
 }

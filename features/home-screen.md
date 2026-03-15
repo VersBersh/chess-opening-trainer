@@ -20,20 +20,23 @@ RepertoireSummary (transient, computed by controller)
 
 This summary is computed by the home screen controller from repository data. It is not persisted.
 
-## Single-Repertoire Layout
+## Multi-Repertoire Layout
 
-The home screen assumes a single repertoire and presents four direct action buttons — no repertoire name, no card list, no CRUD UI. The multi-repertoire data layer is preserved; this is a UI-only simplification.
+The home screen displays all repertoires as a scrollable list of `RepertoireCard` widgets. Each card is independently actionable. If no repertoire exists, the empty-state onboarding is shown instead (see Onboarding below). A floating action button (FAB) with a "+" icon allows creating additional repertoires.
 
-### Buttons
+### Repertoire Card
 
-1. **Start Drill** — enters drill mode for the repertoire's due cards.
-   - If there are due cards, drill mode opens immediately.
-   - If there are no due cards, the button is visually muted. Tapping it shows a brief message: "No cards due for review. Come back later!"
-2. **Free Practice** — enters free practice mode (always available as long as the repertoire has cards). See [free-practice.md](free-practice.md).
-3. **Add Line** — navigates directly to the Add Line screen for the active repertoire, without requiring the user to go through the Repertoire Manager first. See [add-line.md](add-line.md).
-4. **Manage Repertoire** — navigates to the repertoire browser. See [repertoire-browser.md](repertoire-browser.md).
+Each card contains:
 
-The controller uses the **first repertoire** (by creation order) as the implicit active repertoire. If no repertoire exists, the empty-state onboarding is shown instead (see Onboarding below).
+- **Repertoire name** (tappable) — navigates to the repertoire browser for that repertoire. See [repertoire-browser.md](repertoire-browser.md).
+- **Due count badge** — shows `"N due"` when the repertoire has cards due for review. Hidden when no cards are due.
+- **Context menu** (three-dot popup) — provides "Rename" and "Delete" actions (see Repertoire CRUD below).
+- **Action buttons:**
+  1. **Start Drill** — enters drill mode for this repertoire's due cards.
+     - If there are due cards, drill mode opens immediately.
+     - If there are no due cards, the button is visually muted. Tapping it shows a brief message: "No cards due for review. Come back later!"
+  2. **Free Practice** — enters free practice mode for this repertoire (available as long as the repertoire has cards). See [free-practice.md](free-practice.md).
+  3. **Add Line** — navigates to the Add Line screen for this repertoire. See [add-line.md](add-line.md).
 
 ### Due Count Updates
 
@@ -51,11 +54,11 @@ The "Free Practice" button navigates to free practice mode. See [free-practice.m
 
 ### Add Line
 
-The "Add Line" button navigates directly to the Add Line screen for the active repertoire. This provides a shortcut that bypasses the Repertoire Manager. The Add Line screen remains accessible from the Repertoire Manager as well. See [add-line.md](add-line.md).
+Each repertoire card's "Add Line" button navigates to the Add Line screen for that repertoire. The Add Line screen remains accessible from the Repertoire Manager as well. See [add-line.md](add-line.md).
 
 ### Repertoire Browser
 
-The "Manage Repertoire" button navigates to the repertoire browser. The browser provides access to line management, tree exploration, and the Add Line screen. See [repertoire-browser.md](repertoire-browser.md).
+Tapping a repertoire's name navigates to the repertoire browser for that repertoire. The browser provides access to line management, tree exploration, and the Add Line screen. See [repertoire-browser.md](repertoire-browser.md).
 
 ### PGN Import (Phase 3)
 
@@ -63,19 +66,25 @@ A future "Import" action will be accessible from the home screen or from within 
 
 ## Repertoire CRUD
 
-> **Note:** The single-repertoire home screen removes the rename/delete/create UI from the home screen. The CRUD operations are preserved in the data and controller layers for future multi-repertoire support. Repertoire creation is handled automatically on first launch (see Onboarding below) or via the data layer.
-
 ### Create Repertoire
 
-- On first launch (zero repertoires), a "Create your first repertoire" button is shown (see Onboarding).
-- The creation dialog has a single text field for the repertoire name and a confirm button.
-- On creation, the home screen transitions to the three-button layout.
+- On first launch (zero repertoires), a "Create your first repertoire" button is shown (see Onboarding). On creation, the home screen navigates to the repertoire browser.
+- When repertoires already exist, a floating action button (FAB) with a "+" icon opens the creation dialog. On creation, the new repertoire card appears in the list and the user stays on the home screen.
+- The creation dialog has a single text field for the repertoire name (max 100 characters) and a confirm button. The confirm button is disabled when the name is empty.
+- **Duplicate name warning:** If the entered name matches an existing repertoire (case-insensitive), an inline warning is shown: "A repertoire with this name already exists." This is a soft warning — the user can still create the repertoire.
 
-### Rename / Delete Repertoire
+### Rename Repertoire
 
-- Not exposed on the single-repertoire home screen.
-- The controller and repository methods (`renameRepertoire`, `deleteRepertoire`) remain available for future use.
+- Accessible from each repertoire card's context menu (three-dot popup → "Rename").
+- The rename dialog pre-fills the current name, validates non-empty (max 100 characters), and shows the same duplicate name warning as the create dialog (excluding the current name from the check).
+- If the user confirms with the same name, no change is made.
+
+### Delete Repertoire
+
+- Accessible from each repertoire card's context menu (three-dot popup → "Delete").
+- A confirmation dialog warns: `Delete "<name>" and all its lines and review cards? This cannot be undone.`
 - Deletion cascades: the repertoire, all its moves, and all its review cards are deleted. This is handled by the `ON DELETE CASCADE` foreign keys defined in [architecture/repository.md](../architecture/repository.md).
+- If the last repertoire is deleted, the home screen transitions to the empty state.
 
 ## Onboarding
 
@@ -87,7 +96,7 @@ When the home screen has zero repertoires, it shows:
 
 - A brief explanation: "Build your opening repertoire and practice it with spaced repetition."
 - A prominent "Create your first repertoire" button that opens the creation dialog (single text field + confirm).
-- On creation, the home screen transitions to the three-button layout and navigates to the repertoire browser.
+- On creation, the home screen shows the new repertoire card and navigates to the repertoire browser.
 
 ### Empty Repertoire Guidance
 
