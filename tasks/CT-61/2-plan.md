@@ -1,67 +1,98 @@
-# 2-plan.md — CT-61
+# CT-61: Implementation Plan
 
 ## Goal
 
-Add a tooltip to the Label button that explains why it is disabled, so users understand they need to tap a move pill first.
+Wrap the disabled Label button in a `Tooltip` widget so users understand why it is disabled and what action to take.
 
 ## Steps
 
-### 1. Wrap the Label button in a `Tooltip` when disabled
+### 1. Wrap the Label button in a conditional Tooltip
 
 **File:** `src/lib/screens/add_line_screen.dart`
 
-In `_buildActionBar()`, wrap the Label `TextButton.icon` in a `Tooltip` widget when `canEditLabel` is false. The tooltip message should be clear and actionable:
-
-```
-"Tap a move to edit its label"
-```
-
-When the button is enabled (`canEditLabel` is true), no tooltip is needed on the button itself (the label editor opens on tap).
-
-**Concrete change:** Replace the current Label button block (lines 919-924). Build the `TextButton.icon` once into a local variable, then conditionally wrap it in a `Tooltip` when disabled. This avoids duplicating the button constructor across both branches. Example structure:
+In `_buildActionBar`, the Label button is currently:
 
 ```dart
 // Label
-final labelButton = TextButton.icon(
+TextButton.icon(
   onPressed: canEditLabel ? _onEditLabel : null,
   icon: const Icon(Icons.label, size: 18),
   label: const Text('Label'),
-);
-if (canEditLabel)
-  labelButton
-else
-  Tooltip(
-    message: 'Tap a move to edit its label',
-    child: labelButton,
-  ),
+),
 ```
 
-This keeps the widget tree clean: the `Tooltip` is only present when the button is disabled, which is the only time the user needs the hint. Flutter's `Tooltip` activates on long-press, which works even when the child button is disabled.
+When `canEditLabel` is false, wrap the button in a `Tooltip` widget with the message `'Play or select a move to edit labels'`. When `canEditLabel` is true, render the plain `TextButton.icon` with no `Tooltip` wrapper.
 
-**Dependencies:** None.
+Replace the inline Label button with a call to a helper:
 
-### 2. Add a widget test verifying the tooltip works when the button is disabled
+```dart
+// Label
+_buildLabelButton(canEditLabel),
+```
+
+Add a helper method `_buildLabelButton(bool canEditLabel)`:
+
+```dart
+Widget _buildLabelButton(bool canEditLabel) {
+  final button = TextButton.icon(
+    onPressed: canEditLabel ? _onEditLabel : null,
+    icon: const Icon(Icons.label, size: 18),
+    label: const Text('Label'),
+  );
+
+  if (canEditLabel) return button;
+
+  return Tooltip(
+    message: 'Play or select a move to edit labels',
+    child: button,
+  );
+}
+```
+
+The `Tooltip` widget responds to long-press gestures on its own detector, so it will fire even though the child `TextButton` is disabled (its `onPressed` is null). No special gesture handling is needed.
+
+When the button is enabled, no `Tooltip` wrapper is added -- returning the plain button avoids unnecessary wrapper/semantics noise.
+
+### 2. Add a widget test verifying the tooltip on the disabled Label button
 
 **File:** `src/test/screens/add_line_screen_test.dart`
 
-Add a test in the existing `group('AddLineScreen', ...)` block, near the existing `'label button disabled when no pill focused'` test (around line 388). The test should:
+Add a new test near the existing `'label button disabled when no pill focused'` test (around line 388):
 
-1. Seed an empty repertoire (no starting moves, so no pills are displayed).
-2. Pump the `AddLineScreen` and settle.
-3. Verify the Label button is disabled (`onPressed` is null).
-4. Verify a `Tooltip` with message `'Tap a move to edit its label'` exists in the tree using `find.byTooltip('Tap a move to edit its label')` (structural check).
-5. Long-press the disabled Label button using `tester.longPress(find.widgetWithText(TextButton, 'Label'))`.
-6. Pump the widget tree with `await tester.pump(const Duration(seconds: 2))` to allow the tooltip overlay to appear (Flutter's default `Tooltip` `waitDuration` / long-press trigger needs time to elapse and animate in).
-7. Assert the tooltip text is visible on screen: `expect(find.text('Tap a move to edit its label'), findsOneWidget)`.
+```
+testWidgets('disabled label button shows tooltip on long-press', ...)
+```
 
-The structural check (step 4) confirms the `Tooltip` widget is wired up, and the long-press check (steps 5-7) confirms that a user long-pressing the disabled button actually sees the tooltip text rendered as an overlay. This is important because a `Tooltip` wrapping a disabled Material button is not a pattern tested elsewhere in the codebase, so we need to verify the gesture reaches the `Tooltip` through the disabled button's hit-test area.
+Test steps:
+1. Seed an empty repertoire (no moves). Pump the `buildTestApp`.
+2. Verify the Label button is disabled (`onPressed` is null).
+3. Find the `Tooltip` widget that is an ancestor of the Label `TextButton` by using a scoped finder: `find.ancestor(of: find.widgetWithText(TextButton, 'Label'), matching: find.byType(Tooltip))`.
+4. Extract the `Tooltip` widget and assert its `message` property equals `'Play or select a move to edit labels'`. This property-based assertion follows the existing pattern used for `IconButton.tooltip` checks in the hint-arrows toggle test (line 2755).
+5. Long-press the Label button area.
+6. After `pumpAndSettle`, verify the tooltip text appears on screen: `expect(find.text('Play or select a move to edit labels'), findsOneWidget)`.
 
-**Dependencies:** Step 1 must be complete first.
+### 3. Add a separate test verifying no tooltip when Label button is enabled
+
+**File:** `src/test/screens/add_line_screen_test.dart`
+
+Add a **separate** test (not folded into the disabled-state test) to avoid tooltip overlay lingering from a prior long-press:
+
+```
+testWidgets('enabled label button has no tooltip wrapper', ...)
+```
+
+Test steps:
+1. Seed a repertoire with at least one move (e.g., `['e4']`) so that a pill is focused on load.
+2. Pump the `buildTestApp` and `pumpAndSettle`.
+3. Verify the Label button is enabled (`onPressed` is not null).
+4. Assert that no `Tooltip` ancestor wraps the Label button: `expect(find.ancestor(of: find.widgetWithText(TextButton, 'Label'), matching: find.byType(Tooltip)), findsNothing)`.
+
+Using a separate test avoids flakiness from tooltip overlay state leaking between the disabled and enabled assertions.
 
 ## Risks / Open Questions
 
-1. **Task description vs. current code:** The original task title references "disabled due to unsaved moves," but the current `canEditLabel` implementation no longer has a `hasNewMoves` guard. The spec (line 58 of `add-line.md`) explicitly says labels are editable regardless of save state. The Label button is now disabled only when no pill is focused. The tooltip message should reflect the actual reason ("Tap a move to edit its label") rather than the outdated reason ("Confirm or take back new moves"). If the task author intended a different behavior, this should be clarified before implementation.
+1. **Tooltip text reflects the real disabled condition.** The Label button is disabled when no pill is focused (`focusedPillIndex` is null or out of range), which happens on the initial empty board or when the user deselects. It is NOT gated by unsaved-moves or confirm/take-back state -- the spec explicitly says labels are editable regardless of save state (`add-line.md`, line 58). The original plan's text `"Confirm or take back new moves to edit labels"` was misleading because it implied the user must confirm before editing labels, which is false. The revised text `"Play or select a move to edit labels"` accurately describes what the user needs to do: either play a new move or tap an existing pill to focus it.
 
-2. **Tooltip trigger:** Flutter's `Tooltip` shows on long-press by default (mobile) or on hover (desktop). On mobile, a long-press on a disabled `TextButton` will trigger the tooltip. A quick tap will not show the tooltip — this is standard Flutter behavior and may require additional UX consideration (e.g., wrapping in a `GestureDetector` to show a snackbar on tap of the disabled button). However, long-press tooltip is the approach explicitly requested by the acceptance criteria ("tooltip on long-press").
+2. **Tooltip on `TextButton.icon`:** Flutter's `TextButton` does not have a built-in `tooltip` parameter (unlike `IconButton`). Wrapping in a `Tooltip` widget is the standard approach. The `Tooltip` widget's long-press detection works independently of the child widget's enabled state, so no workaround is needed.
 
-3. **Tooltip pump duration in test:** The test uses `tester.pump(const Duration(seconds: 2))` rather than `tester.pumpAndSettle()` because `Tooltip` animations may not fully settle in all cases. If the tooltip does not appear with 2 seconds, try adjusting to match Flutter's default tooltip `waitDuration` (typically 0ms for long-press-triggered tooltips, but the animation itself takes time). The exact duration may need tuning during implementation.
+3. **No spec changes needed:** The `features/add-line.md` spec does not mention tooltip behavior on disabled buttons. This is a UX enhancement that does not change when the button is enabled/disabled -- it only adds feedback for the disabled state.

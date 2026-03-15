@@ -446,6 +446,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+
     testWidgets('action bar shows all four buttons', (tester) async {
       final repId = await seedRepertoire(db);
 

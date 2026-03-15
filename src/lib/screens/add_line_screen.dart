@@ -966,6 +966,5 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
       ),
     );
   }
+
 }
-
-
