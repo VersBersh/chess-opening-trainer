@@ -1,7 +1,26 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../models/repertoire.dart';
 import '../repositories/local/database.dart';
+
+// ---------------------------------------------------------------------------
+// Indentation constants
+// ---------------------------------------------------------------------------
+
+const double _kTreeRowPaddingLeft = 8.0;
+const double _kIndentPerLevel = 20.0;
+const int _kMaxIndentDepth = 5;
+
+/// Returns the left padding for a tree row at the given [depth].
+///
+/// Indentation grows linearly up to depth 5, then stays constant so that
+/// deep nodes remain readable on narrow screens.
+double computeTreeIndent(int depth) {
+  final effectiveDepth = max(0, min(depth, _kMaxIndentDepth));
+  return _kTreeRowPaddingLeft + effectiveDepth * _kIndentPerLevel;
+}
 
 // ---------------------------------------------------------------------------
 // Visible node model
@@ -232,7 +251,7 @@ class _MoveTreeNodeTile extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: EdgeInsets.only(
-            left: 8.0 + node.depth * 20.0,
+            left: computeTreeIndent(node.depth),
             right: 8.0,
           ),
           child: ConstrainedBox(

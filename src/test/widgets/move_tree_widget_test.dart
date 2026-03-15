@@ -974,5 +974,133 @@ void main() {
       expect(toggledId, 1);
       expect(selectedId, isNull);
     });
+
+    testWidgets('indentation is capped for deeply nested nodes',
+        (tester) async {
+      // Build a tree with a branch at every level using a Ruy Lopez line,
+      // forcing depth 0 through 7. Each node has 2 children (branch point),
+      // so its children are at depth+1. All moves are legal chess.
+      //
+      // Main line: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 (ids 1-8)
+      // Branch at e4(1):   c5                                  (id 100)
+      // Branch at e5(2):   Bc4                                 (id 200)
+      // Branch at Nf3(3):  d6                                  (id 300)
+      // Branch at Nc6(4):  Bc4                                 (id 400)
+      // Branch at Bb5(5):  Nf6                                 (id 500)
+      // Branch at a6(6):   Bxc6                                (id 600)
+      // Branch at Ba4(7):  b5                                  (id 700)
+      //
+      // Depths: e4=0, e5/c5=1, Nf3/Bc4=2, Nc6/d6=3, Bb5/Bc4=4,
+      //         a6/Nf6=5, Ba4/Bxc6=6, Nf6(8)/b5=7
+
+      final mainLine = buildLine(
+        ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6'],
+      );
+
+      final branch1 = buildBranch(
+        ['e4'], ['c5'],
+        startId: 100, parentMoveId: 1,
+      );
+      final branch2 = buildBranch(
+        ['e4', 'e5'], ['Bc4'],
+        startId: 200, parentMoveId: 2,
+      );
+      final branch3 = buildBranch(
+        ['e4', 'e5', 'Nf3'], ['d6'],
+        startId: 300, parentMoveId: 3,
+      );
+      final branch4 = buildBranch(
+        ['e4', 'e5', 'Nf3', 'Nc6'], ['Bc4'],
+        startId: 400, parentMoveId: 4,
+      );
+      final branch5 = buildBranch(
+        ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5'], ['Nf6'],
+        startId: 500, parentMoveId: 5,
+      );
+      final branch6 = buildBranch(
+        ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6'], ['Bxc6'],
+        startId: 600, parentMoveId: 6,
+      );
+      final branch7 = buildBranch(
+        ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4'], ['b5'],
+        startId: 700, parentMoveId: 7,
+      );
+
+      final allMoves = [
+        ...mainLine,
+        ...branch1, ...branch2, ...branch3, ...branch4,
+        ...branch5, ...branch6, ...branch7,
+      ];
+      final cache = RepertoireTreeCache.build(allMoves);
+
+      // Expand all branch nodes (ids 1-7) to make all depths visible.
+      final expandedIds = <int>{1, 2, 3, 4, 5, 6, 7};
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 360,
+              height: 600,
+              child: MoveTreeWidget(
+                treeCache: cache,
+                expandedNodeIds: expandedIds,
+                onNodeSelected: (_) {},
+                onNodeToggleExpand: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Verify indentation via rendered positions of specific rows.
+      // Row texts (from buildChainNotation):
+      //   depth 1: "1...e5"    depth 5: "3...a6"
+      //   depth 6: "4. Ba4"    depth 7: "4...b5"
+      // With the cap at depth 5, rows at depth 5/6/7 should all share
+      // the same x-offset, proving the indentation stopped growing.
+
+      final depth1Left = tester.getTopLeft(find.text('1...e5')).dx;
+      final depth5Left = tester.getTopLeft(find.text('3...a6')).dx;
+      final depth6Left = tester.getTopLeft(find.text('4. Ba4')).dx;
+      final depth7Left = tester.getTopLeft(find.text('4...b5')).dx;
+
+      // Shallow row is indented less than capped rows.
+      expect(depth1Left, lessThan(depth5Left),
+          reason: 'depth-1 row should be indented less than depth-5');
+
+      // Depths 5, 6, and 7 should all have the same indent (capped).
+      expect(depth6Left, depth5Left,
+          reason: 'depth 6 should have same indent as depth 5 (capped)');
+      expect(depth7Left, depth5Left,
+          reason: 'depth 7 should have same indent as depth 5 (capped)');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Unit tests for computeTreeIndent
+  // -------------------------------------------------------------------------
+
+  group('computeTreeIndent', () {
+    test('depth 0 returns base padding', () {
+      expect(computeTreeIndent(0), 8.0);
+    });
+
+    test('depth 1 returns base plus one level', () {
+      expect(computeTreeIndent(1), 28.0);
+    });
+
+    test('depth at max (5) returns base plus 5 levels', () {
+      expect(computeTreeIndent(5), 108.0);
+    });
+
+    test('depth beyond max is capped', () {
+      expect(computeTreeIndent(6), 108.0);
+      expect(computeTreeIndent(10), 108.0);
+    });
+
+    test('negative depth clamps to 0', () {
+      expect(computeTreeIndent(-1), 8.0);
+    });
   });
 }

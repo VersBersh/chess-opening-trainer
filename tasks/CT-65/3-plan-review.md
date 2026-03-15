@@ -1,0 +1,8 @@
+**Verdict** — `Needs Revision`
+
+**Issues**
+1. **[Major] Step 2** — The proposed helper implementation is not type-safe as written. In Dart, `depth.clamp(0, maxIndentDepth)` returns a `num`, so `final effectiveDepth = depth.clamp(...); return 8.0 + effectiveDepth * 20.0;` does not cleanly match a `double` return type and is likely to fail static analysis. Fix by keeping the clamped value as an `int` or converting explicitly, for example with `min/max`, an `as int` cast, or `.toDouble()` in the final expression.
+
+2. **[Major] Step 2 / Step 4** — The plan leaves the helper location ambiguous (`top-level (or static)`), but Step 4 depends on calling `computeTreeIndent` directly from [`src/test/widgets/move_tree_widget_test.dart`](C:/code/draftable/chess-4/src/test/widgets/move_tree_widget_test.dart). A static helper on private `_MoveTreeNodeTile` would not be accessible from that test file. Fix by requiring a top-level helper in [`src/lib/widgets/move_tree_widget.dart`](C:/code/draftable/chess-4/src/lib/widgets/move_tree_widget.dart), or by dropping the direct unit tests and testing only through the widget.
+
+3. **[Minor] Step 1 / Step 2** — The constants plan is internally inconsistent. Step 1 says “Add two named constants” but lists three, and Step 2 then hardcodes `8.0`, `20.0`, and `5` again instead of reusing those constants. Fix by defining all three constants once and having the helper use them, so the cap and padding math cannot drift.
