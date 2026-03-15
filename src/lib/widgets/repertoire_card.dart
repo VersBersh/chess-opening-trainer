@@ -9,6 +9,7 @@ class RepertoireCard extends StatelessWidget {
     required this.onStartDrill,
     required this.onFreePractice,
     required this.onAddLine,
+    required this.onTapName,
     required this.onManageRepertoire,
     required this.onRename,
     required this.onDelete,
@@ -18,6 +19,7 @@ class RepertoireCard extends StatelessWidget {
   final VoidCallback onStartDrill;
   final VoidCallback onFreePractice;
   final VoidCallback onAddLine;
+  final VoidCallback onTapName;
   final VoidCallback onManageRepertoire;
   final VoidCallback onRename;
   final VoidCallback onDelete;
@@ -38,11 +40,18 @@ class RepertoireCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    summary.repertoire.name,
-                    style: theme.textTheme.titleMedium,
+                  child: InkWell(
+                    onTap: onTapName,
+                    child: Text(
+                      summary.repertoire.name,
+                      style: theme.textTheme.titleMedium,
+                    ),
                   ),
                 ),
+                if (hasDueCards)
+                  Badge(
+                    label: Text('${summary.dueCount} due'),
+                  ),
                 PopupMenuButton<String>(
                   onSelected: (value) {
                     switch (value) {
@@ -58,10 +67,6 @@ class RepertoireCard extends StatelessWidget {
                   ],
                 ),
               ],
-            ),
-            Text(
-              '${summary.dueCount} cards due',
-              style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 8),
             FilledButton.icon(

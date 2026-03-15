@@ -300,6 +300,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onStartDrill: () => _startDrill(id),
                   onFreePractice: () => _startFreePractice(id),
                   onAddLine: () => _onAddLine(id),
+                  onTapName: () => _onRepertoireTap(id),
                   onManageRepertoire: () => _onRepertoireTap(id),
                   onRename: () => _onRenameRepertoire(summary),
                   onDelete: () => _onDeleteRepertoire(summary),

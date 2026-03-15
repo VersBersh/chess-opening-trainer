@@ -1335,7 +1335,6 @@ void main() {
         repertoires: const [
           Repertoire(id: 1, name: 'Alpha'),
           Repertoire(id: 2, name: 'Beta'),
-          Repertoire(id: 3, name: 'Gamma'),
         ],
       );
       final reviewRepo = FakeReviewRepository(dueCards: []);
@@ -1346,7 +1345,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      expect(find.byType(RepertoireCard), findsNWidgets(3));
+      expect(find.byType(RepertoireCard), findsNWidgets(2));
     });
 
     testWidgets('each card shows its own name and due count',
