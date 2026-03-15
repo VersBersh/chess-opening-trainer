@@ -1,0 +1,8 @@
+- **Verdict** — `Approved with Notes`
+- **Progress**
+  - `[x] Done` — Step 1: the Label action is wrapped in a `Tooltip` only when `canEditLabel` is false, with the planned message, in [add_line_screen.dart](C:/code/draftable/chess-4/src/lib/screens/add_line_screen.dart#L886).
+  - `[x] Done` — Step 2: tooltip coverage was added in [add_line_screen_test.dart](C:/code/draftable/chess-4/src/test/screens/add_line_screen_test.dart#L402), including both a structural `find.byTooltip(...)` check and a long-press visibility check.
+- **Issues**
+  1. Minor — [4-impl-notes.md](C:/code/draftable/chess-4/tasks/CT-61/4-impl-notes.md#L3) is not consistent with the actual implementation. It says only `src/lib/screens/add_line_screen.dart` changed and that there were no deviations, but the implementation also modified [add_line_screen_test.dart](C:/code/draftable/chess-4/src/test/screens/add_line_screen_test.dart#L402) and split the planned single widget test into two focused tests. This is not a product bug, but it is documentation drift. Suggested fix: update the impl notes to list the test file and describe the small test-structure deviation accurately.
+
+The source changes themselves look correct and complete for the plan. The tooltip is only added for the disabled state, the message matches the real disable condition from [add_line_controller.dart](C:/code/draftable/chess-4/src/lib/controllers/add_line_controller.dart#L979), and the added tests cover both wiring and user-visible behavior without introducing obvious regression risk.

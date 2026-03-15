@@ -895,6 +895,18 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
     // independent of line color (see add-line.md).
     final canEditLabel = _controller.canEditLabel;
 
+    final labelButton = TextButton.icon(
+      onPressed: canEditLabel ? _onEditLabel : null,
+      icon: const Icon(Icons.label, size: 18),
+      label: const Text('Label'),
+    );
+    final labelAction = canEditLabel
+        ? labelButton
+        : Tooltip(
+            message: 'Tap a move to edit its label',
+            child: labelButton,
+          );
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -922,12 +934,7 @@ class _AddLineScreenState extends ConsumerState<AddLineScreen>
               label: const Text('Confirm'),
             ),
 
-            // Label
-            TextButton.icon(
-              onPressed: canEditLabel ? _onEditLabel : null,
-              icon: const Icon(Icons.label, size: 18),
-              label: const Text('Label'),
-            ),
+            labelAction,
           ],
         ),
       ),

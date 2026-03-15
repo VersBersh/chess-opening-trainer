@@ -2,6 +2,7 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -396,6 +397,53 @@ void main() {
         find.widgetWithText(TextButton, 'Label'),
       );
       expect(labelButton.onPressed, isNull);
+    });
+
+    testWidgets(
+        'disabled Label button is wrapped in Tooltip with explanation',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Label button should be disabled (no pill focused).
+      final labelButton = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Label'),
+      );
+      expect(labelButton.onPressed, isNull);
+
+      // A Tooltip with the explanation message should wrap the button.
+      expect(
+        find.byTooltip('Tap a move to edit its label'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'disabled Label button tooltip appears on long-press',
+        (tester) async {
+      final repId = await seedRepertoire(db);
+
+      await tester.pumpWidget(buildTestApp(db, repId));
+      await tester.pumpAndSettle();
+
+      // Long-press the disabled Label button to trigger the tooltip.
+      // Hold the gesture down so the tooltip stays visible for assertion.
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.widgetWithText(TextButton, 'Label')),
+      );
+      await tester.pump(kLongPressTimeout);
+      await tester.pump(const Duration(milliseconds: 10));
+
+      // The tooltip overlay text should now be visible on screen.
+      expect(
+        find.text('Tap a move to edit its label'),
+        findsOneWidget,
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('action bar shows all four buttons', (tester) async {
